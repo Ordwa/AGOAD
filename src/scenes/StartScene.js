@@ -757,15 +757,21 @@ export class StartScene extends Scene {
       return;
     }
 
+    if (this.mode === "gm-auth") {
+      this.drawGmAuthWindow(ctx);
+      return;
+    }
+
+    if (this.mode === "gm-edit") {
+      this.drawGmEditWindow(ctx);
+      return;
+    }
+
     this.drawBackground(ctx);
     this.drawTitle(ctx);
 
     if (this.mode === "slots") {
       this.drawSlotsMenu(ctx);
-    } else if (this.mode === "gm-auth") {
-      this.drawGmAuthWindow(ctx);
-    } else {
-      this.drawGmEditWindow(ctx);
     }
 
     if (this.notice.length > 0) {
@@ -1009,31 +1015,7 @@ export class StartScene extends Scene {
 
     this.drawMainBanner(ctx, layout.bannerRect);
 
-    ctx.fillStyle = "rgba(3, 16, 30, 0.5)";
-    fillRoundedRect(
-      ctx,
-      layout.titleRect.x,
-      layout.titleRect.y,
-      layout.titleRect.w,
-      layout.titleRect.h,
-      Math.max(10, Math.round(layout.titleRect.h * 0.3)),
-    );
-    ctx.strokeStyle = "rgba(167, 204, 247, 0.66)";
-    ctx.lineWidth = Math.max(2, Math.round(layout.titleRect.h * 0.08));
-    strokeRoundedRect(
-      ctx,
-      layout.titleRect.x,
-      layout.titleRect.y,
-      layout.titleRect.w,
-      layout.titleRect.h,
-      Math.max(10, Math.round(layout.titleRect.h * 0.3)),
-    );
-
-    ctx.fillStyle = "#e8f2ff";
-    ctx.font = `${Math.round(clampNumber(layout.titleRect.h * 0.43, 11, 44))}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("SETTINGS", layout.titleRect.x + layout.titleRect.w / 2, layout.titleRect.y + layout.titleRect.h / 2);
+    this.drawOverlayTitleCard(ctx, layout.titleRect, "SETTINGS");
 
     layout.rowRects.forEach((rect, index) => {
       const selected = this.optionsIndex === index;
@@ -1060,6 +1042,34 @@ export class StartScene extends Scene {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.restore();
+  }
+
+  drawOverlayTitleCard(ctx, rect, label) {
+    ctx.fillStyle = "rgba(3, 16, 30, 0.5)";
+    fillRoundedRect(
+      ctx,
+      rect.x,
+      rect.y,
+      rect.w,
+      rect.h,
+      Math.max(10, Math.round(rect.h * 0.3)),
+    );
+    ctx.strokeStyle = "rgba(167, 204, 247, 0.66)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
+    strokeRoundedRect(
+      ctx,
+      rect.x,
+      rect.y,
+      rect.w,
+      rect.h,
+      Math.max(10, Math.round(rect.h * 0.3)),
+    );
+
+    ctx.fillStyle = "#e8f2ff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.43, 11, 44))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
   }
 
   drawMenuCard(ctx, rect, selected) {
@@ -1125,65 +1135,114 @@ export class StartScene extends Scene {
   }
 
   drawGmAuthWindow(ctx) {
-    const panelX = 18;
-    const panelY = 42;
-    const panelW = GAME_CONFIG.width - 36;
-    const panelH = 92;
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const layout = getGmAuthLayout(canvasWidth, canvasHeight);
     const masked = this.gmPasswordBuffer.length > 0 ? "*".repeat(this.gmPasswordBuffer.length) : "____";
 
-    this.drawPanel(ctx, panelX, panelY, panelW, panelH, "#f0efe2");
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    ctx.fillStyle = "#2c2d36";
-    ctx.font = "8px monospace";
+    if (
+      this.homeBackgroundImage &&
+      this.homeBackgroundImage.complete &&
+      this.homeBackgroundImage.naturalWidth > 0
+    ) {
+      drawImageCover(ctx, this.homeBackgroundImage, 0, 0, canvasWidth, canvasHeight);
+    } else {
+      ctx.fillStyle = "#0f1116";
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    this.drawMainBanner(ctx, layout.bannerRect);
+    this.drawOverlayTitleCard(ctx, layout.titleRect, "GM-EDIT");
+
+    this.drawSettingsRowCard(ctx, layout.passwordCardRect, "PASSWORD", "", true);
+    const inputInsetX = Math.round(clampNumber(layout.passwordCardRect.w * 0.045, 12, 40));
+    const inputInsetY = Math.round(clampNumber(layout.passwordCardRect.h * 0.44, 24, 88));
+    const inputW = layout.passwordCardRect.w - inputInsetX * 2;
+    const inputH = Math.round(clampNumber(layout.passwordCardRect.h * 0.38, 24, 110));
+    const inputX = layout.passwordCardRect.x + inputInsetX;
+    const inputY = layout.passwordCardRect.y + inputInsetY;
+
+    ctx.fillStyle = "rgba(8, 21, 37, 0.75)";
+    fillRoundedRect(ctx, inputX, inputY, inputW, inputH, Math.max(8, Math.round(inputH * 0.24)));
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.8)";
+    ctx.lineWidth = Math.max(2, Math.round(inputH * 0.08));
+    strokeRoundedRect(ctx, inputX, inputY, inputW, inputH, Math.max(8, Math.round(inputH * 0.24)));
+
+    ctx.fillStyle = "#f3f9ff";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.round(clampNumber(inputH * 0.42, 10, 42))}px monospace`;
+    ctx.fillText(masked, inputX + Math.round(clampNumber(inputW * 0.06, 8, 24)), inputY + inputH / 2 + 0.5);
+
+    this.drawSettingsRowCard(
+      ctx,
+      layout.statusRect,
+      this.gmAuthStatus || "A CONFERMA",
+      "",
+      false,
+    );
+    this.drawSettingsRowCard(ctx, layout.hintRect, "B ANNULLA   ABC/CANC INPUT", "", false);
+
+    if (this.notice.length > 0) {
+      this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
+    }
+
+    ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("GM-EDIT PASSWORD", panelX + 8, panelY + 8);
-
-    ctx.fillStyle = "#e9eff3";
-    ctx.fillRect(panelX + 8, panelY + 28, panelW - 16, 18);
-    ctx.strokeStyle = "#4a5665";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panelX + 8, panelY + 28, panelW - 16, 18);
-
-    ctx.fillStyle = "#1f2233";
-    ctx.fillText(masked, panelX + 14, panelY + 34);
-    ctx.fillText(this.gmAuthStatus || "A conferma", panelX + 8, panelY + 54);
-    ctx.fillText("B annulla  ABC/CANC input", panelX + 8, panelY + 66);
+    ctx.restore();
   }
 
   drawGmEditWindow(ctx) {
-    const panelX = 18;
-    const panelY = 32;
-    const panelW = GAME_CONFIG.width - 36;
-    const panelH = GAME_CONFIG.height - 44;
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const layout = getGmEditLayout(canvasWidth, canvasHeight);
 
-    this.drawPanel(ctx, panelX, panelY, panelW, panelH, "#f0efe2");
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    ctx.fillStyle = "#2c2d36";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
+    if (
+      this.homeBackgroundImage &&
+      this.homeBackgroundImage.complete &&
+      this.homeBackgroundImage.naturalWidth > 0
+    ) {
+      drawImageCover(ctx, this.homeBackgroundImage, 0, 0, canvasWidth, canvasHeight);
+    } else {
+      ctx.fillStyle = "#0f1116";
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
 
-    ctx.fillText("GM-EDIT", panelX + 8, panelY + 8);
-    ctx.font = "7px monospace";
+    this.drawMainBanner(ctx, layout.bannerRect);
+    this.drawOverlayTitleCard(ctx, layout.titleRect, "GM-EDIT");
 
-    GM_EDIT_MENU.forEach((entry, index) => {
-      const y = panelY + 22 + index * 12;
-      if (this.gmEditIndex === index) {
-        this.drawCursor(ctx, panelX + 8, y + 1);
-      }
-
-      if (entry.id === "debug") {
-        const debugValue = this.game.getDebugOverlayEnabled() ? "ON" : "OFF";
-        ctx.fillText(`DEBUG MODE: ${debugValue}`, panelX + 16, y);
+    layout.rowRects.forEach((rect, index) => {
+      const entry = GM_EDIT_MENU[index];
+      if (!entry) {
         return;
       }
-
-      ctx.fillText(entry.label, panelX + 16, y);
+      const selected = this.gmEditIndex === index;
+      const valueText = entry.id === "debug" ? (this.game.getDebugOverlayEnabled() ? "ON" : "OFF") : "";
+      const label = entry.id === "debug" ? "DEBUG MODE" : entry.label;
+      this.drawSettingsRowCard(ctx, rect, label, valueText, selected);
     });
 
-    ctx.fillStyle = "#2c2d36";
-    ctx.fillText("Import salva automaticamente", panelX + 8, panelY + panelH - 28);
-    ctx.fillText(this.gmActionBusy ? "Operazione in corso..." : "A seleziona", panelX + 8, panelY + panelH - 20);
-    ctx.fillText("B indietro", panelX + 8, panelY + panelH - 12);
+    this.drawSettingsRowCard(
+      ctx,
+      layout.helpRect,
+      this.gmActionBusy ? "OPERAZIONE IN CORSO..." : "A SELEZIONA",
+      "B INDIETRO",
+      false,
+    );
+
+    if (this.notice.length > 0) {
+      this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
+    }
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.restore();
   }
 
   drawNotice(ctx, text) {
@@ -1478,6 +1537,142 @@ function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = 
     soundPlusRect: soundControls.plusRect,
     musicMinusRect: musicControls.minusRect,
     musicPlusRect: musicControls.plusRect,
+    noticeRect,
+    noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
+  };
+}
+
+function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
+  const bannerRect = {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
+
+  const titleW = Math.round(clampNumber(surfaceWidth * 0.56, 156, surfaceWidth - sidePadding * 2));
+  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
+  const titleRect = {
+    x: Math.floor((surfaceWidth - titleW) / 2),
+    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 8, 26)),
+    w: titleW,
+    h: titleH,
+  };
+
+  const passwordW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
+  const passwordH = Math.round(clampNumber(surfaceHeight * 0.18, 74, 240));
+  const passwordCardRect = {
+    x: Math.floor((surfaceWidth - passwordW) / 2),
+    y: titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 10, 30)),
+    w: passwordW,
+    h: passwordH,
+  };
+
+  const statusW = passwordW;
+  const statusH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 96));
+  const statusRect = {
+    x: passwordCardRect.x,
+    y: passwordCardRect.y + passwordCardRect.h + Math.round(clampNumber(surfaceHeight * 0.014, 8, 22)),
+    w: statusW,
+    h: statusH,
+  };
+
+  const hintW = passwordW;
+  const hintH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 96));
+  const hintRect = {
+    x: passwordCardRect.x,
+    y: statusRect.y + statusRect.h + Math.round(clampNumber(surfaceHeight * 0.012, 6, 20)),
+    w: hintW,
+    h: hintH,
+  };
+
+  const noticeW = surfaceWidth - sidePadding * 2;
+  const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
+  const noticeRect = {
+    x: sidePadding,
+    y: surfaceHeight - topInset - noticeH,
+    w: noticeW,
+    h: noticeH,
+  };
+
+  return {
+    bannerRect,
+    titleRect,
+    passwordCardRect,
+    statusRect,
+    hintRect,
+    noticeRect,
+    noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
+  };
+}
+
+function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
+  const bannerRect = {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
+
+  const titleW = Math.round(clampNumber(surfaceWidth * 0.48, 140, surfaceWidth - sidePadding * 2));
+  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
+  const titleRect = {
+    x: Math.floor((surfaceWidth - titleW) / 2),
+    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 8, 26)),
+    w: titleW,
+    h: titleH,
+  };
+
+  const noticeW = surfaceWidth - sidePadding * 2;
+  const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
+  const noticeRect = {
+    x: sidePadding,
+    y: surfaceHeight - topInset - noticeH,
+    w: noticeW,
+    h: noticeH,
+  };
+
+  const rowW = Math.round(clampNumber(surfaceWidth * 0.9, 230, surfaceWidth - sidePadding * 2));
+  const rowGap = Math.round(clampNumber(surfaceHeight * 0.012, 6, 18));
+  const helpGap = Math.round(clampNumber(surfaceHeight * 0.016, 8, 24));
+  const helpH = Math.round(clampNumber(surfaceHeight * 0.085, 34, 120));
+  const rowsStartY = titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 10, 24));
+  const rowsCount = GM_EDIT_MENU.length;
+  const maxRowsArea = Math.max(
+    rowsCount * 30,
+    noticeRect.y - helpGap - helpH - rowsStartY - rowGap * (rowsCount - 1),
+  );
+  const rowH = Math.round(clampNumber(maxRowsArea / rowsCount, 30, 98));
+  const rowRects = Array.from({ length: rowsCount }, (_, index) => ({
+    x: Math.floor((surfaceWidth - rowW) / 2),
+    y: rowsStartY + index * (rowH + rowGap),
+    w: rowW,
+    h: rowH,
+  }));
+
+  const lastRowBottom = rowRects[rowRects.length - 1].y + rowH;
+  const helpRect = {
+    x: rowRects[0].x,
+    y: lastRowBottom + helpGap,
+    w: rowW,
+    h: helpH,
+  };
+
+  return {
+    bannerRect,
+    titleRect,
+    rowRects,
+    helpRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };

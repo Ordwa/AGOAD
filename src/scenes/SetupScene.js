@@ -1,14 +1,8 @@
 import { Scene } from "../core/Scene.js";
-import { GAME_CONFIG, PALETTE } from "../data/constants.js";
+import { GAME_CONFIG } from "../data/constants.js";
 import { applyClassToPlayer } from "../data/classes.js";
 
 const MAX_NAME_LENGTH = 12;
-const FIELD = {
-  x: 14,
-  y: 48,
-  w: GAME_CONFIG.width - 28,
-  h: 18,
-};
 
 export class SetupScene extends Scene {
   constructor(game) {
@@ -19,6 +13,7 @@ export class SetupScene extends Scene {
     this.infoText = "";
     this.timer = 0;
     this.uiBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
+    this.titleBannerImage = createUiImage("../assets/UI_title_banner.png");
   }
 
   onEnter() {
@@ -135,65 +130,120 @@ export class SetupScene extends Scene {
   }
 
   render(ctx) {
-    this.drawBackground(ctx);
-    this.drawTitle(ctx);
-    this.drawNamePanel(ctx);
-    this.drawClassPanel(ctx);
-    this.drawFooter(ctx);
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const layout = getSetupLayout(canvasWidth, canvasHeight);
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.drawBackground(ctx, canvasWidth, canvasHeight);
+    this.drawTitle(ctx, layout);
+    this.drawNamePanel(ctx, layout);
+    this.drawClassPanel(ctx, layout);
+    this.drawFooter(ctx, layout);
+    ctx.restore();
   }
 
-  drawBackground(ctx) {
+  drawBackground(ctx, surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
     if (
       this.uiBackgroundImage &&
       this.uiBackgroundImage.complete &&
       this.uiBackgroundImage.naturalWidth > 0
     ) {
-      drawImageCover(ctx, this.uiBackgroundImage, 0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+      drawImageCover(ctx, this.uiBackgroundImage, 0, 0, surfaceWidth, surfaceHeight);
       return;
     }
 
     ctx.fillStyle = "#0f1116";
-    ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    ctx.fillRect(0, 0, surfaceWidth, surfaceHeight);
   }
 
-  drawTitle(ctx) {
-    this.drawPanel(ctx, 6, 6, GAME_CONFIG.width - 12, 20);
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText("NUOVA AVVENTURA", 14, 12);
+  drawTitle(ctx, layout) {
+    if (
+      this.titleBannerImage &&
+      this.titleBannerImage.complete &&
+      this.titleBannerImage.naturalWidth > 0
+    ) {
+      drawImageCover(
+        ctx,
+        this.titleBannerImage,
+        layout.bannerRect.x,
+        layout.bannerRect.y,
+        layout.bannerRect.w,
+        layout.bannerRect.h,
+      );
+    } else {
+      this.drawSetupCard(ctx, layout.bannerRect, false);
+    }
+
+    this.drawSetupCard(ctx, layout.titleRect, false);
+    ctx.fillStyle = "#f3f9ff";
+    ctx.font = `${Math.round(clampNumber(layout.titleRect.h * 0.4, 12, 40))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("NEW GAME", layout.titleRect.x + layout.titleRect.w / 2, layout.titleRect.y + layout.titleRect.h / 2);
   }
 
-  drawNamePanel(ctx) {
-    this.drawPanel(ctx, 6, 30, GAME_CONFIG.width - 12, 44);
+  drawNamePanel(ctx, layout) {
+    this.drawSetupCard(ctx, layout.nameRect, this.step === "name");
 
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
+    ctx.fillStyle = "#e6f2ff";
+    ctx.font = `${Math.round(clampNumber(layout.nameRect.h * 0.2, 10, 30))}px monospace`;
+    ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("NOME PERSONAGGIO", 14, 36);
+    ctx.fillText(
+      "NOME PERSONAGGIO",
+      layout.nameRect.x + Math.round(clampNumber(layout.nameRect.w * 0.05, 10, 34)),
+      layout.nameRect.y + Math.round(clampNumber(layout.nameRect.h * 0.11, 8, 20)),
+    );
 
-    ctx.fillStyle = "#e9eff3";
-    ctx.fillRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
-    ctx.strokeStyle = "#4a5665";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(FIELD.x, FIELD.y, FIELD.w, FIELD.h);
+    const fieldRect = layout.nameFieldRect;
+    ctx.fillStyle = "rgba(8, 21, 37, 0.75)";
+    fillRoundedRect(
+      ctx,
+      fieldRect.x,
+      fieldRect.y,
+      fieldRect.w,
+      fieldRect.h,
+      Math.max(8, Math.round(fieldRect.h * 0.23)),
+    );
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.82)";
+    ctx.lineWidth = Math.max(2, Math.round(fieldRect.h * 0.08));
+    strokeRoundedRect(
+      ctx,
+      fieldRect.x,
+      fieldRect.y,
+      fieldRect.w,
+      fieldRect.h,
+      Math.max(8, Math.round(fieldRect.h * 0.23)),
+    );
 
     const displayName = this.nameBuffer.length > 0 ? this.nameBuffer : "____";
-    ctx.fillStyle = "#1f2233";
-    ctx.fillText(displayName, FIELD.x + 6, FIELD.y + 6);
+    ctx.fillStyle = "#f3f9ff";
+    ctx.font = `${Math.round(clampNumber(fieldRect.h * 0.42, 12, 38))}px monospace`;
+    ctx.textBaseline = "middle";
+    const textX = fieldRect.x + Math.round(clampNumber(fieldRect.w * 0.04, 8, 24));
+    const textY = fieldRect.y + fieldRect.h / 2 + 0.5;
+    ctx.fillText(displayName, textX, textY);
 
     if (this.step === "name" && Math.floor(this.timer * 2) % 2 === 0) {
-      const cursorX = FIELD.x + 6 + this.nameBuffer.length * 8;
-      ctx.fillRect(cursorX, FIELD.y + 14, 6, 1);
+      const cursorX = textX + this.nameBuffer.length * Math.round(clampNumber(fieldRect.h * 0.26, 8, 26));
+      ctx.fillRect(cursorX, fieldRect.y + fieldRect.h - Math.round(clampNumber(fieldRect.h * 0.28, 5, 16)), Math.max(6, Math.round(fieldRect.h * 0.16)), Math.max(2, Math.round(fieldRect.h * 0.07)));
     }
 
     if (this.infoText) {
-      ctx.fillStyle = "#8f2d35";
-      ctx.fillText(this.infoText, 14, 68);
+      ctx.fillStyle = "#ffd2d6";
+      ctx.font = `${Math.round(clampNumber(layout.nameRect.h * 0.14, 9, 24))}px monospace`;
+      ctx.textBaseline = "top";
+      ctx.fillText(
+        this.infoText,
+        layout.nameRect.x + Math.round(clampNumber(layout.nameRect.w * 0.05, 10, 34)),
+        layout.nameRect.y + layout.nameRect.h - Math.round(clampNumber(layout.nameRect.h * 0.24, 16, 44)),
+      );
     }
   }
 
-  drawClassPanel(ctx) {
+  drawClassPanel(ctx, layout) {
     const classes = this.getAvailableClasses();
     if (classes.length === 0) {
       return;
@@ -202,105 +252,128 @@ export class SetupScene extends Scene {
     const safeIndex = Math.min(this.classIndex, classes.length - 1);
     this.classIndex = safeIndex;
     const selectedClass = classes[safeIndex];
-    const panelY = 78;
 
-    this.drawPanel(ctx, 6, panelY, GAME_CONFIG.width - 12, 74);
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
+    this.drawSetupCard(ctx, layout.classRect, this.step === "class");
+    ctx.fillStyle = "#e6f2ff";
+    ctx.font = `${Math.round(clampNumber(layout.classRect.h * 0.1, 10, 28))}px monospace`;
+    ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("SCEGLI LA CLASSE", 14, panelY + 6);
+    ctx.fillText(
+      "SCEGLI LA CLASSE",
+      layout.classRect.x + Math.round(clampNumber(layout.classRect.w * 0.04, 10, 28)),
+      layout.classRect.y + Math.round(clampNumber(layout.classRect.h * 0.06, 8, 18)),
+    );
+
+    const listRect = layout.classListRect;
+    const listGap = Math.round(clampNumber(listRect.h * 0.04, 6, 20));
+    const rowH = Math.floor((listRect.h - listGap * (classes.length - 1)) / classes.length);
 
     classes.forEach((classData, index) => {
-      const y = panelY + 20 + index * 12;
-      if (this.step === "class" && index === this.classIndex) {
-        this.drawCursor(ctx, 14, y + 1);
-      }
-
-      ctx.fillStyle = index === this.classIndex ? "#1f2233" : "#4e5766";
-      ctx.fillText(classData.label, 22, y);
+      const rowRect = {
+        x: listRect.x,
+        y: listRect.y + index * (rowH + listGap),
+        w: listRect.w,
+        h: rowH,
+      };
+      const selected = this.step === "class" && index === this.classIndex;
+      this.drawSetupOptionRow(ctx, rowRect, classData.label, selected);
     });
 
-    ctx.fillStyle = "#1f2233";
-    ctx.fillText(`HP ${selectedClass.maxHp}`, 14, panelY + 58);
-    ctx.fillText(`ATK ${selectedClass.attackMin}-${selectedClass.attackMax}`, 52, panelY + 58);
-    ctx.fillText(`MP ${selectedClass.maxMana}`, 112, panelY + 58);
+    const detailsRect = layout.classDetailsRect;
+    this.drawSetupCard(ctx, detailsRect, false);
 
-    const rightAreaX = 120;
-    const rightAreaW = 128;
-    const infoX = rightAreaX + 2;
-    const description = selectedClass.description ?? "Nessuna descrizione.";
-    const descriptionLines = wrapClassText(description, 16);
+    const desc = selectedClass.description ?? "Nessuna descrizione.";
+    const descFont = Math.round(clampNumber(detailsRect.h * 0.11, 10, 24));
+    const maxChars = Math.max(16, Math.floor((detailsRect.w - 20) / Math.max(6, descFont * 0.56)));
+    const descriptionLines = wrapClassText(desc, maxChars).slice(0, 3);
 
-    const descBoxX = rightAreaX;
-    const descBoxY = panelY + 18;
-    const descBoxW = 58;
-    const descBoxH = 34;
-
-    ctx.fillStyle = "#e9eff3";
-    ctx.fillRect(descBoxX, descBoxY, descBoxW, descBoxH);
-    ctx.strokeStyle = "#4a5665";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(descBoxX, descBoxY, descBoxW, descBoxH);
-
-    ctx.fillStyle = "#1f2233";
-    ctx.font = "6px monospace";
-    descriptionLines.slice(0, 4).forEach((line, index) => {
-      ctx.fillText(line, infoX, panelY + 22 + index * 7);
+    ctx.fillStyle = "#eaf5ff";
+    ctx.font = `${descFont}px monospace`;
+    ctx.textBaseline = "top";
+    descriptionLines.forEach((line, index) => {
+      ctx.fillText(
+        line,
+        detailsRect.x + Math.round(clampNumber(detailsRect.w * 0.06, 10, 24)),
+        detailsRect.y + Math.round(clampNumber(detailsRect.h * 0.12, 8, 20)) + index * Math.round(descFont * 1.25),
+      );
     });
-    ctx.font = "8px monospace";
 
-    const slotW = 62;
-    const slotX = descBoxX + descBoxW + Math.floor((rightAreaW - descBoxW - slotW) / 2);
-    const slotY = panelY + 16;
-    const slotH = 56;
+    const statsY = detailsRect.y + detailsRect.h - Math.round(clampNumber(detailsRect.h * 0.3, 24, 72));
+    const chipGap = Math.round(clampNumber(detailsRect.w * 0.025, 6, 18));
+    const chipW = Math.floor((detailsRect.w - chipGap * 4) / 3);
+    const chipH = Math.round(clampNumber(detailsRect.h * 0.2, 24, 68));
+    const stats = [
+      `HP ${selectedClass.maxHp}`,
+      `ATK ${selectedClass.attackMin}-${selectedClass.attackMax}`,
+      `MP ${selectedClass.maxMana}`,
+    ];
 
-    ctx.fillStyle = "#e9eff3";
-    ctx.fillRect(slotX, slotY, slotW, slotH);
-    ctx.strokeStyle = "#4a5665";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(slotX, slotY, slotW, slotH);
-
-    ctx.fillStyle = "#4e5766";
-    ctx.textAlign = "center";
-    ctx.fillText("SPRITE", slotX + slotW / 2, slotY + 21);
-    ctx.fillText("SLOT", slotX + slotW / 2, slotY + 31);
-    ctx.textAlign = "left";
+    stats.forEach((stat, index) => {
+      const chipX = detailsRect.x + chipGap + index * (chipW + chipGap);
+      this.drawSetupStatChip(ctx, { x: chipX, y: statsY, w: chipW, h: chipH }, stat);
+    });
   }
 
-  drawFooter(ctx) {
-    this.drawPanel(ctx, 6, 156, GAME_CONFIG.width - 12, 18);
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
+  drawFooter(ctx, layout) {
+    this.drawSetupCard(ctx, layout.footerRect, false);
+    ctx.fillStyle = "#e6f2ff";
+    ctx.font = `${Math.round(clampNumber(layout.footerRect.h * 0.36, 10, 30))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
 
     if (this.step === "name") {
-      ctx.fillText("A conferma", 14, 162);
-      ctx.fillText("ABC/CANC per nome", 132, 162);
+      ctx.fillText(
+        "A CONFERMA   ABC/CANC PER NOME",
+        layout.footerRect.x + layout.footerRect.w / 2,
+        layout.footerRect.y + layout.footerRect.h / 2 + 0.5,
+      );
       return;
     }
 
-    ctx.fillText("A conferma", 14, 162);
-    ctx.fillText("B indietro", 132, 162);
+    ctx.fillText(
+      "A CONFERMA   B INDIETRO",
+      layout.footerRect.x + layout.footerRect.w / 2,
+      layout.footerRect.y + layout.footerRect.h / 2 + 0.5,
+    );
   }
 
-  drawPanel(ctx, x, y, w, h, fillColor = PALETTE.uiPanel) {
-    ctx.fillStyle = PALETTE.shadow;
-    ctx.fillRect(x + 2, y + 2, w, h);
-    ctx.fillStyle = fillColor;
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = PALETTE.uiBorder;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
+  drawSetupCard(ctx, rect, selected = false) {
+    const radius = Math.max(10, Math.round(rect.h * 0.2));
+    ctx.fillStyle = selected ? "rgba(84, 120, 173, 0.88)" : "rgba(18, 35, 59, 0.8)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = selected ? "#b1ccff" : "rgba(120, 162, 214, 0.72)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
   }
 
-  drawCursor(ctx, x, y) {
-    ctx.fillStyle = "#2c2d36";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 4, y + 3);
-    ctx.lineTo(x, y + 6);
-    ctx.closePath();
-    ctx.fill();
+  drawSetupOptionRow(ctx, rect, label, selected) {
+    const radius = Math.max(8, Math.round(rect.h * 0.24));
+    ctx.fillStyle = selected ? "rgba(14, 30, 50, 0.92)" : "rgba(8, 21, 37, 0.72)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = selected ? "rgba(177, 205, 255, 0.9)" : "rgba(122, 162, 221, 0.7)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.09));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    ctx.fillStyle = selected ? "#f7fbff" : "#dcecff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.45, 10, 30))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 0.5);
+  }
+
+  drawSetupStatChip(ctx, rect, label) {
+    const radius = Math.max(8, Math.round(rect.h * 0.25));
+    ctx.fillStyle = "rgba(8, 21, 37, 0.76)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.76)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    ctx.fillStyle = "#f3f9ff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.38, 9, 24))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 0.5);
   }
 }
 
@@ -339,6 +412,126 @@ function wrapClassText(text, maxChars) {
   }
 
   return lines;
+}
+
+function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+  const verticalGap = Math.round(clampNumber(surfaceHeight * 0.02, 10, 30));
+
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
+  const bannerRect = {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
+
+  const titleW = Math.round(clampNumber(surfaceWidth * 0.56, 160, surfaceWidth - sidePadding * 2));
+  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
+  const titleRect = {
+    x: Math.floor((surfaceWidth - titleW) / 2),
+    y: bannerRect.y + bannerRect.h + verticalGap,
+    w: titleW,
+    h: titleH,
+  };
+
+  const cardW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
+  const nameH = Math.round(clampNumber(surfaceHeight * 0.18, 86, 250));
+  const nameRect = {
+    x: Math.floor((surfaceWidth - cardW) / 2),
+    y: titleRect.y + titleRect.h + verticalGap,
+    w: cardW,
+    h: nameH,
+  };
+
+  const fieldInsetX = Math.round(clampNumber(nameRect.w * 0.045, 10, 34));
+  const fieldInsetY = Math.round(clampNumber(nameRect.h * 0.38, 30, 92));
+  const fieldW = nameRect.w - fieldInsetX * 2;
+  const fieldH = Math.round(clampNumber(nameRect.h * 0.38, 30, 110));
+  const nameFieldRect = {
+    x: nameRect.x + fieldInsetX,
+    y: nameRect.y + fieldInsetY,
+    w: fieldW,
+    h: fieldH,
+  };
+
+  const footerH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 92));
+  const footerRect = {
+    x: nameRect.x,
+    y: surfaceHeight - topInset - footerH,
+    w: cardW,
+    h: footerH,
+  };
+
+  const classY = nameRect.y + nameRect.h + verticalGap;
+  const classMaxH = Math.max(90, footerRect.y - verticalGap - classY);
+  const classH = Math.round(clampNumber(surfaceHeight * 0.34, 120, classMaxH));
+  const classRect = {
+    x: nameRect.x,
+    y: classY,
+    w: cardW,
+    h: classH,
+  };
+
+  const classContentTop = classRect.y + Math.round(clampNumber(classRect.h * 0.2, 32, 90));
+  const classContentH = classRect.h - (classContentTop - classRect.y) - Math.round(clampNumber(classRect.h * 0.08, 10, 30));
+  const classListW = Math.round(clampNumber(classRect.w * 0.34, 88, classRect.w * 0.45));
+  const classListRect = {
+    x: classRect.x + Math.round(clampNumber(classRect.w * 0.04, 8, 24)),
+    y: classContentTop,
+    w: classListW,
+    h: classContentH,
+  };
+  const detailsX = classListRect.x + classListRect.w + Math.round(clampNumber(classRect.w * 0.03, 8, 22));
+  const detailsW = classRect.x + classRect.w - Math.round(clampNumber(classRect.w * 0.04, 8, 24)) - detailsX;
+  const classDetailsRect = {
+    x: detailsX,
+    y: classContentTop,
+    w: detailsW,
+    h: classContentH,
+  };
+
+  return {
+    bannerRect,
+    titleRect,
+    nameRect,
+    nameFieldRect,
+    classRect,
+    classListRect,
+    classDetailsRect,
+    footerRect,
+  };
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function fillRoundedRect(ctx, x, y, w, h, radius) {
+  buildRoundedRectPath(ctx, x, y, w, h, radius);
+  ctx.fill();
+}
+
+function strokeRoundedRect(ctx, x, y, w, h, radius) {
+  buildRoundedRectPath(ctx, x, y, w, h, radius);
+  ctx.stroke();
+}
+
+function buildRoundedRectPath(ctx, x, y, w, h, radius) {
+  const safeRadius = clampNumber(radius, 0, Math.min(w, h) / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + safeRadius, y);
+  ctx.lineTo(x + w - safeRadius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + safeRadius);
+  ctx.lineTo(x + w, y + h - safeRadius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - safeRadius, y + h);
+  ctx.lineTo(x + safeRadius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - safeRadius);
+  ctx.lineTo(x, y + safeRadius);
+  ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  ctx.closePath();
 }
 
 function createUiImage(relativePath) {
