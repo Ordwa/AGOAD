@@ -1100,7 +1100,9 @@ export class StartScene extends Scene {
     if (valueText.length > 0) {
       const chipW = Math.round(clampNumber(rect.w * 0.15, 54, 168));
       const chipH = Math.round(clampNumber(rect.h * 0.72, 28, rect.h - 6));
-      const chipX = rect.x + rect.w - chipW - Math.round(rect.w * 0.19);
+      const controlsAreaW = Math.round(clampNumber(rect.w * 0.2, 70, 190));
+      const controlsAreaGap = Math.round(clampNumber(rect.w * 0.018, 6, 20));
+      const chipX = rect.x + rect.w - chipW - controlsAreaW - controlsAreaGap;
       const chipY = rect.y + Math.floor((rect.h - chipH) / 2);
       const chipRadius = Math.max(8, Math.round(chipH * 0.24));
 
@@ -1177,15 +1179,6 @@ export class StartScene extends Scene {
     ctx.font = `${Math.round(clampNumber(inputH * 0.42, 10, 42))}px monospace`;
     ctx.fillText(masked, inputX + Math.round(clampNumber(inputW * 0.06, 8, 24)), inputY + inputH / 2 + 0.5);
 
-    this.drawSettingsRowCard(
-      ctx,
-      layout.statusRect,
-      this.gmAuthStatus || "A CONFERMA",
-      "",
-      false,
-    );
-    this.drawSettingsRowCard(ctx, layout.hintRect, "B ANNULLA   ABC/CANC INPUT", "", false);
-
     if (this.notice.length > 0) {
       this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
     }
@@ -1223,18 +1216,10 @@ export class StartScene extends Scene {
         return;
       }
       const selected = this.gmEditIndex === index;
-      const valueText = entry.id === "debug" ? (this.game.getDebugOverlayEnabled() ? "ON" : "OFF") : "";
+      const valueText = entry.id === "debug" ? "TOGGLE" : "";
       const label = entry.id === "debug" ? "DEBUG MODE" : entry.label;
       this.drawSettingsRowCard(ctx, rect, label, valueText, selected);
     });
-
-    this.drawSettingsRowCard(
-      ctx,
-      layout.helpRect,
-      this.gmActionBusy ? "OPERAZIONE IN CORSO..." : "A SELEZIONA",
-      "B INDIETRO",
-      false,
-    );
 
     if (this.notice.length > 0) {
       this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
@@ -1565,30 +1550,12 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
   };
 
   const passwordW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
-  const passwordH = Math.round(clampNumber(surfaceHeight * 0.18, 74, 240));
+  const passwordH = Math.round(clampNumber(surfaceHeight * 0.2, 80, 260));
   const passwordCardRect = {
     x: Math.floor((surfaceWidth - passwordW) / 2),
-    y: titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 10, 30)),
+    y: Math.round(clampNumber(surfaceHeight * 0.5 - passwordH / 2, titleRect.y + titleRect.h + 12, surfaceHeight * 0.72)),
     w: passwordW,
     h: passwordH,
-  };
-
-  const statusW = passwordW;
-  const statusH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 96));
-  const statusRect = {
-    x: passwordCardRect.x,
-    y: passwordCardRect.y + passwordCardRect.h + Math.round(clampNumber(surfaceHeight * 0.014, 8, 22)),
-    w: statusW,
-    h: statusH,
-  };
-
-  const hintW = passwordW;
-  const hintH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 96));
-  const hintRect = {
-    x: passwordCardRect.x,
-    y: statusRect.y + statusRect.h + Math.round(clampNumber(surfaceHeight * 0.012, 6, 20)),
-    w: hintW,
-    h: hintH,
   };
 
   const noticeW = surfaceWidth - sidePadding * 2;
@@ -1604,8 +1571,6 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
     bannerRect,
     titleRect,
     passwordCardRect,
-    statusRect,
-    hintRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
@@ -1644,13 +1609,11 @@ function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
 
   const rowW = Math.round(clampNumber(surfaceWidth * 0.9, 230, surfaceWidth - sidePadding * 2));
   const rowGap = Math.round(clampNumber(surfaceHeight * 0.012, 6, 18));
-  const helpGap = Math.round(clampNumber(surfaceHeight * 0.016, 8, 24));
-  const helpH = Math.round(clampNumber(surfaceHeight * 0.085, 34, 120));
   const rowsStartY = titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 10, 24));
   const rowsCount = GM_EDIT_MENU.length;
   const maxRowsArea = Math.max(
     rowsCount * 30,
-    noticeRect.y - helpGap - helpH - rowsStartY - rowGap * (rowsCount - 1),
+    noticeRect.y - rowsStartY - rowGap * (rowsCount - 1) - Math.round(clampNumber(surfaceHeight * 0.018, 8, 28)),
   );
   const rowH = Math.round(clampNumber(maxRowsArea / rowsCount, 30, 98));
   const rowRects = Array.from({ length: rowsCount }, (_, index) => ({
@@ -1660,19 +1623,10 @@ function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
     h: rowH,
   }));
 
-  const lastRowBottom = rowRects[rowRects.length - 1].y + rowH;
-  const helpRect = {
-    x: rowRects[0].x,
-    y: lastRowBottom + helpGap,
-    w: rowW,
-    h: helpH,
-  };
-
   return {
     bannerRect,
     titleRect,
     rowRects,
-    helpRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
