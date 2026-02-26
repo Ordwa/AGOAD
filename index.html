@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>BROWSER RPG</title>
+    <script>
+      window.__APP_ASSET_VERSION__ = `${Date.now()}`;
+      const stylesheet = document.createElement("link");
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = `styles.css?v=${window.__APP_ASSET_VERSION__}`;
+      document.head.appendChild(stylesheet);
+    </script>
+  </head>
+  <body>
+    <main class="layout">
+      <section class="game-shell">
+        <canvas id="game" width="1170" height="2532" aria-label="Gioco RPG"></canvas>
+      </section>
+    </main>
+
+    <script type="module">
+      const assetVersion = window.__APP_ASSET_VERSION__ || `${Date.now()}`;
+      import(`./src/main.js?v=${encodeURIComponent(assetVersion)}`);
+    </script>
+  </body>
+</html>

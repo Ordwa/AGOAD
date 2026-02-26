@@ -1,0 +1,32 @@
+export const ENEMIES = [
+  {
+    id: "leaflet",
+    name: "Leaflet",
+    maxHp: 16,
+    attackMin: 4,
+    attackMax: 6,
+    speed: 4,
+    colorA: "#7cbc55",
+    colorB: "#4f8b37",
+  },
+  {
+    id: "embercub",
+    name: "Embercub",
+    maxHp: 24,
+    attackMin: 3,
+    attackMax: 5,
+    speed: 2,
+    colorA: "#f29a4d",
+    colorB: "#be5d2d",
+  },
+  {
+    id: "bubblefin",
+    name: "Bubblefin",
+    maxHp: 20,
+    attackMin: 3,
+    attackMax: 6,
+    speed: 3,
+    colorA: "#7dc9eb",
+    colorB: "#3f86bf",
+  },
+];
