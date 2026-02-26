@@ -179,7 +179,7 @@ export class StartScene extends Scene {
     }
 
     const tapPoint =
-      this.mode === "main"
+      this.mode === "main" || this.mode === "options"
         ? this.screenToCanvasPoint(event.clientX, event.clientY)
         : this.screenToGamePoint(event.clientX, event.clientY);
     if (tapPoint) {
@@ -502,7 +502,7 @@ export class StartScene extends Scene {
   }
 
   handleOptionsTouchTap(tapPoint) {
-    const layout = getOptionsMenuLayout();
+    const layout = getOptionsMenuLayout(this.game.canvas.width, this.game.canvas.height);
     const tappedIndex = layout.rowRects.findIndex((rect) => pointInRect(tapPoint, rect));
     if (tappedIndex < 0) {
       return;
@@ -752,13 +752,16 @@ export class StartScene extends Scene {
       return;
     }
 
+    if (this.mode === "options") {
+      this.drawOptionsPanel(ctx);
+      return;
+    }
+
     this.drawBackground(ctx);
     this.drawTitle(ctx);
 
     if (this.mode === "slots") {
       this.drawSlotsMenu(ctx);
-    } else if (this.mode === "options") {
-      this.drawOptionsPanel(ctx);
     } else if (this.mode === "gm-auth") {
       this.drawGmAuthWindow(ctx);
     } else {
@@ -986,44 +989,77 @@ export class StartScene extends Scene {
   }
 
   drawOptionsPanel(ctx) {
-    const layout = getOptionsMenuLayout();
-    this.drawPanel(ctx, layout.panelX, layout.panelY, layout.panelW, layout.panelH, "#eef2f6");
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const layout = getOptionsMenuLayout(canvasWidth, canvasHeight);
 
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText("SETTINGS", layout.panelX + 10, layout.panelY + 8);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (
+      this.homeBackgroundImage &&
+      this.homeBackgroundImage.complete &&
+      this.homeBackgroundImage.naturalWidth > 0
+    ) {
+      drawImageCover(ctx, this.homeBackgroundImage, 0, 0, canvasWidth, canvasHeight);
+    } else {
+      ctx.fillStyle = "#0f1116";
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    this.drawMainBanner(ctx, layout.bannerRect);
+
+    ctx.fillStyle = "rgba(3, 16, 30, 0.5)";
+    fillRoundedRect(
+      ctx,
+      layout.titleRect.x,
+      layout.titleRect.y,
+      layout.titleRect.w,
+      layout.titleRect.h,
+      Math.max(10, Math.round(layout.titleRect.h * 0.3)),
+    );
+    ctx.strokeStyle = "rgba(167, 204, 247, 0.66)";
+    ctx.lineWidth = Math.max(2, Math.round(layout.titleRect.h * 0.08));
+    strokeRoundedRect(
+      ctx,
+      layout.titleRect.x,
+      layout.titleRect.y,
+      layout.titleRect.w,
+      layout.titleRect.h,
+      Math.max(10, Math.round(layout.titleRect.h * 0.3)),
+    );
+
+    ctx.fillStyle = "#e8f2ff";
+    ctx.font = `${Math.round(clampNumber(layout.titleRect.h * 0.43, 11, 44))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("SETTINGS", layout.titleRect.x + layout.titleRect.w / 2, layout.titleRect.y + layout.titleRect.h / 2);
 
     layout.rowRects.forEach((rect, index) => {
       const selected = this.optionsIndex === index;
-      this.drawMenuCard(ctx, rect, selected);
-      if (selected) {
-        this.drawCursor(ctx, rect.x + 7, rect.y + 6, "#f4f7ff");
+      const valueText =
+        index === 0
+          ? `${this.game.getSoundLevel()}/5`
+          : index === 1
+            ? `${this.game.getMusicLevel()}/5`
+            : "";
+      this.drawSettingsRowCard(ctx, rect, OPTIONS_MENU[index], valueText, selected);
+
+      if (index === 0 || index === 1) {
+        const minusRect = index === 0 ? layout.soundMinusRect : layout.musicMinusRect;
+        const plusRect = index === 0 ? layout.soundPlusRect : layout.musicPlusRect;
+        this.drawSettingsAdjustButton(ctx, minusRect, "-", selected);
+        this.drawSettingsAdjustButton(ctx, plusRect, "+", selected);
       }
-
-      ctx.fillStyle = selected ? "#f4f7ff" : PALETTE.uiText;
-      ctx.font = "8px monospace";
-
-      if (index === 0) {
-        ctx.fillText(`SOUND ${this.game.getSoundLevel()}/5`, rect.x + 16, rect.y + 6);
-        this.drawMiniControlButton(ctx, layout.soundMinusRect, "-", selected);
-        this.drawMiniControlButton(ctx, layout.soundPlusRect, "+", selected);
-        return;
-      }
-
-      if (index === 1) {
-        ctx.fillText(`MUSIC ${this.game.getMusicLevel()}/5`, rect.x + 16, rect.y + 6);
-        this.drawMiniControlButton(ctx, layout.musicMinusRect, "-", selected);
-        this.drawMiniControlButton(ctx, layout.musicPlusRect, "+", selected);
-        return;
-      }
-
-      ctx.fillText(OPTIONS_MENU[index], rect.x + 16, rect.y + 6);
     });
 
-    ctx.fillStyle = "#2f3849";
-    ctx.font = "7px monospace";
-    ctx.fillText("TOCCA +/- O UNA VOCE", layout.panelX + 10, layout.panelY + layout.panelH - 11);
+    if (this.notice.length > 0) {
+      this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
+    }
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.restore();
   }
 
   drawMenuCard(ctx, rect, selected) {
@@ -1036,15 +1072,51 @@ export class StartScene extends Scene {
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
   }
 
-  drawMiniControlButton(ctx, rect, label, selectedRow) {
-    ctx.fillStyle = selectedRow ? "#1f3147" : "#dde4f0";
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = selectedRow ? "#9cb6da" : "#5d6a7c";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+  drawSettingsRowCard(ctx, rect, label, valueText, selected) {
+    const radius = Math.max(10, Math.round(rect.h * 0.24));
 
-    ctx.fillStyle = selectedRow ? "#f4f7ff" : "#22344b";
-    ctx.font = "8px monospace";
+    ctx.fillStyle = selected ? "rgba(84, 120, 173, 0.88)" : "rgba(18, 35, 59, 0.8)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = selected ? "#b1ccff" : "rgba(120, 162, 214, 0.72)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.07));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    ctx.fillStyle = selected ? "#f6fbff" : "#dcecff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.38, 9, 42))}px monospace`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText(label, rect.x + Math.round(rect.w * 0.045), rect.y + rect.h / 2 + 0.5);
+
+    if (valueText.length > 0) {
+      const chipW = Math.round(clampNumber(rect.w * 0.15, 54, 168));
+      const chipH = Math.round(clampNumber(rect.h * 0.72, 28, rect.h - 6));
+      const chipX = rect.x + rect.w - chipW - Math.round(rect.w * 0.19);
+      const chipY = rect.y + Math.floor((rect.h - chipH) / 2);
+      const chipRadius = Math.max(8, Math.round(chipH * 0.24));
+
+      ctx.fillStyle = selected ? "rgba(10, 27, 46, 0.82)" : "rgba(8, 21, 37, 0.75)";
+      fillRoundedRect(ctx, chipX, chipY, chipW, chipH, chipRadius);
+      ctx.strokeStyle = selected ? "rgba(196, 220, 255, 0.9)" : "rgba(130, 168, 224, 0.76)";
+      ctx.lineWidth = Math.max(2, Math.round(chipH * 0.08));
+      strokeRoundedRect(ctx, chipX, chipY, chipW, chipH, chipRadius);
+
+      ctx.fillStyle = "#f3f9ff";
+      ctx.font = `${Math.round(clampNumber(chipH * 0.42, 9, 36))}px monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText(valueText, chipX + chipW / 2, chipY + chipH / 2 + 0.5);
+    }
+  }
+
+  drawSettingsAdjustButton(ctx, rect, label, selectedRow) {
+    const radius = Math.max(8, Math.round(rect.h * 0.3));
+    ctx.fillStyle = selectedRow ? "rgba(15, 32, 54, 0.95)" : "rgba(10, 24, 42, 0.85)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = selectedRow ? "rgba(177, 205, 255, 0.9)" : "rgba(122, 162, 221, 0.78)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.09));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    ctx.fillStyle = "#f4f9ff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.52, 10, 40))}px monospace`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 0.5);
@@ -1324,26 +1396,64 @@ function getSlotsMenuLayout(slotCount) {
   };
 }
 
-function getOptionsMenuLayout() {
-  const base = getBaseMenuPanelLayout();
-  const rowRects = createMenuRows(OPTIONS_MENU.length, 20, 4);
-  const controlWidth = 18;
-  const controlHeight = 16;
-  const rightPadding = 4;
-  const controlGap = 4;
+function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
+  const bannerRect = {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
+
+  const titleW = Math.round(clampNumber(surfaceWidth * 0.5, 140, surfaceWidth - sidePadding * 2));
+  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 22, 72));
+  const titleRect = {
+    x: Math.floor((surfaceWidth - titleW) / 2),
+    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 8, 26)),
+    w: titleW,
+    h: titleH,
+  };
+
+  const rowW = Math.round(clampNumber(surfaceWidth * 0.9, 230, surfaceWidth - sidePadding * 2));
+  const rowH = Math.round(clampNumber(surfaceHeight * 0.102, 40, 132));
+  const rowGap = Math.round(clampNumber(surfaceHeight * 0.022, 10, 36));
+  const rowsHeight = rowH * OPTIONS_MENU.length + rowGap * (OPTIONS_MENU.length - 1);
+  const rowsStartY = Math.round(
+    clampNumber(
+      surfaceHeight * 0.53 - rowsHeight / 2,
+      titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 10, 24)),
+      surfaceHeight * 0.72,
+    ),
+  );
+
+  const rowRects = Array.from({ length: OPTIONS_MENU.length }, (_, index) => ({
+    x: Math.floor((surfaceWidth - rowW) / 2),
+    y: rowsStartY + index * (rowH + rowGap),
+    w: rowW,
+    h: rowH,
+  }));
+
+  const controlW = Math.round(clampNumber(rowH * 0.9, 32, 100));
+  const controlH = Math.round(clampNumber(rowH * 0.76, 28, 84));
+  const controlGap = Math.round(clampNumber(rowW * 0.016, 6, 18));
+  const controlsRightPadding = Math.round(clampNumber(rowW * 0.028, 8, 24));
 
   const createControlsForRow = (rowRect) => {
     const plusRect = {
-      x: rowRect.x + rowRect.w - rightPadding - controlWidth,
-      y: rowRect.y + Math.floor((rowRect.h - controlHeight) / 2),
-      w: controlWidth,
-      h: controlHeight,
+      x: rowRect.x + rowRect.w - controlsRightPadding - controlW,
+      y: rowRect.y + Math.floor((rowRect.h - controlH) / 2),
+      w: controlW,
+      h: controlH,
     };
     const minusRect = {
-      x: plusRect.x - controlGap - controlWidth,
+      x: plusRect.x - controlGap - controlW,
       y: plusRect.y,
-      w: controlWidth,
-      h: controlHeight,
+      w: controlW,
+      h: controlH,
     };
     return { minusRect, plusRect };
   };
@@ -1351,13 +1461,25 @@ function getOptionsMenuLayout() {
   const soundControls = createControlsForRow(rowRects[0]);
   const musicControls = createControlsForRow(rowRects[1]);
 
+  const noticeW = surfaceWidth - sidePadding * 2;
+  const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
+  const noticeRect = {
+    x: sidePadding,
+    y: surfaceHeight - topInset - noticeH,
+    w: noticeW,
+    h: noticeH,
+  };
+
   return {
-    ...base,
+    bannerRect,
+    titleRect,
     rowRects,
     soundMinusRect: soundControls.minusRect,
     soundPlusRect: soundControls.plusRect,
     musicMinusRect: musicControls.minusRect,
     musicPlusRect: musicControls.plusRect,
+    noticeRect,
+    noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
 }
 
