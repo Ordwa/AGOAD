@@ -182,12 +182,7 @@ function shouldSuggestExternalBrowser(errorMessage) {
     return false;
   }
 
-  return (
-    text.includes("unknown_reason") ||
-    text.includes("disallowed_useragent") ||
-    text.includes("unsupported_useragent") ||
-    text.includes("browser non disponibile")
-  );
+  return text.includes("disallowed_useragent") || text.includes("unsupported_useragent");
 }
 
 function getExternalBrowserLoginUrl() {
@@ -731,6 +726,9 @@ async function requestJson(path, { method = "GET", body } = {}) {
           "API non disponibile su questo host (server statico). Avvia il backend Node o configura API_BASE_URL.";
       } else if (isApiRoute && response.status === 404) {
         fallbackError = "Endpoint API non trovato. Verifica backend e API_BASE_URL.";
+      } else if (isApiRoute && response.status === 405) {
+        fallbackError =
+          "API non disponibile su questo host (HTTP 405). Avvia backend Node e configura API_BASE_URL.";
       }
 
       return {
@@ -813,6 +811,14 @@ export async function signInWithGoogle() {
     console.warn(
       `[AGOAD] Origine non nella allowlist client (${origin}). Continuo con fallback Google per evitare blocchi lato browser.`,
     );
+  }
+
+  const apiHealth = await requestJson("/api/health");
+  if (!apiHealth.ok) {
+    return {
+      ok: false,
+      error: apiHealth.error ?? "API autenticazione non disponibile.",
+    };
   }
 
   const embeddedBrowser = isLikelyEmbeddedBrowser();
