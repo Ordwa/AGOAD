@@ -2322,7 +2322,7 @@ function getMainMenuLayout(
 
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
-  const primaryW = Math.round(clampNumber(surfaceWidth * 0.5, 150, surfaceWidth - sidePadding * 2));
+  const primaryW = Math.round(clampNumber(surfaceWidth * 0.3, 150, surfaceWidth - sidePadding * 2));
   const primaryH = Math.round(clampNumber(surfaceHeight * 0.13, 68, 260));
   const baseSettingsSize = clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.18, 68, 240);
   const settingsSize = Math.round(clampNumber(baseSettingsSize * 1.3, 88, 312));
