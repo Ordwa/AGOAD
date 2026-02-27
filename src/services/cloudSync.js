@@ -163,19 +163,6 @@ function shouldUseButtonFallback(errorMessage) {
   return true;
 }
 
-function isLikelyEmbeddedBrowser() {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-
-  const userAgent = String(navigator.userAgent || "").toLowerCase();
-  if (userAgent.length === 0) {
-    return false;
-  }
-
-  return /(electron|webview|; wv\)|\bwv\b|fbav|fban|instagram|micromessenger|line\/|gsa\/)/.test(userAgent);
-}
-
 function shouldSuggestExternalBrowser(errorMessage) {
   const text = String(errorMessage || "").toLowerCase();
   if (text.length === 0) {
@@ -821,14 +808,12 @@ export async function signInWithGoogle() {
     };
   }
 
-  const embeddedBrowser = isLikelyEmbeddedBrowser();
-
   try {
     await loadGoogleScript();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Google Identity non disponibile.";
     if (shouldUseButtonFallback(message)) {
-      if (embeddedBrowser || shouldSuggestExternalBrowser(message)) {
+      if (shouldSuggestExternalBrowser(message)) {
         return createExternalBrowserLoginResult(message);
       }
       return startGoogleRedirectLogin(message);
@@ -847,7 +832,7 @@ export async function signInWithGoogle() {
       });
     }
 
-    if (embeddedBrowser || shouldSuggestExternalBrowser(popupTokenResult.error || "")) {
+    if (shouldSuggestExternalBrowser(popupTokenResult.error || "")) {
       return createExternalBrowserLoginResult(popupTokenResult.error || "Google Identity non disponibile.");
     }
     return startGoogleRedirectLogin("Google Identity non disponibile.");
@@ -929,7 +914,7 @@ export async function signInWithGoogle() {
       return idTokenResult;
     }
 
-    if (embeddedBrowser || shouldSuggestExternalBrowser(idTokenResult.error)) {
+    if (shouldSuggestExternalBrowser(idTokenResult.error)) {
       return createExternalBrowserLoginResult(idTokenResult.error || "");
     }
 
