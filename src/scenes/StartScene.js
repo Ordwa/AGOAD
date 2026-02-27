@@ -1,18 +1,30 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG, PALETTE } from "../data/constants.js";
-import { downloadTextFile, pickTextFile } from "../utils/fileTransfer.js";
 import { verifyGmEditPassword } from "../utils/security.js";
 
 const MAIN_OPTIONS = ["CONTINUE", "NEW GAME", "SETTINGS"];
 const OPTIONS_MENU = ["SOUND", "MUSIC", "GM-EDIT", "INDIETRO"];
 const GM_EDIT_MENU = [
   { id: "debug", label: "DEBUG MODE" },
-  { id: "export_classes", label: "EXPORT CLASSES" },
-  { id: "import_classes", label: "IMPORT CLASSES" },
-  { id: "export_enemies", label: "EXPORT ENEMIES" },
-  { id: "import_enemies", label: "IMPORT ENEMIES" },
+  { id: "edit_classes", label: "EDIT CLASSES" },
   { id: "back", label: "INDIETRO" },
 ];
+const CLASS_TABLE_FIELDS = [
+  { key: "id", label: "ID" },
+  { key: "label", label: "LABEL" },
+  { key: "description", label: "DESCRIPTION" },
+  { key: "maxHp", label: "MAX HP" },
+  { key: "attackMin", label: "ATK MIN" },
+  { key: "attackMax", label: "ATK MAX" },
+  { key: "speed", label: "SPEED" },
+  { key: "maxMana", label: "MAX MANA" },
+  { key: "specialId", label: "SPECIAL ID" },
+  { key: "specialName", label: "SPECIAL NAME" },
+  { key: "specialCost", label: "SPECIAL COST" },
+  { key: "specialPriority", label: "SPECIAL PRIORITY" },
+  { key: "specialDescription", label: "SPECIAL DESCRIPTION" },
+];
+const CLASS_TABLE_HEADERS = CLASS_TABLE_FIELDS.map((field) => field.key);
 const MAX_GM_PASSWORD_LENGTH = 20;
 const TAP_MAX_DISTANCE = 14;
 const MAIN_BUTTON_PRESS_ANIMATION_SECONDS = 0.14;
@@ -28,6 +40,7 @@ export class StartScene extends Scene {
     this.gmEditIndex = 0;
     this.gmPasswordBuffer = "";
     this.gmAuthStatus = "";
+    this.gmAuthUnlockedSession = false;
     this.gmAuthToken = 0;
     this.gmActionBusy = false;
     this.gmActionToken = 0;
@@ -38,11 +51,17 @@ export class StartScene extends Scene {
     this.tapQueue = [];
     this.pendingMainOptionIndex = null;
     this.pendingMainActionTimer = 0;
+    this.gmClassesEditor = null;
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
     this.homeBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
     this.homeContinueButtonImage = createUiImage("../assets/UI_button_continue.png");
     this.homeNewGameButtonImage = createUiImage("../assets/UI_button_new_game.png");
     this.homeSettingsButtonImage = createUiImage("../assets/UI_button_settings.png");
     this.homeTitleBannerImage = createUiImage("../assets/UI_title_banner.png");
+    this.gmPasswordInputElement = null;
+    this.handleGmPasswordDomInput = this.handleGmPasswordDomInput.bind(this);
+    this.handleGmPasswordDomKeyDown = this.handleGmPasswordDomKeyDown.bind(this);
 
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
@@ -67,6 +86,10 @@ export class StartScene extends Scene {
     this.tapQueue.length = 0;
     this.pendingMainOptionIndex = null;
     this.pendingMainActionTimer = 0;
+    this.gmClassesEditor = null;
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
+    this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
     this.syncDocumentMode();
     this.bindPointerEvents();
@@ -81,6 +104,10 @@ export class StartScene extends Scene {
     this.tapQueue.length = 0;
     this.pendingMainOptionIndex = null;
     this.pendingMainActionTimer = 0;
+    this.gmClassesEditor = null;
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
+    this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
     if (typeof document !== "undefined" && document.body) {
       delete document.body.dataset.startMode;
@@ -117,6 +144,11 @@ export class StartScene extends Scene {
       return;
     }
 
+    if (this.mode === "gm-edit-classes") {
+      this.updateGmClassesEditorMenu(input);
+      return;
+    }
+
     this.updateGmEditMenu(input);
   }
 
@@ -150,6 +182,108 @@ export class StartScene extends Scene {
     this.pointerEventsBound = false;
   }
 
+  ensureGmPasswordInput() {
+    if (typeof document === "undefined" || !document.body) {
+      return null;
+    }
+
+    if (this.gmPasswordInputElement) {
+      return this.gmPasswordInputElement;
+    }
+
+    const input = document.createElement("input");
+    input.type = "password";
+    input.autocomplete = "off";
+    input.autocapitalize = "none";
+    input.autocorrect = "off";
+    input.spellcheck = false;
+    input.inputMode = "text";
+    input.maxLength = MAX_GM_PASSWORD_LENGTH;
+    input.ariaHidden = "true";
+    input.tabIndex = -1;
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    input.style.top = "0";
+    input.style.width = "1px";
+    input.style.height = "1px";
+    input.style.opacity = "0";
+    input.style.pointerEvents = "none";
+    input.style.border = "0";
+    input.style.padding = "0";
+    input.style.margin = "0";
+    input.style.zIndex = "-1";
+
+    input.addEventListener("input", this.handleGmPasswordDomInput);
+    input.addEventListener("keydown", this.handleGmPasswordDomKeyDown);
+    document.body.appendChild(input);
+    this.gmPasswordInputElement = input;
+    return input;
+  }
+
+  handleGmPasswordDomInput() {
+    if (!this.gmPasswordInputElement) {
+      return;
+    }
+
+    const rawValue = this.gmPasswordInputElement.value ?? "";
+    const normalized = rawValue
+      .split("")
+      .filter((char) => /^[a-zA-Z0-9]$/.test(char))
+      .join("")
+      .slice(0, MAX_GM_PASSWORD_LENGTH);
+
+    this.gmPasswordBuffer = normalized;
+    if (this.gmPasswordInputElement.value !== normalized) {
+      this.gmPasswordInputElement.value = normalized;
+    }
+  }
+
+  handleGmPasswordDomKeyDown(event) {
+    if (!event) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      this.game.input.tapAction("confirm");
+      event.preventDefault();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      this.game.input.tapAction("back");
+      event.preventDefault();
+    }
+  }
+
+  focusGmPasswordInput() {
+    const input = this.ensureGmPasswordInput();
+    if (!input) {
+      return;
+    }
+
+    input.value = this.gmPasswordBuffer;
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
+    const end = input.value.length;
+    try {
+      input.setSelectionRange(end, end);
+    } catch {
+      // No-op for platforms that block selection APIs on password fields.
+    }
+  }
+
+  blurGmPasswordInput() {
+    if (!this.gmPasswordInputElement) {
+      return;
+    }
+
+    this.gmPasswordInputElement.value = "";
+    this.gmPasswordInputElement.blur();
+  }
+
   onPointerDown(event) {
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
@@ -178,11 +312,28 @@ export class StartScene extends Scene {
       return;
     }
 
-    const tapPoint =
-      this.mode === "main" || this.mode === "options"
-        ? this.screenToCanvasPoint(event.clientX, event.clientY)
-        : this.screenToGamePoint(event.clientX, event.clientY);
+    const useCanvasSpace =
+      this.mode === "main" ||
+      this.mode === "options" ||
+      this.mode === "gm-auth" ||
+      this.mode === "gm-edit" ||
+      this.mode === "gm-edit-classes";
+    const tapPoint = useCanvasSpace
+      ? this.screenToCanvasPoint(event.clientX, event.clientY)
+      : this.screenToGamePoint(event.clientX, event.clientY);
     if (tapPoint) {
+      if (this.mode === "gm-auth") {
+        this.handleGmAuthTouchTap(tapPoint);
+        event.preventDefault();
+        return;
+      }
+
+      if (this.mode === "gm-edit-classes") {
+        this.handleGmClassesEditorTouchTap(tapPoint);
+        event.preventDefault();
+        return;
+      }
+
       this.tapQueue.push(tapPoint);
     }
 
@@ -257,6 +408,21 @@ export class StartScene extends Scene {
 
       if (this.mode === "options") {
         this.handleOptionsTouchTap(tapPoint);
+        return;
+      }
+
+      if (this.mode === "gm-auth") {
+        this.handleGmAuthTouchTap(tapPoint);
+        return;
+      }
+
+      if (this.mode === "gm-edit") {
+        this.handleGmEditTouchTap(tapPoint);
+        return;
+      }
+
+      if (this.mode === "gm-edit-classes") {
+        this.handleGmClassesEditorTouchTap(tapPoint);
       }
     });
   }
@@ -455,6 +621,12 @@ export class StartScene extends Scene {
     }
 
     if (this.optionsIndex === 2) {
+      if (this.gmAuthUnlockedSession) {
+        this.mode = "gm-edit";
+        this.gmEditIndex = 0;
+        this.notice = "";
+        return;
+      }
       this.enterGmAuthMode();
       return;
     }
@@ -532,28 +704,24 @@ export class StartScene extends Scene {
     this.activateOptionsOption(tappedIndex);
   }
 
-  updateGmAuthMenu(input) {
-    const typedChars = input.consumeTypedChars();
-    typedChars.forEach((char) => {
-      if (this.gmPasswordBuffer.length >= MAX_GM_PASSWORD_LENGTH) {
-        return;
-      }
-
-      if (!/^[a-zA-Z0-9]$/.test(char)) {
-        return;
-      }
-
-      this.gmPasswordBuffer += char;
-    });
-
-    const backspaceCount = input.consumeBackspaceCount();
-    if (backspaceCount > 0) {
-      this.gmPasswordBuffer = this.gmPasswordBuffer.slice(
-        0,
-        Math.max(0, this.gmPasswordBuffer.length - backspaceCount),
-      );
+  handleGmAuthTouchTap(tapPoint) {
+    const layout = getGmAuthLayout(this.game.canvas.width, this.game.canvas.height);
+    if (pointInRect(tapPoint, layout.backRect)) {
+      this.leaveGmAuthMode("options");
+      return;
     }
 
+    if (pointInRect(tapPoint, layout.confirmRect)) {
+      this.submitGmPassword();
+      return;
+    }
+
+    if (pointInRect(tapPoint, layout.passwordInputRect) || pointInRect(tapPoint, layout.passwordCardRect)) {
+      this.focusGmPasswordInput();
+    }
+  }
+
+  updateGmAuthMenu(input) {
     if (input.wasPressed("back")) {
       this.leaveGmAuthMode("options");
       return;
@@ -563,6 +731,14 @@ export class StartScene extends Scene {
       return;
     }
 
+    if (this.gmAuthStatus === "Verifica in corso...") {
+      return;
+    }
+
+    this.submitGmPassword();
+  }
+
+  submitGmPassword() {
     if (this.gmAuthStatus === "Verifica in corso...") {
       return;
     }
@@ -583,17 +759,26 @@ export class StartScene extends Scene {
         }
 
         if (isValid) {
+          this.gmAuthUnlockedSession = true;
           this.gmPasswordBuffer = "";
+          if (this.gmPasswordInputElement) {
+            this.gmPasswordInputElement.value = "";
+          }
           this.gmAuthStatus = "";
           this.gmEditIndex = 0;
           this.notice = "";
           this.mode = "gm-edit";
+          this.blurGmPasswordInput();
           this.game.input.setTextCapture(false);
           return;
         }
 
         this.gmPasswordBuffer = "";
+        if (this.gmPasswordInputElement) {
+          this.gmPasswordInputElement.value = "";
+        }
         this.gmAuthStatus = "Password errata.";
+        this.focusGmPasswordInput();
       })
       .catch(() => {
         if (this.gmAuthToken !== authToken) {
@@ -640,7 +825,15 @@ export class StartScene extends Scene {
     this.gmAuthStatus = "";
     this.notice = "";
     this.gmAuthToken += 1;
-    this.game.input.setTextCapture(true);
+    this.game.input.setTextCapture(false);
+    this.focusGmPasswordInput();
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        if (this.mode === "gm-auth") {
+          this.focusGmPasswordInput();
+        }
+      }, 0);
+    }
   }
 
   leaveGmAuthMode(nextMode = "options") {
@@ -648,6 +841,10 @@ export class StartScene extends Scene {
     this.gmPasswordBuffer = "";
     this.gmAuthStatus = "";
     this.gmAuthToken += 1;
+    if (this.gmPasswordInputElement) {
+      this.gmPasswordInputElement.value = "";
+    }
+    this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
   }
 
@@ -663,87 +860,262 @@ export class StartScene extends Scene {
       return;
     }
 
-    if (selected.id === "export_classes") {
-      const tableText = this.game.exportClassesAsTable();
-      downloadTextFile("classes.tsv", tableText);
-      this.notice = "Export classes completato.";
+    if (selected.id === "edit_classes") {
+      this.startGmClassesEditing();
       return;
     }
 
-    if (selected.id === "import_classes") {
-      this.startGmImport("classes");
-      return;
-    }
-
-    if (selected.id === "export_enemies") {
-      const tableText = this.game.exportEnemiesAsTable();
-      downloadTextFile("enemies.tsv", tableText);
-      this.notice = "Export enemies completato.";
-      return;
-    }
-
-    if (selected.id === "import_enemies") {
-      this.startGmImport("enemies");
+    if (selected.id === "back") {
+      this.mode = "options";
       return;
     }
 
     this.mode = "options";
   }
 
-  startGmImport(target) {
-    if (this.gmActionBusy) {
+  handleGmEditTouchTap(tapPoint) {
+    const layout = getGmEditLayout(this.game.canvas.width, this.game.canvas.height);
+    const tappedIndex = layout.rowRects.findIndex((rect) => pointInRect(tapPoint, rect));
+    if (tappedIndex < 0) {
       return;
     }
 
-    const actionToken = this.gmActionToken + 1;
-    this.gmActionToken = actionToken;
-    this.notice = "Seleziona un file tabella.";
+    this.gmEditIndex = tappedIndex;
+    this.handleGmEditSelection();
+  }
 
-    pickTextFile()
-      .then((text) => {
-        if (this.gmActionToken !== actionToken) {
-          return;
-        }
+  updateGmClassesEditorMenu(input) {
+    if (!this.gmClassesEditor) {
+      this.mode = "gm-edit";
+      return;
+    }
 
-        if (!text) {
-          this.notice = "Import annullato: nessun file selezionato.";
-          return;
-        }
+    const rowCount = this.gmClassesEditor.rows.length;
+    const classCount = this.gmClassesEditor.classIds.length;
+    if (rowCount === 0 || classCount === 0) {
+      if (input.wasPressed("back")) {
+        this.cancelGmClassesEditing();
+      }
+      return;
+    }
 
-        this.gmActionBusy = true;
-        const result =
-          target === "classes"
-            ? this.game.importClassesFromTable(text)
-            : this.game.importEnemiesFromTable(text);
+    if (input.wasPressed("back")) {
+      this.cancelGmClassesEditing();
+      return;
+    }
 
-        if (!result.ok) {
-          this.notice = `Import fallito: ${result.error}`;
-          return;
-        }
+    if (input.wasPressed("up")) {
+      this.gmClassesSelection.row = (this.gmClassesSelection.row + rowCount - 1) % rowCount;
+      this.ensureGmClassesSelectionVisible();
+      return;
+    }
 
-        const saveResult = this.game.saveGmDataChanges();
-        if (!saveResult.ok) {
-          this.game.discardUnsavedGmDataChanges();
-          this.notice = `Import annullato: ${saveResult.error} Ripristino automatico eseguito.`;
-          return;
-        }
+    if (input.wasPressed("down")) {
+      this.gmClassesSelection.row = (this.gmClassesSelection.row + 1) % rowCount;
+      this.ensureGmClassesSelectionVisible();
+      return;
+    }
 
-        const targetLabel = target === "classes" ? "classes" : "enemies";
-        this.notice = `Import ${targetLabel}: ${result.count} record salvati.`;
-      })
-      .catch((error) => {
-        if (this.gmActionToken !== actionToken) {
-          return;
-        }
-        const reason = error instanceof Error && error.message ? error.message : "errore sconosciuto";
-        this.notice = `Import annullato: ${reason}`;
-      })
-      .finally(() => {
-        if (this.gmActionToken !== actionToken) {
-          return;
-        }
-        this.gmActionBusy = false;
+    if (input.wasPressed("left")) {
+      this.gmClassesSelection.classIndex =
+        (this.gmClassesSelection.classIndex + classCount - 1) % classCount;
+      return;
+    }
+
+    if (input.wasPressed("right")) {
+      this.gmClassesSelection.classIndex = (this.gmClassesSelection.classIndex + 1) % classCount;
+      return;
+    }
+
+    if (!input.wasPressed("confirm")) {
+      return;
+    }
+
+    this.editGmClassesCell(this.gmClassesSelection.row, this.gmClassesSelection.classIndex);
+  }
+
+  ensureGmClassesSelectionVisible() {
+    if (!this.gmClassesEditor) {
+      return;
+    }
+
+    const rowCount = this.gmClassesEditor.rows.length;
+    const layout = getGmClassesEditorLayout(
+      this.game.canvas.width,
+      this.game.canvas.height,
+      this.gmClassesEditor,
+      this.gmClassesRowOffset,
+      this.gmClassesSelection,
+    );
+    const maxOffset = Math.max(0, rowCount - layout.visibleRows);
+
+    if (this.gmClassesSelection.row < this.gmClassesRowOffset) {
+      this.gmClassesRowOffset = this.gmClassesSelection.row;
+      return;
+    }
+
+    if (this.gmClassesSelection.row >= this.gmClassesRowOffset + layout.visibleRows) {
+      this.gmClassesRowOffset = this.gmClassesSelection.row - layout.visibleRows + 1;
+      this.gmClassesRowOffset = clampNumber(this.gmClassesRowOffset, 0, maxOffset);
+    }
+  }
+
+  handleGmClassesEditorTouchTap(tapPoint) {
+    if (!this.gmClassesEditor) {
+      return;
+    }
+
+    const layout = getGmClassesEditorLayout(
+      this.game.canvas.width,
+      this.game.canvas.height,
+      this.gmClassesEditor,
+      this.gmClassesRowOffset,
+      this.gmClassesSelection,
+    );
+
+    if (pointInRect(tapPoint, layout.cancelRect)) {
+      this.cancelGmClassesEditing();
+      return;
+    }
+
+    if (pointInRect(tapPoint, layout.confirmRect)) {
+      this.confirmGmClassesEditing();
+      return;
+    }
+
+    if (layout.scrollUpRect && pointInRect(tapPoint, layout.scrollUpRect)) {
+      this.gmClassesRowOffset = Math.max(0, this.gmClassesRowOffset - 1);
+      return;
+    }
+
+    if (layout.scrollDownRect && pointInRect(tapPoint, layout.scrollDownRect)) {
+      const maxOffset = Math.max(0, this.gmClassesEditor.rows.length - layout.visibleRows);
+      this.gmClassesRowOffset = Math.min(maxOffset, this.gmClassesRowOffset + 1);
+      return;
+    }
+
+    const tappedTab = layout.classTabRects.find((tab) => pointInRect(tapPoint, tab.rect));
+    if (tappedTab) {
+      this.gmClassesSelection.classIndex = tappedTab.classIndex;
+      return;
+    }
+
+    const cell = layout.valueCellRects.find((entry) => pointInRect(tapPoint, entry.rect));
+    if (!cell) {
+      return;
+    }
+
+    this.gmClassesSelection = { row: cell.rowIndex, classIndex: cell.classIndex };
+    this.ensureGmClassesSelectionVisible();
+    this.editGmClassesCell(cell.rowIndex, cell.classIndex);
+  }
+
+  startGmClassesEditing() {
+    const parsed = parseSimpleDelimitedTable(this.game.exportClassesAsTable());
+    if (!parsed.ok) {
+      this.notice = `Impossibile aprire classi: ${parsed.error}`;
+      return;
+    }
+
+    const missingHeaders = CLASS_TABLE_HEADERS.filter((header) => !parsed.headers.includes(header.toLowerCase()));
+    if (missingHeaders.length > 0) {
+      this.notice = `Colonne mancanti: ${missingHeaders.join(", ")}`;
+      return;
+    }
+
+    const classIds = parsed.rows.map((row, index) => {
+      const idValue = sanitizeTableCellText(row.id);
+      if (idValue.length > 0) {
+        return idValue;
+      }
+      return `class_${index + 1}`;
+    });
+
+    this.gmClassesEditor = {
+      classIds,
+      rows: CLASS_TABLE_FIELDS.map((field) => ({
+        key: field.key,
+        label: field.label,
+        values: parsed.rows.map((row) => sanitizeTableCellText(row[field.key])),
+      })),
+    };
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
+    this.mode = "gm-edit-classes";
+    this.notice = "Tocca una cella per modificarla.";
+  }
+
+  cancelGmClassesEditing() {
+    this.gmClassesEditor = null;
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
+    this.mode = "gm-edit";
+    this.notice = "Modifiche annullate.";
+  }
+
+  confirmGmClassesEditing() {
+    if (!this.gmClassesEditor) {
+      return;
+    }
+
+    const classCount = this.gmClassesEditor.classIds.length;
+    const rows = Array.from({ length: classCount }, (_, classIndex) => {
+      const row = {};
+      this.gmClassesEditor.rows.forEach((field) => {
+        row[field.key] = sanitizeTableCellText(field.values[classIndex]);
       });
+      return row;
+    });
+    const tableText = buildDelimitedTable(CLASS_TABLE_HEADERS, rows);
+
+    const importResult = this.game.importClassesFromTable(tableText);
+    if (!importResult.ok) {
+      this.notice = `Salvataggio fallito: ${importResult.error}`;
+      return;
+    }
+
+    const saveResult = this.game.saveGmDataChanges();
+    if (!saveResult.ok) {
+      this.game.discardUnsavedGmDataChanges();
+      this.notice = `Salvataggio annullato: ${saveResult.error}`;
+      return;
+    }
+
+    this.gmClassesEditor = null;
+    this.gmClassesSelection = { row: 0, classIndex: 0 };
+    this.gmClassesRowOffset = 0;
+    this.mode = "gm-edit";
+    this.notice = `Classi aggiornate: ${importResult.count} record salvati.`;
+  }
+
+  editGmClassesCell(rowIndex, classIndex) {
+    if (!this.gmClassesEditor || typeof window === "undefined" || typeof window.prompt !== "function") {
+      return;
+    }
+
+    const rowData = this.gmClassesEditor.rows[rowIndex];
+    if (!rowData) {
+      return;
+    }
+
+    const classLabel = this.gmClassesEditor.classIds[classIndex] ?? `CLASS ${classIndex + 1}`;
+    const currentValue = sanitizeTableCellText(rowData.values[classIndex]);
+    const nextRawValue = window.prompt(`${rowData.label} (${classLabel})`, currentValue);
+    if (nextRawValue === null) {
+      return;
+    }
+
+    const nextValue =
+      rowData.key === "specialPriority"
+        ? normalizeToggleText(nextRawValue, currentValue)
+        : sanitizeTableCellText(nextRawValue);
+
+    rowData.values[classIndex] = nextValue;
+    if (rowData.key === "id") {
+      const nextClassId = sanitizeTableCellText(nextValue);
+      this.gmClassesEditor.classIds[classIndex] =
+        nextClassId.length > 0 ? nextClassId : `class_${classIndex + 1}`;
+    }
   }
 
   render(ctx) {
@@ -764,6 +1136,12 @@ export class StartScene extends Scene {
 
     if (this.mode === "gm-edit") {
       this.drawGmEditWindow(ctx);
+      return;
+    }
+
+    if (this.mode === "gm-edit-classes") {
+      this.drawGmEditWindow(ctx);
+      this.drawGmClassesEditorModal(ctx);
       return;
     }
 
@@ -1025,7 +1403,8 @@ export class StartScene extends Scene {
           : index === 1
             ? `${this.game.getMusicLevel()}/5`
             : "";
-      this.drawSettingsRowCard(ctx, rect, OPTIONS_MENU[index], valueText, selected);
+      const valueRect = index === 0 ? layout.soundValueRect : index === 1 ? layout.musicValueRect : null;
+      this.drawSettingsRowCard(ctx, rect, OPTIONS_MENU[index], valueText, selected, valueRect);
 
       if (index === 0 || index === 1) {
         const minusRect = index === 0 ? layout.soundMinusRect : layout.musicMinusRect;
@@ -1082,7 +1461,7 @@ export class StartScene extends Scene {
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
   }
 
-  drawSettingsRowCard(ctx, rect, label, valueText, selected) {
+  drawSettingsRowCard(ctx, rect, label, valueText, selected, valueRect = null) {
     const radius = Math.max(10, Math.round(rect.h * 0.24));
 
     ctx.fillStyle = selected ? "rgba(84, 120, 173, 0.88)" : "rgba(18, 35, 59, 0.8)";
@@ -1098,24 +1477,24 @@ export class StartScene extends Scene {
     ctx.fillText(label, rect.x + Math.round(rect.w * 0.045), rect.y + rect.h / 2 + 0.5);
 
     if (valueText.length > 0) {
-      const chipW = Math.round(clampNumber(rect.w * 0.15, 54, 168));
-      const chipH = Math.round(clampNumber(rect.h * 0.72, 28, rect.h - 6));
-      const controlsAreaW = Math.round(clampNumber(rect.w * 0.2, 70, 190));
-      const controlsAreaGap = Math.round(clampNumber(rect.w * 0.018, 6, 20));
-      const chipX = rect.x + rect.w - chipW - controlsAreaW - controlsAreaGap;
-      const chipY = rect.y + Math.floor((rect.h - chipH) / 2);
-      const chipRadius = Math.max(8, Math.round(chipH * 0.24));
+      const chipRect = valueRect ?? {
+        x: rect.x + rect.w - Math.round(clampNumber(rect.w * 0.38, 112, 360)),
+        y: rect.y + Math.round(clampNumber(rect.h * 0.14, 6, 16)),
+        w: Math.round(clampNumber(rect.w * 0.15, 54, 168)),
+        h: Math.round(clampNumber(rect.h * 0.72, 28, rect.h - 6)),
+      };
+      const chipRadius = Math.max(8, Math.round(chipRect.h * 0.24));
 
       ctx.fillStyle = selected ? "rgba(10, 27, 46, 0.82)" : "rgba(8, 21, 37, 0.75)";
-      fillRoundedRect(ctx, chipX, chipY, chipW, chipH, chipRadius);
+      fillRoundedRect(ctx, chipRect.x, chipRect.y, chipRect.w, chipRect.h, chipRadius);
       ctx.strokeStyle = selected ? "rgba(196, 220, 255, 0.9)" : "rgba(130, 168, 224, 0.76)";
-      ctx.lineWidth = Math.max(2, Math.round(chipH * 0.08));
-      strokeRoundedRect(ctx, chipX, chipY, chipW, chipH, chipRadius);
+      ctx.lineWidth = Math.max(2, Math.round(chipRect.h * 0.08));
+      strokeRoundedRect(ctx, chipRect.x, chipRect.y, chipRect.w, chipRect.h, chipRadius);
 
       ctx.fillStyle = "#f3f9ff";
-      ctx.font = `${Math.round(clampNumber(chipH * 0.42, 9, 36))}px monospace`;
+      ctx.font = `${Math.round(clampNumber(chipRect.h * 0.42, 9, 36))}px monospace`;
       ctx.textAlign = "center";
-      ctx.fillText(valueText, chipX + chipW / 2, chipY + chipH / 2 + 0.5);
+      ctx.fillText(valueText, chipRect.x + chipRect.w / 2, chipRect.y + chipRect.h / 2 + 0.5);
     }
   }
 
@@ -1160,12 +1539,7 @@ export class StartScene extends Scene {
     this.drawOverlayTitleCard(ctx, layout.titleRect, "GM-EDIT");
 
     this.drawSettingsRowCard(ctx, layout.passwordCardRect, "PASSWORD", "", true);
-    const inputInsetX = Math.round(clampNumber(layout.passwordCardRect.w * 0.045, 12, 40));
-    const inputInsetY = Math.round(clampNumber(layout.passwordCardRect.h * 0.44, 24, 88));
-    const inputW = layout.passwordCardRect.w - inputInsetX * 2;
-    const inputH = Math.round(clampNumber(layout.passwordCardRect.h * 0.38, 24, 110));
-    const inputX = layout.passwordCardRect.x + inputInsetX;
-    const inputY = layout.passwordCardRect.y + inputInsetY;
+    const { x: inputX, y: inputY, w: inputW, h: inputH } = layout.passwordInputRect;
 
     ctx.fillStyle = "rgba(8, 21, 37, 0.75)";
     fillRoundedRect(ctx, inputX, inputY, inputW, inputH, Math.max(8, Math.round(inputH * 0.24)));
@@ -1179,8 +1553,15 @@ export class StartScene extends Scene {
     ctx.font = `${Math.round(clampNumber(inputH * 0.42, 10, 42))}px monospace`;
     ctx.fillText(masked, inputX + Math.round(clampNumber(inputW * 0.06, 8, 24)), inputY + inputH / 2 + 0.5);
 
+    this.drawSettingsAdjustButton(ctx, layout.confirmRect, "CONFERMA", true);
+    this.drawSettingsAdjustButton(ctx, layout.backRect, "INDIETRO", false);
+
     if (this.notice.length > 0) {
       this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
+    }
+
+    if (this.gmAuthStatus.length > 0) {
+      this.drawMainNotice(ctx, layout.statusRect, this.gmAuthStatus, layout.noticeFontSize);
     }
 
     ctx.textAlign = "left";
@@ -1192,6 +1573,7 @@ export class StartScene extends Scene {
     const canvasWidth = this.game.canvas.width;
     const canvasHeight = this.game.canvas.height;
     const layout = getGmEditLayout(canvasWidth, canvasHeight);
+    const debugEnabled = this.game.getDebugOverlayEnabled();
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1216,14 +1598,266 @@ export class StartScene extends Scene {
         return;
       }
       const selected = this.gmEditIndex === index;
-      const valueText = entry.id === "debug" ? "TOGGLE" : "";
       const label = entry.id === "debug" ? "DEBUG MODE" : entry.label;
-      this.drawSettingsRowCard(ctx, rect, label, valueText, selected);
+      this.drawSettingsRowCard(ctx, rect, label, "", selected);
+
+      if (entry.id === "debug") {
+        this.drawDebugToggleSwitch(ctx, layout.debugToggleRect, debugEnabled, selected);
+      }
     });
 
     if (this.notice.length > 0) {
       this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
     }
+
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.restore();
+  }
+
+  drawDebugToggleSwitch(ctx, rect, isOn, selected) {
+    if (!rect) {
+      return;
+    }
+
+    const radius = Math.round(rect.h / 2);
+    ctx.fillStyle = isOn ? "rgba(72, 204, 124, 0.95)" : "rgba(50, 62, 82, 0.92)";
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = selected ? "rgba(196, 220, 255, 0.95)" : "rgba(130, 168, 224, 0.76)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.09));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    const knobSize = Math.max(12, Math.round(rect.h * 0.78));
+    const knobMargin = Math.round((rect.h - knobSize) / 2);
+    const knobX = isOn ? rect.x + rect.w - knobSize - knobMargin : rect.x + knobMargin;
+    const knobY = rect.y + knobMargin;
+    ctx.fillStyle = "#f7fbff";
+    fillRoundedRect(ctx, knobX, knobY, knobSize, knobSize, Math.round(knobSize / 2));
+    ctx.strokeStyle = "rgba(31, 51, 76, 0.7)";
+    ctx.lineWidth = Math.max(1, Math.round(knobSize * 0.08));
+    strokeRoundedRect(ctx, knobX, knobY, knobSize, knobSize, Math.round(knobSize / 2));
+  }
+
+  drawGmClassesEditorModal(ctx) {
+    if (!this.gmClassesEditor) {
+      return;
+    }
+
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const layout = getGmClassesEditorLayout(
+      canvasWidth,
+      canvasHeight,
+      this.gmClassesEditor,
+      this.gmClassesRowOffset,
+      this.gmClassesSelection,
+    );
+    const activeClassIndex = clampNumber(
+      this.gmClassesSelection.classIndex,
+      0,
+      Math.max(0, this.gmClassesEditor.classIds.length - 1),
+    );
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    ctx.fillStyle = "rgba(2, 10, 18, 0.58)";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    const panelRadius = Math.max(14, Math.round(layout.panelRect.h * 0.03));
+    ctx.fillStyle = "rgba(8, 21, 37, 0.9)";
+    fillRoundedRect(
+      ctx,
+      layout.panelRect.x,
+      layout.panelRect.y,
+      layout.panelRect.w,
+      layout.panelRect.h,
+      panelRadius,
+    );
+    ctx.strokeStyle = "rgba(167, 204, 247, 0.86)";
+    ctx.lineWidth = Math.max(2, Math.round(layout.panelRect.h * 0.006));
+    strokeRoundedRect(
+      ctx,
+      layout.panelRect.x,
+      layout.panelRect.y,
+      layout.panelRect.w,
+      layout.panelRect.h,
+      panelRadius,
+    );
+
+    this.drawOverlayTitleCard(ctx, layout.titleRect, "EDIT CLASSES");
+
+    ctx.fillStyle = "rgba(5, 15, 26, 0.78)";
+    fillRoundedRect(
+      ctx,
+      layout.classTabsRect.x,
+      layout.classTabsRect.y,
+      layout.classTabsRect.w,
+      layout.classTabsRect.h,
+      Math.max(8, Math.round(layout.classTabsRect.h * 0.2)),
+    );
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.7)";
+    ctx.lineWidth = Math.max(1, Math.round(layout.classTabsRect.h * 0.04));
+    strokeRoundedRect(
+      ctx,
+      layout.classTabsRect.x,
+      layout.classTabsRect.y,
+      layout.classTabsRect.w,
+      layout.classTabsRect.h,
+      Math.max(8, Math.round(layout.classTabsRect.h * 0.2)),
+    );
+
+    layout.classTabRects.forEach((tab) => {
+      const selected = tab.classIndex === activeClassIndex;
+      ctx.fillStyle = selected ? "rgba(77, 117, 172, 0.96)" : "rgba(11, 26, 45, 0.88)";
+      fillRoundedRect(
+        ctx,
+        tab.rect.x,
+        tab.rect.y,
+        tab.rect.w,
+        tab.rect.h,
+        Math.max(6, Math.round(tab.rect.h * 0.26)),
+      );
+      ctx.strokeStyle = selected ? "rgba(188, 217, 255, 0.95)" : "rgba(105, 145, 199, 0.66)";
+      ctx.lineWidth = Math.max(1, Math.round(tab.rect.h * 0.08));
+      strokeRoundedRect(
+        ctx,
+        tab.rect.x,
+        tab.rect.y,
+        tab.rect.w,
+        tab.rect.h,
+        Math.max(6, Math.round(tab.rect.h * 0.26)),
+      );
+
+      ctx.fillStyle = "#eff7ff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `${Math.round(clampNumber(tab.rect.h * 0.5, 13, 38))}px monospace`;
+      ctx.fillText(tab.label, tab.rect.x + tab.rect.w / 2, tab.rect.y + tab.rect.h / 2 + 0.5);
+    });
+
+    ctx.fillStyle = "rgba(5, 15, 26, 0.78)";
+    fillRoundedRect(
+      ctx,
+      layout.tableRect.x,
+      layout.tableRect.y,
+      layout.tableRect.w,
+      layout.tableRect.h,
+      Math.max(8, Math.round(layout.tableRect.h * 0.02)),
+    );
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.7)";
+    ctx.lineWidth = Math.max(1, Math.round(layout.tableRect.h * 0.004));
+    strokeRoundedRect(
+      ctx,
+      layout.tableRect.x,
+      layout.tableRect.y,
+      layout.tableRect.w,
+      layout.tableRect.h,
+      Math.max(8, Math.round(layout.tableRect.h * 0.02)),
+    );
+
+    const headerFont = Math.round(clampNumber(layout.headerRect.h * 0.5, 15, 44));
+    ctx.fillStyle = "rgba(15, 32, 54, 0.95)";
+    fillRoundedRect(
+      ctx,
+      layout.headerRect.x,
+      layout.headerRect.y,
+      layout.headerRect.w,
+      layout.headerRect.h,
+      Math.max(6, Math.round(layout.headerRect.h * 0.22)),
+    );
+    ctx.strokeStyle = "rgba(177, 205, 255, 0.8)";
+    ctx.lineWidth = Math.max(1, Math.round(layout.headerRect.h * 0.06));
+    strokeRoundedRect(
+      ctx,
+      layout.headerRect.x,
+      layout.headerRect.y,
+      layout.headerRect.w,
+      layout.headerRect.h,
+      Math.max(6, Math.round(layout.headerRect.h * 0.22)),
+    );
+
+    ctx.fillStyle = "#e8f2ff";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.font = `${headerFont}px monospace`;
+    ctx.fillText(
+      "FIELD",
+      layout.fieldHeaderRect.x + layout.fieldHeaderRect.w / 2,
+      layout.fieldHeaderRect.y + layout.fieldHeaderRect.h / 2 + 0.5,
+    );
+    const activeClassLabel = this.gmClassesEditor.classIds[activeClassIndex] ?? `CLASS ${activeClassIndex + 1}`;
+    ctx.fillText(
+      truncate(activeClassLabel.toUpperCase(), 18),
+      layout.valueHeaderRect.x + layout.valueHeaderRect.w / 2,
+      layout.valueHeaderRect.y + layout.valueHeaderRect.h / 2 + 0.5,
+    );
+
+    layout.visibleRowRects.forEach((rowInfo) => {
+      const { rowIndex, rowRect, fieldRect, valueRect } = rowInfo;
+      const isStriped = rowIndex % 2 === 1;
+      const rowData = this.gmClassesEditor.rows[rowIndex];
+      ctx.fillStyle = isStriped ? "rgba(14, 27, 45, 0.75)" : "rgba(8, 20, 35, 0.72)";
+      fillRoundedRect(ctx, rowRect.x, rowRect.y, rowRect.w, rowRect.h, Math.max(4, Math.round(rowRect.h * 0.18)));
+
+      ctx.fillStyle = "#d3e8ff";
+      ctx.textAlign = "left";
+      ctx.font = `${Math.round(clampNumber(rowRect.h * 0.5, 13, 38))}px monospace`;
+      ctx.fillText(
+        truncate(rowData?.label ?? "", 16),
+        fieldRect.x + Math.round(clampNumber(fieldRect.w * 0.06, 6, 18)),
+        fieldRect.y + fieldRect.h / 2 + 0.5,
+      );
+
+      const isSelected =
+        this.gmClassesSelection.row === rowIndex && this.gmClassesSelection.classIndex === activeClassIndex;
+      ctx.fillStyle = isSelected ? "rgba(77, 117, 172, 0.94)" : "rgba(11, 26, 45, 0.88)";
+      fillRoundedRect(
+        ctx,
+        valueRect.x,
+        valueRect.y,
+        valueRect.w,
+        valueRect.h,
+        Math.max(4, Math.round(valueRect.h * 0.18)),
+      );
+      ctx.strokeStyle = isSelected ? "rgba(188, 217, 255, 0.95)" : "rgba(105, 145, 199, 0.66)";
+      ctx.lineWidth = Math.max(1, Math.round(valueRect.h * 0.06));
+      strokeRoundedRect(
+        ctx,
+        valueRect.x,
+        valueRect.y,
+        valueRect.w,
+        valueRect.h,
+        Math.max(4, Math.round(valueRect.h * 0.18)),
+      );
+
+      ctx.fillStyle = "#eff7ff";
+      ctx.textAlign = "center";
+      ctx.font = `${Math.round(clampNumber(valueRect.h * 0.5, 13, 38))}px monospace`;
+      ctx.fillText(
+        truncate(this.gmClassesEditor.rows[rowIndex]?.values[activeClassIndex] ?? "", 24),
+        valueRect.x + valueRect.w / 2,
+        valueRect.y + valueRect.h / 2 + 0.5,
+      );
+    });
+
+    if (layout.scrollUpRect && layout.scrollDownRect) {
+      this.drawSettingsAdjustButton(ctx, layout.scrollUpRect, "UP", true);
+      this.drawSettingsAdjustButton(ctx, layout.scrollDownRect, "DN", true);
+    }
+
+    this.drawSettingsAdjustButton(ctx, layout.cancelRect, "ANNULLA", false);
+    this.drawSettingsAdjustButton(ctx, layout.confirmRect, "CONFERMA", true);
+
+    ctx.fillStyle = "#d6e8ff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.round(clampNumber(layout.hintRect.h * 0.48, 11, 28))}px monospace`;
+    ctx.fillText(
+      "TOCCA UNA CELLA PER MODIFICARE",
+      layout.hintRect.x + layout.hintRect.w / 2,
+      layout.hintRect.y + layout.hintRect.h / 2 + 0.5,
+    );
 
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
@@ -1483,23 +2117,34 @@ function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = 
 
   const controlW = Math.round(clampNumber(rowH * 0.9, 32, 100));
   const controlH = Math.round(clampNumber(rowH * 0.76, 28, 84));
+  const valueW = Math.round(clampNumber(rowW * 0.16, 66, 172));
+  const valueH = controlH;
   const controlGap = Math.round(clampNumber(rowW * 0.016, 6, 18));
   const controlsRightPadding = Math.round(clampNumber(rowW * 0.028, 8, 24));
 
   const createControlsForRow = (rowRect) => {
-    const plusRect = {
-      x: rowRect.x + rowRect.w - controlsRightPadding - controlW,
-      y: rowRect.y + Math.floor((rowRect.h - controlH) / 2),
-      w: controlW,
-      h: controlH,
-    };
+    const controlsTotalW = controlW * 2 + valueW + controlGap * 2;
+    const controlsStartX = rowRect.x + rowRect.w - controlsRightPadding - controlsTotalW;
+    const baseY = rowRect.y + Math.floor((rowRect.h - controlH) / 2);
     const minusRect = {
-      x: plusRect.x - controlGap - controlW,
-      y: plusRect.y,
+      x: controlsStartX,
+      y: baseY,
       w: controlW,
       h: controlH,
     };
-    return { minusRect, plusRect };
+    const valueRect = {
+      x: minusRect.x + minusRect.w + controlGap,
+      y: rowRect.y + Math.floor((rowRect.h - valueH) / 2),
+      w: valueW,
+      h: valueH,
+    };
+    const plusRect = {
+      x: valueRect.x + valueRect.w + controlGap,
+      y: baseY,
+      w: controlW,
+      h: controlH,
+    };
+    return { minusRect, valueRect, plusRect };
   };
 
   const soundControls = createControlsForRow(rowRects[0]);
@@ -1519,8 +2164,10 @@ function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = 
     titleRect,
     rowRects,
     soundMinusRect: soundControls.minusRect,
+    soundValueRect: soundControls.valueRect,
     soundPlusRect: soundControls.plusRect,
     musicMinusRect: musicControls.minusRect,
+    musicValueRect: musicControls.valueRect,
     musicPlusRect: musicControls.plusRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
@@ -1550,16 +2197,56 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
   };
 
   const passwordW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
-  const passwordH = Math.round(clampNumber(surfaceHeight * 0.2, 80, 260));
+  const passwordH = Math.round(clampNumber(surfaceHeight * 0.22, 96, 280));
   const passwordCardRect = {
     x: Math.floor((surfaceWidth - passwordW) / 2),
-    y: Math.round(clampNumber(surfaceHeight * 0.5 - passwordH / 2, titleRect.y + titleRect.h + 12, surfaceHeight * 0.72)),
+    y: Math.round(
+      clampNumber(
+        surfaceHeight * 0.45 - passwordH / 2,
+        titleRect.y + titleRect.h + 12,
+        surfaceHeight * 0.66,
+      ),
+    ),
     w: passwordW,
     h: passwordH,
   };
 
+  const inputInsetX = Math.round(clampNumber(passwordCardRect.w * 0.045, 12, 40));
+  const inputInsetY = Math.round(clampNumber(passwordCardRect.h * 0.44, 24, 88));
+  const inputW = passwordCardRect.w - inputInsetX * 2;
+  const inputH = Math.round(clampNumber(passwordCardRect.h * 0.38, 24, 110));
+  const passwordInputRect = {
+    x: passwordCardRect.x + inputInsetX,
+    y: passwordCardRect.y + inputInsetY,
+    w: inputW,
+    h: inputH,
+  };
+
+  const actionGap = Math.round(clampNumber(surfaceHeight * 0.014, 6, 18));
+  const actionW = Math.round(clampNumber(passwordCardRect.w * 0.45, 94, 280));
+  const actionH = Math.round(clampNumber(surfaceHeight * 0.066, 30, 78));
+  const actionsY = passwordCardRect.y + passwordCardRect.h + actionGap;
+  const confirmRect = {
+    x: passwordCardRect.x + passwordCardRect.w - actionW,
+    y: actionsY,
+    w: actionW,
+    h: actionH,
+  };
+  const backRect = {
+    x: passwordCardRect.x,
+    y: actionsY,
+    w: actionW,
+    h: actionH,
+  };
+
   const noticeW = surfaceWidth - sidePadding * 2;
   const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
+  const statusRect = {
+    x: sidePadding,
+    y: actionsY + actionH + actionGap,
+    w: noticeW,
+    h: noticeH,
+  };
   const noticeRect = {
     x: sidePadding,
     y: surfaceHeight - topInset - noticeH,
@@ -1571,6 +2258,10 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
     bannerRect,
     titleRect,
     passwordCardRect,
+    passwordInputRect,
+    confirmRect,
+    backRect,
+    statusRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
@@ -1622,14 +2313,308 @@ function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
     w: rowW,
     h: rowH,
   }));
+  const debugRowRect = rowRects[0] ?? null;
+  const debugToggleRect = debugRowRect
+    ? {
+        w: Math.round(clampNumber(debugRowRect.w * 0.19, 74, 200)),
+        h: Math.round(clampNumber(debugRowRect.h * 0.58, 24, 74)),
+        x: 0,
+        y: 0,
+      }
+    : null;
+  if (debugToggleRect) {
+    debugToggleRect.x =
+      debugRowRect.x +
+      debugRowRect.w -
+      debugToggleRect.w -
+      Math.round(clampNumber(debugRowRect.w * 0.03, 8, 24));
+    debugToggleRect.y = debugRowRect.y + Math.floor((debugRowRect.h - debugToggleRect.h) / 2);
+  }
 
   return {
     bannerRect,
     titleRect,
     rowRects,
+    debugToggleRect,
     noticeRect,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
+}
+
+function getGmClassesEditorLayout(
+  surfaceWidth = GAME_CONFIG.width,
+  surfaceHeight = GAME_CONFIG.height,
+  editor = null,
+  rowOffset = 0,
+  selection = { row: 0, classIndex: 0 },
+) {
+  const classCount = Math.max(1, editor?.classIds?.length ?? 0);
+  const rowCount = Math.max(0, editor?.rows?.length ?? 0);
+  const selectedClassIndex = Math.round(clampNumber(selection?.classIndex ?? 0, 0, classCount - 1));
+
+  const outerPad = Math.round(clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.02, 8, 20));
+  const panelW = Math.round(clampNumber(surfaceWidth * 0.96, 280, surfaceWidth - outerPad * 2));
+  const panelH = Math.round(clampNumber(surfaceHeight * 0.84, 320, surfaceHeight - outerPad * 2));
+  const panelRect = {
+    x: Math.floor((surfaceWidth - panelW) / 2),
+    y: Math.floor((surfaceHeight - panelH) / 2),
+    w: panelW,
+    h: panelH,
+  };
+
+  const innerPad = Math.round(clampNumber(panelW * 0.026, 8, 24));
+  const verticalGap = Math.round(clampNumber(panelH * 0.018, 6, 16));
+  const titleH = Math.round(clampNumber(panelH * 0.11, 40, 92));
+  const titleRect = {
+    x: panelRect.x + innerPad,
+    y: panelRect.y + innerPad,
+    w: panelRect.w - innerPad * 2,
+    h: titleH,
+  };
+
+  const classTabsH = Math.round(clampNumber(panelH * 0.09, 34, 84));
+  const classTabsRect = {
+    x: panelRect.x + innerPad,
+    y: titleRect.y + titleRect.h + verticalGap,
+    w: panelRect.w - innerPad * 2,
+    h: classTabsH,
+  };
+  const tabsInnerPad = Math.round(clampNumber(classTabsRect.w * 0.016, 4, 12));
+  const tabGap = Math.round(clampNumber(classTabsRect.w * 0.012, 3, 10));
+  const tabsAreaW = classTabsRect.w - tabsInnerPad * 2 - tabGap * Math.max(0, classCount - 1);
+  const tabW = Math.max(46, Math.floor(tabsAreaW / classCount));
+  const tabH = classTabsRect.h - tabsInnerPad * 2;
+  const classTabRects = Array.from({ length: classCount }, (_, classIndex) => ({
+    classIndex,
+    label: truncate((editor?.classIds?.[classIndex] ?? `CLASS ${classIndex + 1}`).toUpperCase(), 12),
+    rect: {
+      x: classTabsRect.x + tabsInnerPad + classIndex * (tabW + tabGap),
+      y: classTabsRect.y + tabsInnerPad,
+      w: tabW,
+      h: tabH,
+    },
+  }));
+
+  const buttonH = Math.round(clampNumber(panelH * 0.088, 32, 78));
+  const buttonGap = Math.round(clampNumber(panelW * 0.03, 8, 24));
+  const buttonW = Math.round((panelRect.w - innerPad * 2 - buttonGap) / 2);
+  const buttonY = panelRect.y + panelRect.h - innerPad - buttonH;
+  const cancelRect = {
+    x: panelRect.x + innerPad,
+    y: buttonY,
+    w: buttonW,
+    h: buttonH,
+  };
+  const confirmRect = {
+    x: cancelRect.x + buttonW + buttonGap,
+    y: buttonY,
+    w: buttonW,
+    h: buttonH,
+  };
+
+  const hintH = Math.round(clampNumber(panelH * 0.052, 18, 42));
+  const hintRect = {
+    x: panelRect.x + innerPad,
+    y: cancelRect.y - verticalGap - hintH,
+    w: panelRect.w - innerPad * 2,
+    h: hintH,
+  };
+
+  const tableRect = {
+    x: panelRect.x + innerPad,
+    y: classTabsRect.y + classTabsRect.h + verticalGap,
+    w: panelRect.w - innerPad * 2,
+    h: Math.max(100, hintRect.y - verticalGap - (classTabsRect.y + classTabsRect.h + verticalGap)),
+  };
+  const tableInnerPad = Math.round(clampNumber(tableRect.w * 0.014, 4, 12));
+  const headerH = Math.round(clampNumber(tableRect.h * 0.13, 34, 88));
+  const rowGap = Math.round(clampNumber(tableRect.h * 0.009, 2, 8));
+  const tableInnerX = tableRect.x + tableInnerPad;
+  const tableInnerW = tableRect.w - tableInnerPad * 2;
+  const colGap = Math.round(clampNumber(tableInnerW * 0.01, 2, 10));
+  const maxFieldW = Math.max(94, tableInnerW - 120);
+  const fieldColW = Math.round(clampNumber(tableInnerW * 0.38, 94, maxFieldW));
+  const valueColW = Math.max(80, tableInnerW - fieldColW - colGap);
+  const headerY = tableRect.y + tableInnerPad;
+  const fieldHeaderRect = { x: tableInnerX, y: headerY, w: fieldColW, h: headerH };
+  const valueHeaderRect = {
+    x: fieldHeaderRect.x + fieldColW + colGap,
+    y: headerY,
+    w: valueColW,
+    h: headerH,
+  };
+  const headerRect = {
+    x: tableInnerX,
+    y: headerY,
+    w: fieldColW + colGap + valueColW,
+    h: headerH,
+  };
+
+  const availableRowsH = Math.max(24, tableRect.h - tableInnerPad * 2 - headerH - rowGap);
+  const rowH = Math.round(clampNumber(tableRect.h * 0.12, 34, 84));
+  const maxVisibleRows = Math.max(1, Math.floor((availableRowsH + rowGap) / (rowH + rowGap)));
+  const visibleRows = Math.max(1, Math.min(rowCount || 1, maxVisibleRows));
+  const maxOffset = Math.max(0, rowCount - visibleRows);
+  const safeOffset = Math.round(clampNumber(rowOffset, 0, maxOffset));
+  const rowsStartY = headerY + headerH + rowGap;
+
+  const visibleRowRects = [];
+  const valueCellRects = [];
+  for (let visibleIndex = 0; visibleIndex < visibleRows; visibleIndex += 1) {
+    const rowIndex = safeOffset + visibleIndex;
+    if (rowIndex >= rowCount) {
+      break;
+    }
+    const rowY = rowsStartY + visibleIndex * (rowH + rowGap);
+    const rowRect = {
+      x: tableInnerX,
+      y: rowY,
+      w: headerRect.w,
+      h: rowH,
+    };
+    const fieldRect = {
+      x: rowRect.x,
+      y: rowRect.y,
+      w: fieldColW,
+      h: rowRect.h,
+    };
+    const valueRect = {
+      x: valueHeaderRect.x,
+      y: rowRect.y + 1,
+      w: valueHeaderRect.w,
+      h: rowRect.h - 2,
+    };
+    valueCellRects.push({
+      rowIndex,
+      classIndex: selectedClassIndex,
+      rect: valueRect,
+    });
+    visibleRowRects.push({
+      rowIndex,
+      rowRect,
+      fieldRect,
+      valueRect,
+      selected:
+        selection &&
+        selection.row === rowIndex &&
+        selectedClassIndex === selection.classIndex,
+    });
+  }
+
+  const needsScroll = rowCount > visibleRows;
+  const scrollW = Math.round(clampNumber(tableRect.w * 0.09, 44, 92));
+  const scrollH = Math.round(clampNumber(tableRect.h * 0.08, 24, 54));
+  const scrollUpRect = needsScroll
+    ? {
+        x: tableRect.x + tableRect.w - scrollW - tableInnerPad,
+        y: tableRect.y + tableInnerPad,
+        w: scrollW,
+        h: scrollH,
+      }
+    : null;
+  const scrollDownRect = needsScroll
+    ? {
+        x: scrollUpRect.x,
+        y: tableRect.y + tableRect.h - tableInnerPad - scrollH,
+        w: scrollW,
+        h: scrollH,
+      }
+    : null;
+
+  return {
+    panelRect,
+    titleRect,
+    classTabsRect,
+    classTabRects,
+    tableRect,
+    headerRect,
+    fieldHeaderRect,
+    valueHeaderRect,
+    visibleRows,
+    rowOffset: safeOffset,
+    selectedClassIndex,
+    visibleRowRects,
+    valueCellRects,
+    cancelRect,
+    confirmRect,
+    hintRect,
+    scrollUpRect,
+    scrollDownRect,
+  };
+}
+
+function parseSimpleDelimitedTable(text) {
+  if (typeof text !== "string") {
+    return { ok: false, error: "Formato tabella non valido." };
+  }
+
+  const normalizedText = text.replace(/\r/g, "").trim();
+  if (normalizedText.length === 0) {
+    return { ok: false, error: "Tabella vuota." };
+  }
+
+  const lines = normalizedText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length < 2) {
+    return { ok: false, error: "Tabella incompleta." };
+  }
+
+  const separator = lines[0].includes("\t") ? "\t" : ",";
+  const headers = lines[0].split(separator).map((header) => sanitizeTableCellText(header));
+  const hasInvalidHeader = headers.some((header) => header.length === 0);
+  if (hasInvalidHeader) {
+    return { ok: false, error: "Intestazione tabella non valida." };
+  }
+
+  const normalizedHeaders = headers.map((header) => header.toLowerCase());
+  const rows = lines.slice(1).map((line) => {
+    const values = line.split(separator);
+    const row = {};
+    headers.forEach((header, index) => {
+      const value = sanitizeTableCellText(values[index] ?? "");
+      row[header] = value;
+      row[header.toLowerCase()] = value;
+    });
+    return row;
+  });
+
+  return {
+    ok: true,
+    headers: normalizedHeaders,
+    rows,
+  };
+}
+
+function buildDelimitedTable(headers, rows) {
+  const safeHeaders = headers.map((header) => sanitizeTableCellText(header));
+  const headerLine = safeHeaders.join("\t");
+  const bodyLines = rows.map((row) =>
+    safeHeaders.map((header) => sanitizeTableCellText(row[header])).join("\t"),
+  );
+  return [headerLine, ...bodyLines].join("\n");
+}
+
+function sanitizeTableCellText(value) {
+  return String(value ?? "")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\t/g, " ")
+    .trim();
+}
+
+function normalizeToggleText(value, fallback = "false") {
+  const normalized = sanitizeTableCellText(value).toLowerCase();
+  if (["1", "true", "yes", "on", "si"].includes(normalized)) {
+    return "true";
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return "false";
+  }
+
+  return sanitizeTableCellText(fallback).toLowerCase() === "true" ? "true" : "false";
 }
 
 function pointInRect(point, rect) {
