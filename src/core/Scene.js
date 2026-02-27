@@ -10,4 +10,12 @@ export class Scene {
   update() {}
 
   render() {}
+
+  triggerAutoSave(triggerId, payload, options) {
+    if (!this.game || typeof this.game.triggerAutoSave !== "function") {
+      return false;
+    }
+
+    return this.game.triggerAutoSave(triggerId, payload, options);
+  }
 }

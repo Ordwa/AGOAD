@@ -1,3 +1,6 @@
 .DS_Store
 backups/
 dist/
+.env
+.env.local
+server/.env

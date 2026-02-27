@@ -1,4 +1,4 @@
-# Mini Browser RPG
+# AGOAD
 
 Prototipo RPG top-down, giocabile da browser, con struttura modulare pronta per espansioni.
 
@@ -7,10 +7,47 @@ Prototipo RPG top-down, giocabile da browser, con struttura modulare pronta per 
 Da root progetto:
 
 ```bash
-python3 -m http.server 8080
+node server/index.mjs
 ```
 
 Apri `http://localhost:8080`.
+
+## Ambienti
+
+- Test locale: `http://localhost:8080`
+- Produzione giocatori: `https://ordwa.github.io/AGOAD/`
+
+### Configurazione Cloud Sync (Google + GitHub)
+
+Per login Google e salvataggi server-side in Git (per-account), copia il file esempio:
+
+```bash
+cp .env.example .env
+```
+
+Poi aggiorna in `.env` i valori reali (`SESSION_SECRET`, `GITHUB_TOKEN`, ecc.) e avvia:
+
+```bash
+node server/index.mjs
+```
+
+Configura il client id in `index.html`:
+
+- meta tag: `<meta name="google-client-id" content="...">`
+
+Per produzione (frontend su GitHub Pages + backend su dominio separato):
+
+- backend env: `COOKIE_SAMESITE="None"` e `COOKIE_SECURE="1"`
+- in GitHub repo imposta `Settings > Secrets and variables > Actions`:
+  - `Variables`: `API_BASE_URL`
+  - opzionale: `GOOGLE_CLIENT_ID` (se vuoi iniettarlo a deploy)
+
+Note:
+
+- `GITHUB_TOKEN` deve avere permessi di scrittura sui contenuti repo (`contents:write`).
+- `CORS_ALLOWED_ORIGINS` deve includere sempre `https://ordwa.github.io` in produzione.
+- I progressi giocatore sono salvati in `server-data/players/<google-sub>.json` nel repo.
+- I dati globali GM (classi/nemici) sono salvati in `server-data/game-data.json` nel repo.
 
 ## Deploy GitHub Pages (configurato)
 
@@ -19,6 +56,9 @@ Nel progetto e' gia' presente il workflow:
 - `.github/workflows/deploy-pages.yml`
 
 Fa deploy automatico su GitHub Pages ad ogni push su `main` o `master`.
+
+Importante: GitHub Pages e' solo statico.  
+Le API (`/api/*`) per login Google e salvataggi su Git devono girare su un server Node separato (o su una piattaforma serverless compatibile).
 
 ### Cosa devi fare una volta sola su GitHub
 
@@ -29,6 +69,7 @@ Fa deploy automatico su GitHub Pages ad ogni push su `main` o `master`.
 5. Aspetta il workflow in `Actions` (1-3 minuti).
 6. Otterrai l'URL pubblico tipo:
    - `https://<utente>.github.io/<repo>/`
+7. Per collegare il backend in produzione, imposta `API_BASE_URL` nelle Actions Variables e rifai push.
 
 ### Uso da telefono
 

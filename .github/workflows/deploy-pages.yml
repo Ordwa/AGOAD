@@ -41,6 +41,25 @@ jobs:
             ./ dist/
           touch dist/.nojekyll
 
+      - name: Inject runtime config
+        env:
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          API_BASE_URL: ${{ vars.API_BASE_URL || secrets.API_BASE_URL }}
+        run: |
+          escape_for_sed() {
+            printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'
+          }
+
+          if [ -n "${GOOGLE_CLIENT_ID}" ]; then
+            GOOGLE_CLIENT_ID_ESCAPED="$(escape_for_sed "${GOOGLE_CLIENT_ID}")"
+            sed -i "s|<meta name=\"google-client-id\" content=\"[^\"]*\" />|<meta name=\"google-client-id\" content=\"${GOOGLE_CLIENT_ID_ESCAPED}\" />|" dist/index.html
+          fi
+
+          if [ -n "${API_BASE_URL}" ]; then
+            API_BASE_URL_ESCAPED="$(escape_for_sed "${API_BASE_URL}")"
+            sed -i "s|<meta name=\"api-base-url\" content=\"[^\"]*\" />|<meta name=\"api-base-url\" content=\"${API_BASE_URL_ESCAPED}\" />|" dist/index.html
+          fi
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

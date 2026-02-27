@@ -3,12 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-client-id" content="453147795138-p9ncaak5vb69r4eklk7u5phopnhdh73a.apps.googleusercontent.com" />
+    <meta name="api-base-url" content="" />
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>BROWSER RPG</title>
+    <meta name="apple-mobile-web-app-title" content="AGOAD" />
+    <title>AGOAD</title>
+    <link rel="icon" type="image/png" href="./src/assets/UI_icon_app.png" />
+    <link rel="apple-touch-icon" href="./src/assets/UI_icon_app.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <script>
       window.__APP_ASSET_VERSION__ = `${Date.now()}`;
+      window.__APP_CONFIG__ = {
+        googleClientId:
+          document.querySelector('meta[name="google-client-id"]')?.getAttribute("content")?.trim() ?? "",
+        apiBaseUrl: document.querySelector('meta[name="api-base-url"]')?.getAttribute("content")?.trim() ?? "",
+      };
       const stylesheet = document.createElement("link");
       stylesheet.rel = "stylesheet";
       stylesheet.href = `styles.css?v=${window.__APP_ASSET_VERSION__}`;

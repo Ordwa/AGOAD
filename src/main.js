@@ -27,6 +27,7 @@ if (!(canvas instanceof HTMLCanvasElement)) {
 
 const input = new Input();
 const game = new Game(canvas, input);
+await game.initializeCloudSession();
 
 game.registerScene("setup", new SetupScene(game));
 game.registerScene("start", new StartScene(game));

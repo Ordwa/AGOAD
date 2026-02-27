@@ -115,6 +115,7 @@ export class SetupScene extends Scene {
       this.game.changeScene("world", {
         resetToSpawn: true,
         safeSteps: 5,
+        saveAfterEnter: true,
         message: `${this.nameBuffer} il ${selectedClass.label} e' pronto all'avventura.`,
       });
     }
@@ -419,14 +420,7 @@ function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_C
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
   const verticalGap = Math.round(clampNumber(surfaceHeight * 0.02, 10, 30));
 
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
-  const bannerRect = {
-    x: Math.floor((surfaceWidth - bannerW) / 2),
-    y: topInset,
-    w: bannerW,
-    h: bannerH,
-  };
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   const titleW = Math.round(clampNumber(surfaceWidth * 0.56, 160, surfaceWidth - sidePadding * 2));
   const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
@@ -507,6 +501,19 @@ function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_C
 
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.9, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.21, 100, 380));
+  return {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
 }
 
 function fillRoundedRect(ctx, x, y, w, h, radius) {

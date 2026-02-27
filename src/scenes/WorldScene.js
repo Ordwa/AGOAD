@@ -109,6 +109,13 @@ export class WorldScene extends Scene {
       this.encounterSafetySteps = payload.safeSteps;
     }
 
+    if (payload.saveAfterEnter) {
+      const saved = this.game.saveToSlot(0);
+      if (!saved) {
+        this.showToast("Errore: salvataggio iniziale non riuscito.");
+      }
+    }
+
     this.closePauseMenu();
   }
 
@@ -474,16 +481,25 @@ export class WorldScene extends Scene {
     }
 
     if (this.pauseMenu.mainIndex === 1) {
-      this.pauseMenu.mode = "save";
-      this.pauseMenu.slotIndex = 0;
-      this.pauseMenu.notice = "";
+      const saved = this.game.saveToSlot(0);
+      this.pauseMenu.notice = saved
+        ? "Progressi salvati."
+        : "Errore durante il salvataggio.";
       return;
     }
 
     if (this.pauseMenu.mainIndex === 2) {
-      this.pauseMenu.mode = "load";
-      this.pauseMenu.slotIndex = 0;
-      this.pauseMenu.notice = "";
+      const result = this.game.loadFromSlot(0);
+      if (!result.ok) {
+        this.pauseMenu.notice = "Nessun progresso salvato.";
+        return;
+      }
+      this.closePauseMenu();
+      this.game.changeScene("world", {
+        restoreFromSave: true,
+        safeSteps: 5,
+        message: "Progressi caricati.",
+      });
       return;
     }
 

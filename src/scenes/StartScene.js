@@ -3,7 +3,7 @@ import { GAME_CONFIG, PALETTE } from "../data/constants.js";
 import { verifyGmEditPassword } from "../utils/security.js";
 
 const MAIN_OPTIONS = ["CONTINUE", "NEW GAME", "SETTINGS"];
-const OPTIONS_MENU = ["SOUND", "MUSIC", "GM-EDIT", "INDIETRO"];
+const OPTIONS_MENU = ["SOUND", "MUSIC", "GM-EDIT", "ELIMINA PG", "LOGOUT", "INDIETRO"];
 const GM_EDIT_MENU = [
   { id: "debug", label: "DEBUG MODE" },
   { id: "edit_classes", label: "EDIT CLASSES" },
@@ -41,10 +41,14 @@ export class StartScene extends Scene {
     this.gmPasswordBuffer = "";
     this.gmAuthStatus = "";
     this.gmAuthUnlockedSession = false;
+    this.gmAuthUnlockedSession = false;
     this.gmAuthToken = 0;
     this.gmActionBusy = false;
     this.gmActionToken = 0;
+    this.authActionBusy = false;
+    this.authRecoveryAction = null;
     this.notice = "";
+    this.deleteProfileConfirmArmed = false;
     this.pointerEventsBound = false;
     this.activePointerId = null;
     this.pointerStart = null;
@@ -70,7 +74,7 @@ export class StartScene extends Scene {
 
   onEnter() {
     this.time = 0;
-    this.mode = "main";
+    this.mode = this.game.isAuthenticated() ? "main" : "auth";
     this.mainIndex = 0;
     this.slotIndex = 0;
     this.optionsIndex = 0;
@@ -80,7 +84,10 @@ export class StartScene extends Scene {
     this.gmAuthToken += 1;
     this.gmActionBusy = false;
     this.gmActionToken += 1;
-    this.notice = "";
+    this.authActionBusy = false;
+    this.authRecoveryAction = null;
+    this.notice = this.game.isAuthenticated() ? "" : "Accedi con Google per giocare.";
+    this.deleteProfileConfirmArmed = false;
     this.activePointerId = null;
     this.pointerStart = null;
     this.tapQueue.length = 0;
@@ -99,6 +106,8 @@ export class StartScene extends Scene {
     this.gmAuthToken += 1;
     this.gmActionToken += 1;
     this.gmActionBusy = false;
+    this.authActionBusy = false;
+    this.authRecoveryAction = null;
     this.activePointerId = null;
     this.pointerStart = null;
     this.tapQueue.length = 0;
@@ -107,6 +116,7 @@ export class StartScene extends Scene {
     this.gmClassesEditor = null;
     this.gmClassesSelection = { row: 0, classIndex: 0 };
     this.gmClassesRowOffset = 0;
+    this.deleteProfileConfirmArmed = false;
     this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
     if (typeof document !== "undefined" && document.body) {
@@ -119,6 +129,11 @@ export class StartScene extends Scene {
     this.time += dt;
     this.syncDocumentMode();
     this.handleTouchInput();
+
+    if (this.mode === "auth") {
+      this.updateAuthMenu(input);
+      return;
+    }
 
     if (this.mode === "main") {
       this.updatePendingMainAction(dt);
@@ -313,6 +328,7 @@ export class StartScene extends Scene {
     }
 
     const useCanvasSpace =
+      this.mode === "auth" ||
       this.mode === "main" ||
       this.mode === "options" ||
       this.mode === "gm-auth" ||
@@ -322,6 +338,12 @@ export class StartScene extends Scene {
       ? this.screenToCanvasPoint(event.clientX, event.clientY)
       : this.screenToGamePoint(event.clientX, event.clientY);
     if (tapPoint) {
+      if (this.mode === "auth") {
+        this.handleAuthTouchTap(tapPoint);
+        event.preventDefault();
+        return;
+      }
+
       if (this.mode === "gm-auth") {
         this.handleGmAuthTouchTap(tapPoint);
         event.preventDefault();
@@ -396,6 +418,11 @@ export class StartScene extends Scene {
 
     const taps = this.tapQueue.splice(0, this.tapQueue.length);
     taps.forEach((tapPoint) => {
+      if (this.mode === "auth") {
+        this.handleAuthTouchTap(tapPoint);
+        return;
+      }
+
       if (this.mode === "main") {
         this.handleMainTouchTap(tapPoint);
         return;
@@ -498,16 +525,19 @@ export class StartScene extends Scene {
   updateOptionsMenu(input) {
     if (input.wasPressed("up")) {
       this.optionsIndex = (this.optionsIndex + OPTIONS_MENU.length - 1) % OPTIONS_MENU.length;
+      this.deleteProfileConfirmArmed = false;
       return;
     }
 
     if (input.wasPressed("down")) {
       this.optionsIndex = (this.optionsIndex + 1) % OPTIONS_MENU.length;
+      this.deleteProfileConfirmArmed = false;
       return;
     }
 
     if (input.wasPressed("back")) {
       this.mode = "main";
+      this.deleteProfileConfirmArmed = false;
       return;
     }
 
@@ -542,6 +572,31 @@ export class StartScene extends Scene {
     this.activateOptionsOption(this.optionsIndex);
   }
 
+  updateAuthMenu(input) {
+    if (this.authActionBusy) {
+      return;
+    }
+
+    if (input.wasPressed("confirm")) {
+      this.startGoogleLoginFlow();
+    }
+  }
+
+  handleAuthTouchTap(tapPoint) {
+    const hasExternalAction = this.hasExternalAuthRecovery();
+    const layout = getAuthMenuLayout(this.game.canvas.width, this.game.canvas.height, hasExternalAction);
+    if (hasExternalAction && layout.externalActionRect && pointInRect(tapPoint, layout.externalActionRect)) {
+      this.openAuthRecoveryAction();
+      return;
+    }
+
+    if (!pointInRect(tapPoint, layout.loginRect)) {
+      return;
+    }
+
+    this.startGoogleLoginFlow();
+  }
+
   activateMainOption(index) {
     this.mainIndex = index;
     if (this.pendingMainOptionIndex !== null) {
@@ -555,15 +610,17 @@ export class StartScene extends Scene {
     this.mainIndex = index;
 
     if (this.mainIndex === 0) {
-      const hasAnySave = this.game.getSaveSlots().some((slot) => Boolean(slot));
-      if (!hasAnySave) {
-        this.notice = "Nessun salvataggio disponibile.";
+      const result = this.game.loadFromSlot(0);
+      if (!result.ok) {
+        this.notice = "Nessun progresso salvato per questo account.";
         return;
       }
 
-      this.mode = "slots";
-      this.slotIndex = 0;
-      this.notice = "";
+      this.game.changeScene("world", {
+        restoreFromSave: true,
+        safeSteps: 5,
+        message: "Progressi caricati.",
+      });
       return;
     }
 
@@ -577,12 +634,169 @@ export class StartScene extends Scene {
       this.mode = "options";
       this.optionsIndex = 0;
       this.notice = "";
+      this.deleteProfileConfirmArmed = false;
       return;
     }
 
     this.mode = "options";
     this.optionsIndex = 0;
     this.notice = "";
+    this.deleteProfileConfirmArmed = false;
+  }
+
+  startGoogleLoginFlow() {
+    if (this.authActionBusy) {
+      return;
+    }
+
+    this.authRecoveryAction = null;
+    this.authActionBusy = true;
+    this.notice = "Login Google in corso...";
+    this.game
+      .signInWithGoogleAccount()
+      .then((result) => {
+        if (!result.ok) {
+          this.authRecoveryAction =
+            result.recovery && typeof result.recovery === "object" ? result.recovery : null;
+          this.notice = result.error ?? this.game.getLastSyncError() ?? "Login fallito.";
+          return;
+        }
+
+        this.authRecoveryAction = null;
+        this.mode = "main";
+        this.mainIndex = 0;
+        const displayName = this.game.getAccountDisplayName();
+        this.notice = displayName.length > 0 ? `Ciao ${displayName}` : "Accesso riuscito.";
+      })
+      .catch((error) => {
+        this.authRecoveryAction = null;
+        this.notice = error instanceof Error ? error.message : "Login fallito.";
+      })
+      .finally(() => {
+        this.authActionBusy = false;
+      });
+  }
+
+  startLogoutFlow() {
+    if (this.authActionBusy) {
+      return;
+    }
+
+    this.authActionBusy = true;
+    this.notice = "Logout in corso...";
+    this.game
+      .signOutAccount()
+      .then((result) => {
+        if (!result.ok) {
+          this.notice = result.error ?? this.game.getLastSyncError() ?? "Logout fallito.";
+          return;
+        }
+
+        this.mode = "auth";
+        this.mainIndex = 0;
+        this.optionsIndex = 0;
+        this.authRecoveryAction = null;
+        this.gmAuthUnlockedSession = false;
+        this.notice = "Disconnesso. Accedi con Google.";
+      })
+      .catch((error) => {
+        this.notice = error instanceof Error ? error.message : "Logout fallito.";
+      })
+      .finally(() => {
+        this.authActionBusy = false;
+      });
+  }
+
+  startDeleteProfileFlow() {
+    if (this.authActionBusy) {
+      return;
+    }
+
+    this.authActionBusy = true;
+    this.notice = "Eliminazione progressi in corso...";
+    this.game
+      .clearProfileProgress()
+      .then((result) => {
+        if (!result.ok) {
+          this.notice =
+            result.error ?? this.game.getLastSyncError() ?? "Eliminazione progressi fallita.";
+          return;
+        }
+
+        this.mode = "main";
+        this.mainIndex = 1;
+        this.optionsIndex = 0;
+        this.notice = "Progressi eliminati. Avvia NEW GAME.";
+      })
+      .catch((error) => {
+        this.notice = error instanceof Error ? error.message : "Eliminazione progressi fallita.";
+      })
+      .finally(() => {
+        this.authActionBusy = false;
+      });
+  }
+
+  hasExternalAuthRecovery() {
+    if (!this.authRecoveryAction || this.authRecoveryAction.type !== "external-browser") {
+      return false;
+    }
+
+    return String(this.authRecoveryAction.url || "").trim().length > 0;
+  }
+
+  openAuthRecoveryAction() {
+    if (!this.hasExternalAuthRecovery() || typeof window === "undefined") {
+      this.notice = "Apertura browser esterno non disponibile.";
+      return;
+    }
+
+    const targetUrl = String(this.authRecoveryAction.url || "").trim();
+    if (targetUrl.length === 0) {
+      this.notice = "URL login non valido.";
+      return;
+    }
+
+    let opened = false;
+    if (typeof window.open === "function") {
+      try {
+        const popupRef = window.open(targetUrl, "_blank");
+        opened = Boolean(popupRef);
+        if (opened && typeof popupRef.focus === "function") {
+          popupRef.focus();
+        }
+      } catch {
+        opened = false;
+      }
+    }
+
+    if (opened) {
+      this.notice = "Tentativo apertura browser esterno...";
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        navigator.clipboard
+          .writeText(targetUrl)
+          .then(() => {
+            this.notice = "Apertura tentata. URL anche copiato: aprilo in Chrome/Safari se non si apre.";
+          })
+          .catch(() => {
+            this.notice = "Apertura tentata. Se non si apre, usa Chrome/Safari.";
+          });
+      }
+      return;
+    }
+
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(targetUrl)
+        .then(() => {
+          this.notice = "URL copiato. Aprilo in Chrome/Safari.";
+        })
+        .catch(() => {
+          this.notice = "Browser embedded bloccato. Apri il gioco in Chrome/Safari.";
+        });
+      return;
+    }
+
+    this.notice = "Browser embedded bloccato. Apri il gioco in Chrome/Safari.";
   }
 
   activateSlotOption(index) {
@@ -609,6 +823,9 @@ export class StartScene extends Scene {
 
   activateOptionsOption(index) {
     this.optionsIndex = index;
+    if (this.optionsIndex !== 3) {
+      this.deleteProfileConfirmArmed = false;
+    }
 
     if (this.optionsIndex === 0) {
       this.shiftSoundLevel(1);
@@ -631,7 +848,25 @@ export class StartScene extends Scene {
       return;
     }
 
+    if (this.optionsIndex === 3) {
+      if (!this.deleteProfileConfirmArmed) {
+        this.deleteProfileConfirmArmed = true;
+        this.notice = "Premi ELIMINA PG di nuovo per confermare.";
+        return;
+      }
+
+      this.deleteProfileConfirmArmed = false;
+      this.startDeleteProfileFlow();
+      return;
+    }
+
+    if (this.optionsIndex === 4) {
+      this.startLogoutFlow();
+      return;
+    }
+
     this.mode = "main";
+    this.deleteProfileConfirmArmed = false;
   }
 
   shiftSoundLevel(delta) {
@@ -681,6 +916,9 @@ export class StartScene extends Scene {
     }
 
     this.optionsIndex = tappedIndex;
+    if (tappedIndex !== 3) {
+      this.deleteProfileConfirmArmed = false;
+    }
     if (tappedIndex === 0) {
       if (pointInRect(tapPoint, layout.soundMinusRect)) {
         this.shiftSoundLevel(-1);
@@ -722,6 +960,38 @@ export class StartScene extends Scene {
   }
 
   updateGmAuthMenu(input) {
+    const typedChars = input.consumeTypedChars();
+    if (typedChars.length > 0) {
+      typedChars.forEach((char) => {
+        if (this.gmPasswordBuffer.length >= MAX_GM_PASSWORD_LENGTH) {
+          return;
+        }
+
+        if (!/^[a-zA-Z0-9]$/.test(char)) {
+          return;
+        }
+
+        this.gmPasswordBuffer += char;
+      });
+
+      this.gmAuthStatus = "";
+      if (this.gmPasswordInputElement && this.gmPasswordInputElement.value !== this.gmPasswordBuffer) {
+        this.gmPasswordInputElement.value = this.gmPasswordBuffer;
+      }
+    }
+
+    const backspaceCount = input.consumeBackspaceCount();
+    if (backspaceCount > 0) {
+      this.gmPasswordBuffer = this.gmPasswordBuffer.slice(
+        0,
+        Math.max(0, this.gmPasswordBuffer.length - backspaceCount),
+      );
+      this.gmAuthStatus = "";
+      if (this.gmPasswordInputElement && this.gmPasswordInputElement.value !== this.gmPasswordBuffer) {
+        this.gmPasswordInputElement.value = this.gmPasswordBuffer;
+      }
+    }
+
     if (input.wasPressed("back")) {
       this.leaveGmAuthMode("options");
       return;
@@ -825,7 +1095,7 @@ export class StartScene extends Scene {
     this.gmAuthStatus = "";
     this.notice = "";
     this.gmAuthToken += 1;
-    this.game.input.setTextCapture(false);
+    this.game.input.setTextCapture(true);
     this.focusGmPasswordInput();
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -1119,6 +1389,11 @@ export class StartScene extends Scene {
   }
 
   render(ctx) {
+    if (this.mode === "auth") {
+      this.drawAuthMenu(ctx);
+      return;
+    }
+
     if (this.mode === "main") {
       this.drawMainMenu(ctx);
       return;
@@ -1157,6 +1432,46 @@ export class StartScene extends Scene {
     }
   }
 
+  drawAuthMenu(ctx) {
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const hasExternalAction = this.hasExternalAuthRecovery();
+    const layout = getAuthMenuLayout(canvasWidth, canvasHeight, hasExternalAction);
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (
+      this.homeBackgroundImage &&
+      this.homeBackgroundImage.complete &&
+      this.homeBackgroundImage.naturalWidth > 0
+    ) {
+      drawImageCover(ctx, this.homeBackgroundImage, 0, 0, canvasWidth, canvasHeight);
+    } else {
+      ctx.fillStyle = "#0f1116";
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    this.drawMainBanner(ctx, layout.bannerRect);
+    this.drawOverlayTitleCard(ctx, layout.titleRect, "ACCOUNT");
+    this.drawSettingsRowCard(ctx, layout.loginRect, "LOGIN CON GOOGLE", "", true);
+    if (hasExternalAction && layout.externalActionRect) {
+      this.drawSettingsRowCard(
+        ctx,
+        layout.externalActionRect,
+        truncate(String(this.authRecoveryAction.label || "APRI NEL BROWSER"), 28),
+        "",
+        false,
+      );
+    }
+
+    if (this.notice.length > 0) {
+      this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
+    }
+
+    ctx.restore();
+  }
+
   drawBackground(ctx) {
     if (
       this.homeBackgroundImage &&
@@ -1176,7 +1491,7 @@ export class StartScene extends Scene {
     ctx.fillStyle = PALETTE.uiText;
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
-    ctx.fillText("BROWSER RPG", 14, 14);
+    ctx.fillText("AGOAD", 14, 14);
     ctx.font = "7px monospace";
     ctx.fillText("MOBILE MENU", GAME_CONFIG.width - 82, 15);
   }
@@ -1321,18 +1636,42 @@ export class StartScene extends Scene {
   }
 
   drawMainNotice(ctx, rect, text, fontSize) {
-    const radius = Math.max(8, Math.round(rect.h * 0.22));
+    const safeText = String(text ?? "").trim();
+    if (safeText.length === 0) {
+      return;
+    }
+
+    const contentPaddingX = Math.round(clampNumber(rect.w * 0.04, 10, 30));
+    const contentPaddingY = Math.round(clampNumber(rect.h * 0.24, 8, 24));
+    const textMaxWidth = Math.max(40, rect.w - contentPaddingX * 2);
+    const safeFontSize = Math.max(8, Math.round(fontSize));
+    const lineHeight = Math.round(safeFontSize * 1.18);
+    const lines = wrapTextByWidth(ctx, safeText, textMaxWidth, safeFontSize, 3);
+    const contentHeight = Math.max(rect.h, lineHeight * lines.length + contentPaddingY * 2);
+    const dynamicRect = {
+      x: rect.x,
+      y: rect.y + rect.h - contentHeight,
+      w: rect.w,
+      h: contentHeight,
+    };
+    const radius = Math.max(8, Math.round(dynamicRect.h * 0.22));
+
     ctx.fillStyle = "rgba(3, 16, 30, 0.68)";
-    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    fillRoundedRect(ctx, dynamicRect.x, dynamicRect.y, dynamicRect.w, dynamicRect.h, radius);
     ctx.strokeStyle = "rgba(167, 204, 247, 0.72)";
-    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
-    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.lineWidth = Math.max(2, Math.round(dynamicRect.h * 0.08));
+    strokeRoundedRect(ctx, dynamicRect.x, dynamicRect.y, dynamicRect.w, dynamicRect.h, radius);
 
     ctx.fillStyle = "#e6f1ff";
-    ctx.font = `${fontSize}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(truncate(text, 52), rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+    ctx.font = `${safeFontSize}px monospace`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    let lineY = dynamicRect.y + Math.round((dynamicRect.h - lineHeight * lines.length) / 2);
+    const lineX = dynamicRect.x + contentPaddingX;
+    lines.forEach((line) => {
+      ctx.fillText(line, lineX, lineY);
+      lineY += lineHeight;
+    });
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
   }
@@ -1865,11 +2204,32 @@ export class StartScene extends Scene {
   }
 
   drawNotice(ctx, text) {
-    this.drawPanel(ctx, 8, GAME_CONFIG.height - 30, GAME_CONFIG.width - 16, 22);
+    const safeText = String(text ?? "").trim();
+    if (safeText.length === 0) {
+      return;
+    }
+
+    const panelX = 8;
+    const panelW = GAME_CONFIG.width - 16;
+    const fontSize = 8;
+    const lineHeight = 10;
+    const padX = 6;
+    const padY = 5;
+    const textMaxWidth = Math.max(28, panelW - (padX + 6) * 2);
+    const lines = wrapTextByWidth(ctx, safeText, textMaxWidth, fontSize, 3);
+    const panelH = Math.max(22, lines.length * lineHeight + padY * 2);
+    const panelY = GAME_CONFIG.height - 8 - panelH;
+
+    this.drawPanel(ctx, panelX, panelY, panelW, panelH);
     ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
+    ctx.font = `${fontSize}px monospace`;
     ctx.textBaseline = "top";
-    ctx.fillText(truncate(text, 40), 14, GAME_CONFIG.height - 23);
+    const textX = panelX + 6;
+    let textY = panelY + padY;
+    lines.forEach((line) => {
+      ctx.fillText(line, textX, textY);
+      textY += lineHeight;
+    });
   }
 
   drawPanel(ctx, x, y, w, h, fillColor = PALETTE.uiPanel) {
@@ -1920,14 +2280,7 @@ function getMainMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAM
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.9, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.21, 100, 380));
-  const bannerRect = {
-    x: Math.floor((surfaceWidth - bannerW) / 2),
-    y: topInset,
-    w: bannerW,
-    h: bannerH,
-  };
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   const newGameW = Math.round(clampNumber(surfaceWidth * 0.72, 190, surfaceWidth - sidePadding * 2));
   const continueW = Math.round(clampNumber(newGameW * 1.3, 250, surfaceWidth - sidePadding * 2));
@@ -1986,6 +2339,71 @@ function getMainMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAM
     topInset,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
     itemRects: [continueRect, newGameRect, settingsRect],
+  };
+}
+
+function getAuthMenuLayout(
+  surfaceWidth = GAME_CONFIG.width,
+  surfaceHeight = GAME_CONFIG.height,
+  showExternalAction = false,
+) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
+
+  const titleW = Math.round(clampNumber(surfaceWidth * 0.5, 140, surfaceWidth - sidePadding * 2));
+  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 22, 72));
+  const titleRect = {
+    x: Math.floor((surfaceWidth - titleW) / 2),
+    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 8, 26)),
+    w: titleW,
+    h: titleH,
+  };
+
+  const loginW = Math.round(clampNumber(surfaceWidth * 0.84, 220, surfaceWidth - sidePadding * 2));
+  const loginH = Math.round(clampNumber(surfaceHeight * 0.11, 52, 130));
+  const externalW = Math.round(clampNumber(loginW * 0.8, 170, loginW));
+  const externalH = Math.round(clampNumber(surfaceHeight * 0.078, 36, 94));
+  const actionGap = Math.round(clampNumber(surfaceHeight * 0.018, 8, 22));
+  const actionStackH = loginH + (showExternalAction ? actionGap + externalH : 0);
+
+  const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
+  const noticeRect = {
+    x: sidePadding,
+    y: surfaceHeight - topInset - noticeH,
+    w: surfaceWidth - sidePadding * 2,
+    h: noticeH,
+  };
+
+  const minActionsY = titleRect.y + titleRect.h + Math.round(clampNumber(surfaceHeight * 0.03, 10, 28));
+  const maxActionsY = noticeRect.y - Math.round(clampNumber(surfaceHeight * 0.03, 10, 34)) - actionStackH;
+  const safeMaxActionsY = Math.max(minActionsY, maxActionsY);
+  const actionsY = Math.round(
+    clampNumber(surfaceHeight * 0.53 - actionStackH / 2, minActionsY, safeMaxActionsY),
+  );
+
+  const loginRect = {
+    x: Math.floor((surfaceWidth - loginW) / 2),
+    y: actionsY,
+    w: loginW,
+    h: loginH,
+  };
+  const externalActionRect = showExternalAction
+    ? {
+        x: Math.floor((surfaceWidth - externalW) / 2),
+        y: loginRect.y + loginRect.h + actionGap,
+        w: externalW,
+        h: externalH,
+      }
+    : null;
+
+  return {
+    bannerRect,
+    titleRect,
+    loginRect,
+    externalActionRect,
+    noticeRect,
+    noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
   };
 }
 
@@ -2078,14 +2496,7 @@ function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = 
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
-  const bannerRect = {
-    x: Math.floor((surfaceWidth - bannerW) / 2),
-    y: topInset,
-    w: bannerW,
-    h: bannerH,
-  };
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   const titleW = Math.round(clampNumber(surfaceWidth * 0.5, 140, surfaceWidth - sidePadding * 2));
   const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 22, 72));
@@ -2178,14 +2589,7 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
-  const bannerRect = {
-    x: Math.floor((surfaceWidth - bannerW) / 2),
-    y: topInset,
-    w: bannerW,
-    h: bannerH,
-  };
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   const titleW = Math.round(clampNumber(surfaceWidth * 0.56, 156, surfaceWidth - sidePadding * 2));
   const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
@@ -2271,14 +2675,7 @@ function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.16, 74, 260));
-  const bannerRect = {
-    x: Math.floor((surfaceWidth - bannerW) / 2),
-    y: topInset,
-    w: bannerW,
-    h: bannerH,
-  };
+  const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   const titleW = Math.round(clampNumber(surfaceWidth * 0.48, 140, surfaceWidth - sidePadding * 2));
   const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
@@ -2642,6 +3039,102 @@ function truncate(text, maxLen) {
   return `${text.slice(0, maxLen - 1)}.`;
 }
 
+function wrapTextByWidth(ctx, text, maxWidth, fontSize, maxLines = 3) {
+  const safeText = String(text ?? "").trim();
+  if (safeText.length === 0) {
+    return [""];
+  }
+
+  ctx.save();
+  ctx.font = `${Math.max(8, Math.round(fontSize))}px monospace`;
+
+  const words = safeText.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let currentLine = "";
+
+  const pushCurrentLine = () => {
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = "";
+    }
+  };
+
+  const fitWordChunks = (word) => {
+    const chunks = [];
+    let chunk = "";
+    for (let index = 0; index < word.length; index += 1) {
+      const char = word[index];
+      const candidate = chunk + char;
+      if (ctx.measureText(candidate).width <= maxWidth || chunk.length === 0) {
+        chunk = candidate;
+      } else {
+        chunks.push(chunk);
+        chunk = char;
+      }
+    }
+    if (chunk.length > 0) {
+      chunks.push(chunk);
+    }
+    return chunks;
+  };
+
+  words.forEach((word) => {
+    const candidate = currentLine.length > 0 ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(candidate).width <= maxWidth) {
+      currentLine = candidate;
+      return;
+    }
+
+    if (currentLine.length > 0) {
+      pushCurrentLine();
+    }
+
+    if (ctx.measureText(word).width <= maxWidth) {
+      currentLine = word;
+      return;
+    }
+
+    const chunks = fitWordChunks(word);
+    chunks.forEach((chunk, chunkIndex) => {
+      if (chunkIndex < chunks.length - 1) {
+        lines.push(chunk);
+      } else {
+        currentLine = chunk;
+      }
+    });
+  });
+
+  pushCurrentLine();
+  const safeLines = lines.length > 0 ? lines : [safeText];
+  if (safeLines.length <= maxLines) {
+    ctx.restore();
+    return safeLines;
+  }
+
+  const trimmed = safeLines.slice(0, maxLines);
+  const lastIndex = trimmed.length - 1;
+  let lastLine = trimmed[lastIndex];
+  while (lastLine.length > 1 && ctx.measureText(`${lastLine}...`).width > maxWidth) {
+    lastLine = lastLine.slice(0, -1);
+  }
+  trimmed[lastIndex] = `${lastLine}...`;
+  ctx.restore();
+  return trimmed;
+}
+
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.9, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.21, 100, 380));
+  return {
+    x: Math.floor((surfaceWidth - bannerW) / 2),
+    y: topInset,
+    w: bannerW,
+    h: bannerH,
+  };
 }

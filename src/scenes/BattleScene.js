@@ -1,5 +1,6 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
+import { AUTO_SAVE_TRIGGER } from "../data/autoSave.js";
 import { clamp, pickRandom, randomInt } from "../utils/math.js";
 
 const MAIN_OPTIONS = ["FIGHT", "BAG", "SKILLS", "RUN"];
@@ -530,7 +531,7 @@ export class BattleScene extends Scene {
         }
 
         this.queueMessages(["Fuga Garantita attivata."], () => {
-          this.exitToWorld();
+          this.exitToWorld(undefined, {}, { result: "escaped_skill" });
           done({ sceneChanged: true, battleEnded: true });
         });
       },
@@ -643,7 +644,7 @@ export class BattleScene extends Scene {
       const escaped = Math.random() < 0.6;
       if (escaped) {
         this.queueMessages(["Riesci a fuggire dalla battaglia."], () => {
-          this.exitToWorld();
+          this.exitToWorld(undefined, {}, { result: "escaped_run" });
           done({ sceneChanged: true, battleEnded: true });
         });
         return;
@@ -788,13 +789,15 @@ export class BattleScene extends Scene {
 
   handleVictory() {
     this.game.state.progress.battlesWon += 1;
-    this.exitToWorld();
+    this.exitToWorld(undefined, {}, { result: "victory" });
   }
 
   handleDefeat() {
     this.exitToWorld(undefined, {
       resetToSpawn: true,
       safeSteps: 5,
+    }, {
+      result: "defeat",
     });
   }
 
@@ -823,7 +826,7 @@ export class BattleScene extends Scene {
     this.phase = "menu-main";
   }
 
-  exitToWorld(message, overrides = {}) {
+  exitToWorld(message, overrides = {}, autoSavePayload = {}) {
     const payload = {
       safeSteps: 2,
       ...overrides,
@@ -832,6 +835,17 @@ export class BattleScene extends Scene {
     if (typeof message === "string" && message.length > 0) {
       payload.message = message;
     }
+
+    this.triggerAutoSave(
+      AUTO_SAVE_TRIGGER.BATTLE_END,
+      {
+        scene: "battle",
+        enemyId: this.enemy?.id ?? null,
+        result: autoSavePayload.result ?? "ended",
+        ...autoSavePayload,
+      },
+      { immediate: true },
+    );
 
     this.game.changeScene("world", payload);
   }

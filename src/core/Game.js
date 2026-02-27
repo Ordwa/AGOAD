@@ -1,11 +1,25 @@
 import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
 import { PLAYER_CLASSES, applyClassToPlayer, getClassById } from "../data/classes.js";
 import { ENEMIES } from "../data/enemies.js";
+import { AUTO_SAVE_TRIGGER, DEFAULT_AUTO_SAVE_TRIGGER_CONFIG } from "../data/autoSave.js";
+import {
+  fetchRemoteGameData,
+  fetchRemotePlayerProgress,
+  fetchSessionAccount,
+  logoutSessionAccount,
+  saveRemoteGameData,
+  saveRemotePlayerProgress,
+  signInWithGoogle,
+} from "../services/cloudSync.js";
 
-const SAVE_STORAGE_KEY = "gba_like_rpg_save_slots_v1";
-const SAVE_SLOT_COUNT = 3;
+const SAVE_STORAGE_KEY = "gba_like_rpg_profile_slot_v2";
+const SAVE_SLOT_COUNT = 1;
 const GM_CONFIG_STORAGE_KEY = "gba_like_rpg_gm_config_v1";
 const MOBILE_RENDER_SCALE = 3;
+const PRIMARY_SAVE_SLOT_INDEX = 0;
+const DEFAULT_AUTO_SAVE_INTERVAL_SECONDS = 30;
+const DEFAULT_AUTO_SAVE_MIN_GAP_SECONDS = 2;
+const DEFAULT_AUTO_SAVE_RETRY_SECONDS = 5;
 
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -107,6 +121,23 @@ function formatSaveSummary(state) {
     playerName: state.player?.name ?? "Player",
     className: state.player?.className ?? "Classe",
     playTimeSeconds: Math.floor(state.progress?.playTimeSeconds ?? 0),
+  };
+}
+
+function normalizeSingleSlot(rawSlot) {
+  if (!rawSlot || typeof rawSlot !== "object") {
+    return null;
+  }
+
+  if (!rawSlot.snapshot || typeof rawSlot.snapshot !== "object") {
+    return null;
+  }
+
+  return {
+    version: Number(rawSlot.version) || 1,
+    savedAt: Number(rawSlot.savedAt) || Date.now(),
+    summary: rawSlot.summary ?? formatSaveSummary(rawSlot.snapshot),
+    snapshot: rawSlot.snapshot,
   };
 }
 
@@ -330,6 +361,46 @@ function toDelimitedTable(headers, rows) {
   return [firstLine, ...bodyLines].join("\n");
 }
 
+function clampPositiveNumber(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function normalizeAutoSaveTriggerId(triggerId) {
+  const id = String(triggerId ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+  return id.length > 0 ? id : "manual";
+}
+
+function normalizeAutoSaveTriggerConfig(config = {}) {
+  return {
+    enabled: config.enabled !== false,
+    immediate: config.immediate === true,
+  };
+}
+
+function createDefaultAutoSaveState() {
+  return {
+    enabled: true,
+    intervalSeconds: DEFAULT_AUTO_SAVE_INTERVAL_SECONDS,
+    minGapSeconds: DEFAULT_AUTO_SAVE_MIN_GAP_SECONDS,
+    retrySeconds: DEFAULT_AUTO_SAVE_RETRY_SECONDS,
+    elapsedIntervalSeconds: 0,
+    pending: false,
+    pendingImmediate: false,
+    pendingTriggerId: "",
+    pendingPayload: null,
+    lastSavedAtSeconds: 0,
+    nextRetryAtSeconds: 0,
+    triggers: new Map(),
+  };
+}
+
 export class Game {
   constructor(canvas, input) {
     this.canvas = canvas;
@@ -347,12 +418,22 @@ export class Game {
     this.currentSceneName = "";
     this.lastFrameTime = 0;
 
+    this.account = {
+      status: "unknown",
+      user: null,
+    };
+    this.lastSyncError = "";
+    this.profileSlot = null;
+
     this.persistedGameData = this.readPersistedGmData();
     this.runtimeGameData = cloneData(this.persistedGameData);
     this.gmDataDirty = false;
 
     this.state = createInitialState(this.getClasses());
+    this.profileSlot = this.readSaveSlots()[0] ?? null;
     this.settings = createDefaultSettings();
+    this.autoSave = createDefaultAutoSaveState();
+    this.registerAutoSaveTriggers(DEFAULT_AUTO_SAVE_TRIGGER_CONFIG);
 
     this.loop = this.loop.bind(this);
     this.updateViewport = this.updateViewport.bind(this);
@@ -362,6 +443,150 @@ export class Game {
 
   registerScene(name, scene) {
     this.scenes.set(name, scene);
+  }
+
+  async initializeCloudSession() {
+    this.lastSyncError = "";
+    const authResult = await fetchSessionAccount();
+    if (!authResult.ok || !authResult.user) {
+      this.account.status = "guest";
+      this.account.user = null;
+      return { ok: true, authenticated: false };
+    }
+
+    this.account.status = "authenticated";
+    this.account.user = authResult.user;
+    await this.pullRemoteGameData();
+    await this.pullRemoteProgress();
+    return { ok: true, authenticated: true };
+  }
+
+  isAuthenticated() {
+    return this.account.status === "authenticated" && Boolean(this.account.user);
+  }
+
+  getAccountUser() {
+    return this.account.user ?? null;
+  }
+
+  getAccountDisplayName() {
+    const user = this.getAccountUser();
+    if (!user) {
+      return "";
+    }
+
+    const name = String(user.name ?? "").trim();
+    if (name.length > 0) {
+      return name;
+    }
+
+    return String(user.email ?? "").trim();
+  }
+
+  getLastSyncError() {
+    return this.lastSyncError;
+  }
+
+  async signInWithGoogleAccount() {
+    const login = await signInWithGoogle();
+    if (!login.ok) {
+      this.lastSyncError = login.error ?? "Login Google fallito.";
+      return {
+        ok: false,
+        error: this.lastSyncError,
+        recovery: login.recovery ?? null,
+      };
+    }
+
+    this.account.status = "authenticated";
+    this.account.user = login.user ?? null;
+    this.lastSyncError = "";
+    await this.pullRemoteGameData();
+    await this.pullRemoteProgress();
+    return { ok: true };
+  }
+
+  async signOutAccount() {
+    const result = await logoutSessionAccount();
+    if (!result.ok) {
+      this.lastSyncError = result.error ?? "Logout fallito.";
+      return { ok: false, error: this.lastSyncError };
+    }
+
+    this.account.status = "guest";
+    this.account.user = null;
+    this.lastSyncError = "";
+    this.clearAutoSaveQueue();
+    this.profileSlot = null;
+    this.writeSaveSlots([null]);
+    this.resetState();
+    return { ok: true };
+  }
+
+  async pullRemoteGameData() {
+    const result = await fetchRemoteGameData();
+    if (!result.ok) {
+      this.lastSyncError = result.error ?? "Impossibile leggere i dati globali.";
+      return { ok: false, error: this.lastSyncError };
+    }
+
+    if (!result.data || typeof result.data !== "object") {
+      return { ok: true, found: false };
+    }
+
+    const normalized = normalizeGameData(result.data, createDefaultGameData());
+    this.persistedGameData = cloneData(normalized);
+    this.runtimeGameData = cloneData(normalized);
+    this.gmDataDirty = false;
+    this.syncPlayerClassData();
+    this.writePersistedGmData(normalized);
+    return { ok: true, found: true };
+  }
+
+  async pullRemoteProgress() {
+    const result = await fetchRemotePlayerProgress();
+    if (!result.ok) {
+      this.lastSyncError = result.error ?? "Impossibile leggere i progressi.";
+      return { ok: false, error: this.lastSyncError };
+    }
+
+    if (!result.progress || typeof result.progress !== "object" || !result.progress.snapshot) {
+      this.profileSlot = null;
+      this.writeSaveSlots([null]);
+      return { ok: true, found: false };
+    }
+
+    const normalizedSlot = normalizeSingleSlot(result.progress);
+    this.profileSlot = normalizedSlot;
+    this.writeSaveSlots([normalizedSlot]);
+    this.discardUnsavedGmDataChanges();
+    this.state = this.normalizeLoadedState(normalizedSlot.snapshot);
+    this.syncPlayerClassData();
+    return { ok: true, found: true };
+  }
+
+  queueRemoteProfileSave(slot) {
+    if (!this.isAuthenticated() || !slot) {
+      return;
+    }
+
+    saveRemotePlayerProgress(slot).then((result) => {
+      if (!result.ok) {
+        this.lastSyncError = result.error ?? "Sync progressi fallita.";
+      }
+    });
+  }
+
+  queueRemoteGameDataSave(data) {
+    if (!this.isAuthenticated()) {
+      return;
+    }
+
+    saveRemoteGameData(data).then((result) => {
+      if (!result.ok) {
+        this.lastSyncError = result.error ?? "Sync dati globali fallita.";
+      }
+    });
   }
 
   start(initialSceneName, payload = {}) {
@@ -391,6 +616,127 @@ export class Game {
     }
 
     this.currentScene.onEnter(payload);
+  }
+
+  defineAutoSaveTrigger(triggerId, config = {}) {
+    const normalizedId = normalizeAutoSaveTriggerId(triggerId);
+    const normalizedConfig = normalizeAutoSaveTriggerConfig(config);
+    this.autoSave.triggers.set(normalizedId, normalizedConfig);
+    return normalizedId;
+  }
+
+  registerAutoSaveTriggers(triggers = {}) {
+    if (!triggers || typeof triggers !== "object") {
+      return;
+    }
+
+    Object.entries(triggers).forEach(([triggerId, config]) => {
+      this.defineAutoSaveTrigger(triggerId, config);
+    });
+  }
+
+  removeAutoSaveTrigger(triggerId) {
+    const normalizedId = normalizeAutoSaveTriggerId(triggerId);
+    this.autoSave.triggers.delete(normalizedId);
+  }
+
+  setAutoSaveEnabled(enabled) {
+    this.autoSave.enabled = Boolean(enabled);
+    if (!this.autoSave.enabled) {
+      this.clearAutoSaveQueue();
+    }
+  }
+
+  setAutoSaveIntervalSeconds(seconds) {
+    this.autoSave.intervalSeconds = clampPositiveNumber(seconds, DEFAULT_AUTO_SAVE_INTERVAL_SECONDS);
+  }
+
+  setAutoSaveMinGapSeconds(seconds) {
+    this.autoSave.minGapSeconds = clampPositiveNumber(seconds, DEFAULT_AUTO_SAVE_MIN_GAP_SECONDS);
+  }
+
+  triggerAutoSave(triggerId = AUTO_SAVE_TRIGGER.MANUAL, payload = null, options = {}) {
+    if (!this.autoSave.enabled) {
+      return false;
+    }
+
+    const normalizedId = normalizeAutoSaveTriggerId(triggerId);
+    const config = this.autoSave.triggers.get(normalizedId) ?? normalizeAutoSaveTriggerConfig();
+    if (config.enabled === false) {
+      return false;
+    }
+
+    this.autoSave.pending = true;
+    this.autoSave.pendingTriggerId = normalizedId;
+    this.autoSave.pendingPayload = payload && typeof payload === "object" ? { ...payload } : null;
+    const immediate = options.immediate === true || config.immediate === true;
+    this.autoSave.pendingImmediate = this.autoSave.pendingImmediate || immediate;
+    if (immediate) {
+      this.processAutoSaveQueue();
+    }
+    return true;
+  }
+
+  clearAutoSaveQueue() {
+    this.autoSave.pending = false;
+    this.autoSave.pendingImmediate = false;
+    this.autoSave.pendingTriggerId = "";
+    this.autoSave.pendingPayload = null;
+    this.autoSave.nextRetryAtSeconds = 0;
+    this.autoSave.elapsedIntervalSeconds = 0;
+  }
+
+  noteSaveCompleted() {
+    const nowSeconds = Date.now() / 1000;
+    this.autoSave.lastSavedAtSeconds = nowSeconds;
+    this.autoSave.nextRetryAtSeconds = 0;
+    this.autoSave.elapsedIntervalSeconds = 0;
+  }
+
+  updateAutoSave(dt) {
+    if (!this.autoSave.enabled) {
+      return;
+    }
+
+    this.autoSave.elapsedIntervalSeconds += dt;
+    if (
+      this.autoSave.intervalSeconds > 0 &&
+      this.autoSave.elapsedIntervalSeconds >= this.autoSave.intervalSeconds
+    ) {
+      this.autoSave.elapsedIntervalSeconds = 0;
+      this.triggerAutoSave(AUTO_SAVE_TRIGGER.INTERVAL);
+    }
+
+    this.processAutoSaveQueue();
+  }
+
+  processAutoSaveQueue() {
+    if (!this.autoSave.enabled || !this.autoSave.pending) {
+      return;
+    }
+
+    const nowSeconds = Date.now() / 1000;
+    if (this.autoSave.nextRetryAtSeconds > nowSeconds) {
+      return;
+    }
+
+    const elapsedFromLastSave = nowSeconds - this.autoSave.lastSavedAtSeconds;
+    const minGap = Math.max(0, this.autoSave.minGapSeconds);
+    const forceNow = this.autoSave.pendingImmediate === true;
+    if (!forceNow && elapsedFromLastSave < minGap) {
+      return;
+    }
+
+    const saved = this.saveToSlot(PRIMARY_SAVE_SLOT_INDEX);
+    if (saved) {
+      this.autoSave.pending = false;
+      this.autoSave.pendingImmediate = false;
+      this.autoSave.pendingTriggerId = "";
+      this.autoSave.pendingPayload = null;
+      return;
+    }
+
+    this.autoSave.nextRetryAtSeconds = nowSeconds + Math.max(1, this.autoSave.retrySeconds);
   }
 
   resetState() {
@@ -569,6 +915,7 @@ export class Game {
     this.runtimeGameData = cloneData(normalizedData);
     this.gmDataDirty = false;
     this.syncPlayerClassData();
+    this.queueRemoteGameDataSave(normalizedData);
     return { ok: true };
   }
 
@@ -649,8 +996,7 @@ export class Game {
   }
 
   getSaveSlots() {
-    const slots = this.readSaveSlots();
-    return slots;
+    return [this.profileSlot ?? null];
   }
 
   saveToSlot(slotIndex) {
@@ -658,16 +1004,50 @@ export class Game {
       return false;
     }
 
-    const slots = this.readSaveSlots();
     const snapshot = cloneData(this.state);
-    slots[slotIndex] = {
+    const slot = {
       version: 1,
       savedAt: Date.now(),
       summary: formatSaveSummary(snapshot),
       snapshot,
     };
+    this.profileSlot = slot;
+    const savedLocally = this.writeSaveSlots([slot]);
+    if (!savedLocally) {
+      return false;
+    }
+    this.queueRemoteProfileSave(slot);
+    this.noteSaveCompleted();
+    return true;
+  }
 
-    return this.writeSaveSlots(slots);
+  async clearProfileProgress() {
+    this.clearAutoSaveQueue();
+    this.profileSlot = null;
+    const clearedLocally = this.writeSaveSlots([null]);
+    this.resetState();
+
+    if (!clearedLocally) {
+      return { ok: false, error: "Impossibile cancellare il salvataggio locale." };
+    }
+
+    if (!this.isAuthenticated()) {
+      return { ok: true };
+    }
+
+    const remoteResult = await saveRemotePlayerProgress({
+      version: 1,
+      clearedAt: Date.now(),
+      summary: null,
+      snapshot: null,
+    });
+    if (!remoteResult.ok) {
+      this.lastSyncError = remoteResult.error ?? "Impossibile cancellare i progressi sul server.";
+      return { ok: false, error: this.lastSyncError };
+    }
+
+    this.lastSyncError = "";
+    return { ok: true };
   }
 
   loadFromSlot(slotIndex) {
@@ -675,8 +1055,7 @@ export class Game {
       return { ok: false, error: "invalid_slot" };
     }
 
-    const slots = this.readSaveSlots();
-    const slot = slots[slotIndex];
+    const slot = this.profileSlot ?? this.readSaveSlots()[0];
     if (!slot || !slot.snapshot) {
       return { ok: false, error: "empty_slot" };
     }
@@ -711,47 +1090,30 @@ export class Game {
   }
 
   readSaveSlots() {
-    const emptySlots = Array.from({ length: SAVE_SLOT_COUNT }, () => null);
-
     try {
       const raw = window.localStorage.getItem(SAVE_STORAGE_KEY);
       if (!raw) {
-        return emptySlots;
+        return [null];
       }
 
       const parsed = JSON.parse(raw);
-      const rawSlots = Array.isArray(parsed?.slots) ? parsed.slots : [];
-
-      return emptySlots.map((_, index) => {
-        const slot = rawSlots[index];
-        if (!slot || typeof slot !== "object") {
-          return null;
-        }
-
-        if (!slot.snapshot || typeof slot.snapshot !== "object") {
-          return null;
-        }
-
-        return {
-          version: slot.version ?? 1,
-          savedAt: Number(slot.savedAt) || 0,
-          summary: slot.summary ?? formatSaveSummary(slot.snapshot),
-          snapshot: slot.snapshot,
-        };
-      });
+      const single = normalizeSingleSlot(parsed?.slot ?? parsed?.slots?.[0] ?? null);
+      this.profileSlot = single;
+      return [single];
     } catch (error) {
-      return emptySlots;
+      return [null];
     }
   }
 
   writeSaveSlots(slots) {
     try {
-      const normalized = Array.from({ length: SAVE_SLOT_COUNT }, (_, index) => slots[index] ?? null);
+      const single = normalizeSingleSlot(Array.isArray(slots) ? slots[0] : null);
+      this.profileSlot = single;
       window.localStorage.setItem(
         SAVE_STORAGE_KEY,
         JSON.stringify({
           version: 1,
-          slots: normalized,
+          slot: single,
         }),
       );
       return true;
@@ -863,6 +1225,7 @@ export class Game {
     }
 
     this.state.progress.playTimeSeconds += dt;
+    this.updateAutoSave(dt);
     this.input.endFrame();
     requestAnimationFrame(this.loop);
   }
