@@ -813,14 +813,6 @@ export async function signInWithGoogle() {
     );
   }
 
-  const apiHealth = await requestJson("/api/health");
-  if (!apiHealth.ok) {
-    return {
-      ok: false,
-      error: apiHealth.error ?? "API autenticazione non disponibile.",
-    };
-  }
-
   try {
     await loadGoogleScript();
   } catch (error) {
