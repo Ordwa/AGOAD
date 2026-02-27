@@ -92,6 +92,15 @@ function buildApiUrl(path) {
   }
 }
 
+function isRunningOnGitHubPages() {
+  if (typeof window === "undefined" || !window.location) {
+    return false;
+  }
+
+  const hostname = String(window.location.hostname || "").toLowerCase();
+  return hostname.endsWith(".github.io");
+}
+
 function readWindowOrigin() {
   if (typeof window === "undefined" || !window.location) {
     return "";
@@ -707,12 +716,16 @@ async function requestJson(path, { method = "GET", body } = {}) {
     const payload = text.length > 0 ? safeJsonParse(text) : {};
     if (!response.ok) {
       const isApiRoute = String(path || "").startsWith("/api/");
+      const baseUrl = readApiBaseUrl();
+      const githubPagesNoApiBase = isApiRoute && isRunningOnGitHubPages() && baseUrl.length === 0;
       let fallbackError = `HTTP ${response.status}`;
       if (isApiRoute && response.status === 501) {
         fallbackError =
           "API non disponibile su questo host (server statico). Avvia il backend Node o configura API_BASE_URL.";
       } else if (isApiRoute && response.status === 404) {
-        fallbackError = "Endpoint API non trovato. Verifica backend e API_BASE_URL.";
+        fallbackError = githubPagesNoApiBase
+          ? "API_BASE_URL non configurato su GitHub Pages. Impostalo in Settings > Secrets and variables > Actions e rifai deploy."
+          : "Endpoint API non trovato. Verifica backend e API_BASE_URL.";
       } else if (isApiRoute && response.status === 405) {
         fallbackError =
           "API non disponibile su questo host (HTTP 405). Avvia backend Node e configura API_BASE_URL.";
