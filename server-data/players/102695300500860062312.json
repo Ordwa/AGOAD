@@ -5,69 +5,11 @@
     "email": "espositoalessandro1997@gmail.com",
     "name": "Alessandro Esposito"
   },
-  "updatedAt": 1772227029683,
+  "updatedAt": 1772227032611,
   "progress": {
     "version": 1,
-    "savedAt": 1772227029241,
-    "summary": {
-      "playerName": "Pippo",
-      "className": "Guerriero",
-      "playTimeSeconds": 60
-    },
-    "snapshot": {
-      "player": {
-        "name": "Pippo",
-        "classId": "warrior",
-        "className": "Guerriero",
-        "maxHp": 48,
-        "hp": 48,
-        "attackMin": 3,
-        "attackMax": 5,
-        "speed": 3,
-        "maxMana": 30,
-        "mana": 30,
-        "specialId": "shield_bash",
-        "specialName": "Shield Bash",
-        "specialCost": 10,
-        "specialPriority": false,
-        "specialDescription": "Blocca il turno nemico e consente un attacco nello stesso turno."
-      },
-      "progress": {
-        "battlesWon": 0,
-        "battlesTotal": 0,
-        "totalSteps": 0,
-        "encounteredEnemyIds": [],
-        "playTimeSeconds": 60.023699999995074,
-        "lastRestPoint": null
-      },
-      "world": {
-        "playerX": null,
-        "playerY": null,
-        "facing": "down"
-      },
-      "inventory": {
-        "lifePotion": {
-          "id": "life_potion",
-          "label": "Life Potion",
-          "description": "Recupera 10 HP",
-          "quantity": 2,
-          "usableInBattle": true
-        },
-        "manaPotion": {
-          "id": "mana_potion",
-          "label": "Mana Potion",
-          "description": "Recupera 10 MP",
-          "quantity": 1,
-          "usableInBattle": true
-        },
-        "amulet": {
-          "id": "amulet",
-          "label": "Amulet",
-          "description": "Nessun effetto per ora.",
-          "quantity": 1,
-          "usableInBattle": false
-        }
-      }
-    }
+    "clearedAt": 1772227032458,
+    "summary": null,
+    "snapshot": null
   }
 }
