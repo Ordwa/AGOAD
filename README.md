@@ -42,6 +42,23 @@ Per produzione (frontend su GitHub Pages + backend su dominio separato):
   - `Variables`: `API_BASE_URL`
   - opzionale: `GOOGLE_CLIENT_ID` (se vuoi iniettarlo a deploy, senza virgolette)
 
+### Deploy backend gratis (Render)
+
+Il progetto include gia' `render.yaml` per deploy rapido del backend Node.
+
+1. Vai su Render e crea un account (login con GitHub).
+2. `New +` -> `Blueprint`, seleziona questo repository.
+3. Conferma il servizio `agoad-backend` (plan `free`).
+4. In Render imposta gli env richiesti:
+   - `GOOGLE_CLIENT_ID`
+   - `GITHUB_TOKEN` (permesso `contents:write`)
+5. Attendi deploy e copia URL pubblico backend, esempio:
+   - `https://agoad-backend.onrender.com`
+6. Verifica: apri `https://agoad-backend.onrender.com/api/health` e controlla `{"ok":true}`.
+7. Su GitHub repository imposta `Settings > Secrets and variables > Actions > Variables`:
+   - `API_BASE_URL=https://agoad-backend.onrender.com`
+8. Fai push su `main`/`master` per rifare deploy Pages.
+
 Note:
 
 - `GITHUB_TOKEN` deve avere permessi di scrittura sui contenuti repo (`contents:write`).
