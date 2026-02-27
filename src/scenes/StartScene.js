@@ -2,7 +2,9 @@ import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG, PALETTE } from "../data/constants.js";
 import { verifyGmEditPassword } from "../utils/security.js";
 
-const MAIN_OPTIONS = ["CONTINUE", "NEW GAME", "SETTINGS"];
+const MAIN_OPTION_CONTINUE = "CONTINUE";
+const MAIN_OPTION_NEW_GAME = "NEW GAME";
+const MAIN_OPTION_SETTINGS = "SETTINGS";
 const OPTIONS_MENU = ["SOUND", "MUSIC", "GM-EDIT", "ELIMINA PG", "LOGOUT", "INDIETRO"];
 const GM_EDIT_MENU = [
   { id: "debug", label: "DEBUG MODE" },
@@ -459,17 +461,23 @@ export class StartScene extends Scene {
       return;
     }
 
+    const options = this.getMainMenuOptions();
+    if (options.length === 0) {
+      return;
+    }
+    this.mainIndex = Math.round(clampNumber(this.mainIndex, 0, options.length - 1));
+
     if (this.pendingMainOptionIndex !== null) {
       return;
     }
 
     if (input.wasPressed("up")) {
-      this.mainIndex = (this.mainIndex + MAIN_OPTIONS.length - 1) % MAIN_OPTIONS.length;
+      this.mainIndex = (this.mainIndex + options.length - 1) % options.length;
       return;
     }
 
     if (input.wasPressed("down")) {
-      this.mainIndex = (this.mainIndex + 1) % MAIN_OPTIONS.length;
+      this.mainIndex = (this.mainIndex + 1) % options.length;
       return;
     }
 
@@ -598,18 +606,27 @@ export class StartScene extends Scene {
   }
 
   activateMainOption(index) {
-    this.mainIndex = index;
+    const options = this.getMainMenuOptions();
+    if (options.length === 0) {
+      return;
+    }
+    this.mainIndex = Math.round(clampNumber(index, 0, options.length - 1));
     if (this.pendingMainOptionIndex !== null) {
       return;
     }
-    this.pendingMainOptionIndex = index;
+    this.pendingMainOptionIndex = this.mainIndex;
     this.pendingMainActionTimer = MAIN_BUTTON_PRESS_ANIMATION_SECONDS;
   }
 
   executeMainOption(index) {
-    this.mainIndex = index;
+    const options = this.getMainMenuOptions();
+    if (options.length === 0) {
+      return;
+    }
+    this.mainIndex = Math.round(clampNumber(index, 0, options.length - 1));
+    const option = options[this.mainIndex] ?? MAIN_OPTION_SETTINGS;
 
-    if (this.mainIndex === 0) {
+    if (option === MAIN_OPTION_CONTINUE) {
       const result = this.game.loadFromSlot(0);
       if (!result.ok) {
         this.notice = "Nessun progresso salvato per questo account.";
@@ -624,13 +641,13 @@ export class StartScene extends Scene {
       return;
     }
 
-    if (this.mainIndex === 1) {
+    if (option === MAIN_OPTION_NEW_GAME) {
       this.game.resetState();
       this.game.changeScene("setup");
       return;
     }
 
-    if (this.mainIndex === 2) {
+    if (option === MAIN_OPTION_SETTINGS) {
       this.mode = "options";
       this.optionsIndex = 0;
       this.notice = "";
@@ -724,7 +741,7 @@ export class StartScene extends Scene {
         }
 
         this.mode = "main";
-        this.mainIndex = 1;
+        this.mainIndex = 0;
         this.optionsIndex = 0;
         this.notice = "Progressi eliminati. Avvia NEW GAME.";
       })
@@ -888,13 +905,28 @@ export class StartScene extends Scene {
       return;
     }
 
-    const layout = getMainMenuLayout(this.game.canvas.width, this.game.canvas.height);
+    const layout = getMainMenuLayout(
+      this.game.canvas.width,
+      this.game.canvas.height,
+      this.hasSavedProgress(),
+    );
     const tappedIndex = layout.itemRects.findIndex((rect) => pointInRect(tapPoint, rect));
     if (tappedIndex < 0) {
       return;
     }
 
     this.activateMainOption(tappedIndex);
+  }
+
+  hasSavedProgress() {
+    const firstSlot = this.game.getSaveSlots()[0];
+    return Boolean(firstSlot && firstSlot.snapshot);
+  }
+
+  getMainMenuOptions() {
+    return this.hasSavedProgress()
+      ? [MAIN_OPTION_CONTINUE, MAIN_OPTION_SETTINGS]
+      : [MAIN_OPTION_NEW_GAME, MAIN_OPTION_SETTINGS];
   }
 
   handleSlotsTouchTap(tapPoint) {
@@ -1499,7 +1531,13 @@ export class StartScene extends Scene {
   drawMainMenu(ctx) {
     const canvasWidth = this.game.canvas.width;
     const canvasHeight = this.game.canvas.height;
-    const layout = getMainMenuLayout(canvasWidth, canvasHeight);
+    const hasSavedProgress = this.hasSavedProgress();
+    const options = this.getMainMenuOptions();
+    if (options.length === 0) {
+      return;
+    }
+    this.mainIndex = Math.round(clampNumber(this.mainIndex, 0, options.length - 1));
+    const layout = getMainMenuLayout(canvasWidth, canvasHeight, hasSavedProgress);
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1526,29 +1564,27 @@ export class StartScene extends Scene {
       return;
     }
 
+    const primaryOption = hasSavedProgress ? MAIN_OPTION_CONTINUE : MAIN_OPTION_NEW_GAME;
+    const primaryImage =
+      primaryOption === MAIN_OPTION_CONTINUE
+        ? this.homeContinueButtonImage
+        : this.homeNewGameButtonImage;
+
     this.drawMainAssetButton(
       ctx,
-      layout.continueRect,
-      this.homeContinueButtonImage,
+      layout.primaryRect,
+      primaryImage,
       this.mainIndex === 0,
-      "CONTINUE",
+      primaryOption,
       this.pendingMainOptionIndex === 0,
-    );
-    this.drawMainAssetButton(
-      ctx,
-      layout.newGameRect,
-      this.homeNewGameButtonImage,
-      this.mainIndex === 1,
-      "NEW GAME",
-      this.pendingMainOptionIndex === 1,
     );
     this.drawMainAssetButton(
       ctx,
       layout.settingsRect,
       this.homeSettingsButtonImage,
-      this.mainIndex === 2,
+      this.mainIndex === 1,
       "SETTINGS",
-      this.pendingMainOptionIndex === 2,
+      this.pendingMainOptionIndex === 1,
     );
 
     if (this.notice.length > 0) {
@@ -1568,10 +1604,10 @@ export class StartScene extends Scene {
   }
 
   drawMainMenuLoadingHint(ctx, layout) {
-    const hintWidth = Math.round(clampNumber(layout.continueRect.w * 0.52, 120, layout.continueRect.w));
-    const hintHeight = Math.round(clampNumber(layout.continueRect.h * 0.36, 20, 72));
+    const hintWidth = Math.round(clampNumber(layout.primaryRect.w * 0.52, 120, layout.primaryRect.w));
+    const hintHeight = Math.round(clampNumber(layout.primaryRect.h * 0.36, 20, 72));
     const x = Math.floor((this.game.canvas.width - hintWidth) / 2);
-    const y = Math.floor(layout.continueRect.y + (layout.continueRect.h - hintHeight) / 2);
+    const y = Math.floor(layout.primaryRect.y + (layout.primaryRect.h - hintHeight) / 2);
     const radius = Math.max(8, Math.round(hintHeight * 0.28));
 
     ctx.fillStyle = "rgba(7, 18, 33, 0.46)";
@@ -2276,48 +2312,43 @@ function createMenuRows(rowCount, rowHeight = 20, rowGap = 4) {
   }));
 }
 
-function getMainMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
+function getMainMenuLayout(
+  surfaceWidth = GAME_CONFIG.width,
+  surfaceHeight = GAME_CONFIG.height,
+  hasSavedProgress = false,
+) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
-  const newGameW = Math.round(clampNumber(surfaceWidth * 0.72, 190, surfaceWidth - sidePadding * 2));
-  const continueW = Math.round(clampNumber(newGameW * 1.3, 250, surfaceWidth - sidePadding * 2));
-  const newGameH = Math.round(clampNumber(surfaceHeight * 0.11, 54, 260));
-  const continueH = Math.round(clampNumber(newGameH * 1.3, 74, 340));
+  const primaryW = Math.round(clampNumber(surfaceWidth * 0.8, 220, surfaceWidth - sidePadding * 2));
+  const primaryH = Math.round(clampNumber(surfaceHeight * 0.13, 68, 260));
   const baseSettingsSize = clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.18, 68, 240);
   const settingsSize = Math.round(clampNumber(baseSettingsSize * 1.3, 88, 312));
   const buttonGap = Math.round(clampNumber(surfaceHeight * 0.028, 12, 56));
 
-  const continueRect = {
-    x: Math.floor((surfaceWidth - continueW) / 2),
+  const primaryRect = {
+    x: Math.floor((surfaceWidth - primaryW) / 2),
     y: 0,
-    w: continueW,
-    h: continueH,
+    w: primaryW,
+    h: primaryH,
   };
 
   const noticeW = surfaceWidth - sidePadding * 2;
   const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
-  const minContinueY = bannerRect.y + bannerRect.h + 18;
-  const maxContinueY =
-    surfaceHeight - topInset - noticeH - 14 - (newGameH + buttonGap + settingsSize + buttonGap);
-  const safeMaxContinueY = Math.max(minContinueY, maxContinueY);
-  const continueY = Math.round(
-    clampNumber(surfaceHeight * 0.5 - continueH / 2, minContinueY, safeMaxContinueY),
+  const minPrimaryY = bannerRect.y + bannerRect.h + 18;
+  const maxPrimaryY =
+    surfaceHeight - topInset - noticeH - 14 - (settingsSize + buttonGap);
+  const safeMaxPrimaryY = Math.max(minPrimaryY, maxPrimaryY);
+  const primaryY = Math.round(
+    clampNumber(surfaceHeight * 0.5 - primaryH / 2, minPrimaryY, safeMaxPrimaryY),
   );
-  continueRect.y = continueY;
-
-  const newGameRect = {
-    x: Math.floor((surfaceWidth - newGameW) / 2),
-    y: continueRect.y + continueRect.h + buttonGap,
-    w: newGameW,
-    h: newGameH,
-  };
+  primaryRect.y = primaryY;
 
   const settingsRect = {
     x: Math.floor((surfaceWidth - settingsSize) / 2),
-    y: newGameRect.y + newGameRect.h + buttonGap,
+    y: primaryRect.y + primaryRect.h + buttonGap,
     w: settingsSize,
     h: settingsSize,
   };
@@ -2330,15 +2361,15 @@ function getMainMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAM
   };
 
   return {
-    continueRect,
-    newGameRect,
+    hasSavedProgress,
+    primaryRect,
     settingsRect,
     bannerRect,
     noticeRect,
     sidePadding,
     topInset,
     noticeFontSize: Math.round(clampNumber(surfaceHeight * 0.023, 6, 34)),
-    itemRects: [continueRect, newGameRect, settingsRect],
+    itemRects: [primaryRect, settingsRect],
   };
 }
 
@@ -3129,8 +3160,8 @@ function clampNumber(value, min, max) {
 function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.9, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.21, 100, 380));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.86, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.19, 92, 360));
   return {
     x: Math.floor((surfaceWidth - bannerW) / 2),
     y: topInset,
