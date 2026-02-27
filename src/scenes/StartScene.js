@@ -2322,7 +2322,7 @@ function getMainMenuLayout(
 
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
-  const primaryW = Math.round(clampNumber(surfaceWidth * 0.8, 220, surfaceWidth - sidePadding * 2));
+  const primaryW = Math.round(clampNumber(surfaceWidth * 0.7, 190, surfaceWidth - sidePadding * 2));
   const primaryH = Math.round(clampNumber(surfaceHeight * 0.13, 68, 260));
   const baseSettingsSize = clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.18, 68, 240);
   const settingsSize = Math.round(clampNumber(baseSettingsSize * 1.3, 88, 312));
@@ -3160,8 +3160,8 @@ function clampNumber(value, min, max) {
 function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.774, 198, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.171, 83, 324));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.8, 205, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.177, 88, 335));
   return {
     x: Math.floor((surfaceWidth - bannerW) / 2),
     y: topInset,
