@@ -1,5 +1,21 @@
 let googleScriptPromise = null;
 const GOOGLE_REDIRECT_STATE_STORAGE_KEY = "agoad_google_redirect_state";
+const GOOGLE_CLIENT_ID_PATTERN = /^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
+
+function sanitizeGoogleClientId(rawValue) {
+  let value = String(rawValue ?? "").trim();
+  if (value.length === 0) {
+    return "";
+  }
+
+  // Accept values accidentally saved with quotes in env/variables.
+  value = value.replace(/^['"]+|['"]+$/g, "").trim();
+  return value;
+}
+
+function isValidGoogleClientId(value) {
+  return GOOGLE_CLIENT_ID_PATTERN.test(String(value ?? "").trim());
+}
 
 function readGoogleClientId() {
   if (typeof window === "undefined") {
@@ -11,7 +27,12 @@ function readGoogleClientId() {
       ? String(window.__APP_CONFIG__.googleClientId ?? "").trim()
       : "";
   if (fromConfig.length > 0) {
-    return fromConfig;
+    const normalized = sanitizeGoogleClientId(fromConfig);
+    if (isValidGoogleClientId(normalized)) {
+      return normalized;
+    }
+
+    console.warn("[AGOAD] googleClientId non valido in __APP_CONFIG__.");
   }
 
   const meta = document.querySelector('meta[name="google-client-id"]');
@@ -19,7 +40,15 @@ function readGoogleClientId() {
     return "";
   }
 
-  return String(meta.getAttribute("content") ?? "").trim();
+  const normalized = sanitizeGoogleClientId(meta.getAttribute("content") ?? "");
+  if (isValidGoogleClientId(normalized)) {
+    return normalized;
+  }
+
+  if (normalized.length > 0) {
+    console.warn("[AGOAD] google-client-id meta tag non valido.");
+  }
+  return "";
 }
 
 function readApiBaseUrl() {
@@ -710,7 +739,8 @@ export async function signInWithGoogle() {
   if (clientId.length === 0) {
     return {
       ok: false,
-      error: "Google Client ID non configurato.",
+      error:
+        "Google Client ID non configurato o non valido. Verifica meta google-client-id / variabile GOOGLE_CLIENT_ID.",
     };
   }
 

@@ -50,9 +50,20 @@ jobs:
             printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'
           }
 
-          if [ -n "${GOOGLE_CLIENT_ID}" ]; then
-            GOOGLE_CLIENT_ID_ESCAPED="$(escape_for_sed "${GOOGLE_CLIENT_ID}")"
+          normalize_google_client_id() {
+            printf '%s' "$1" | sed -E "s/^[[:space:]'\"]+//; s/[[:space:]'\"]+$//"
+          }
+
+          is_valid_google_client_id() {
+            printf '%s' "$1" | grep -Eq '^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$'
+          }
+
+          GOOGLE_CLIENT_ID_NORMALIZED="$(normalize_google_client_id "${GOOGLE_CLIENT_ID}")"
+          if [ -n "${GOOGLE_CLIENT_ID_NORMALIZED}" ] && is_valid_google_client_id "${GOOGLE_CLIENT_ID_NORMALIZED}"; then
+            GOOGLE_CLIENT_ID_ESCAPED="$(escape_for_sed "${GOOGLE_CLIENT_ID_NORMALIZED}")"
             sed -i "s|<meta name=\"google-client-id\" content=\"[^\"]*\" />|<meta name=\"google-client-id\" content=\"${GOOGLE_CLIENT_ID_ESCAPED}\" />|" dist/index.html
+          elif [ -n "${GOOGLE_CLIENT_ID}" ]; then
+            echo "::warning::GOOGLE_CLIENT_ID non valido. Mantengo il valore presente in index.html"
           fi
 
           if [ -n "${API_BASE_URL}" ]; then

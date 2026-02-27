@@ -40,7 +40,7 @@ Per produzione (frontend su GitHub Pages + backend su dominio separato):
 - backend env: `COOKIE_SAMESITE="None"` e `COOKIE_SECURE="1"`
 - in GitHub repo imposta `Settings > Secrets and variables > Actions`:
   - `Variables`: `API_BASE_URL`
-  - opzionale: `GOOGLE_CLIENT_ID` (se vuoi iniettarlo a deploy)
+  - opzionale: `GOOGLE_CLIENT_ID` (se vuoi iniettarlo a deploy, senza virgolette)
 
 Note:
 
