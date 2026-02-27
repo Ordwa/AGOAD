@@ -1,6 +1,8 @@
 let googleScriptPromise = null;
 const GOOGLE_REDIRECT_STATE_STORAGE_KEY = "agoad_google_redirect_state";
 const GOOGLE_CLIENT_ID_PATTERN = /^\d+-[a-z0-9-]+\.apps\.googleusercontent\.com$/i;
+const GOOGLE_SCRIPT_LOAD_TIMEOUT_MS = 12000;
+const GOOGLE_LOGIN_STEP_TIMEOUT_MS = 15000;
 
 function sanitizeGoogleClientId(rawValue) {
   let value = String(rawValue ?? "").trim();
@@ -350,7 +352,7 @@ function requestGoogleIdTokenWithButton(clientId, previousError = "") {
 
     timeoutId = window.setTimeout(() => {
       finish({ ok: false, error: "Timeout login Google." });
-    }, 45000);
+    }, GOOGLE_LOGIN_STEP_TIMEOUT_MS);
 
     try {
       window.google.accounts.id.cancel?.();
@@ -401,7 +403,7 @@ function requestGoogleAccessTokenWithPopup(clientId, previousError = "") {
       }
       settled = true;
       resolve({ ok: false, error: "Timeout login Google (popup)." });
-    }, 45000);
+    }, GOOGLE_LOGIN_STEP_TIMEOUT_MS);
 
     const finish = (result) => {
       if (settled) {
@@ -612,6 +614,7 @@ function loadGoogleScript() {
 
   googleScriptPromise = new Promise((resolve, reject) => {
     if (typeof window === "undefined" || typeof document === "undefined") {
+      googleScriptPromise = null;
       reject(new Error("Ambiente browser non disponibile."));
       return;
     }
@@ -621,12 +624,66 @@ function loadGoogleScript() {
       return;
     }
 
+    let settled = false;
+    let timeoutId = 0;
+
+    const cleanupAndReject = (message) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timeoutId);
+      googleScriptPromise = null;
+      reject(new Error(message));
+    };
+
+    const cleanupAndResolve = () => {
+      if (settled) {
+        return;
+      }
+      if (!window.google?.accounts?.id) {
+        cleanupAndReject("Google Identity non disponibile sul browser corrente.");
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timeoutId);
+      resolve(window.google);
+    };
+
+    timeoutId = window.setTimeout(() => {
+      cleanupAndReject("Timeout caricamento Google Identity.");
+    }, GOOGLE_SCRIPT_LOAD_TIMEOUT_MS);
+
     const existing = document.querySelector('script[data-google-gsi="true"]');
     if (existing) {
-      existing.addEventListener("load", () => resolve(window.google), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Impossibile caricare Google Identity.")), {
-        once: true,
-      });
+      const existingStatus = String(existing.dataset.googleGsiStatus || "").toLowerCase();
+      if (existingStatus === "loaded") {
+        cleanupAndResolve();
+        return;
+      }
+      if (existingStatus === "failed") {
+        cleanupAndReject("Impossibile caricare Google Identity.");
+        return;
+      }
+
+      existing.addEventListener(
+        "load",
+        () => {
+          existing.dataset.googleGsiStatus = "loaded";
+          cleanupAndResolve();
+        },
+        { once: true },
+      );
+      existing.addEventListener(
+        "error",
+        () => {
+          existing.dataset.googleGsiStatus = "failed";
+          cleanupAndReject("Impossibile caricare Google Identity.");
+        },
+        {
+          once: true,
+        },
+      );
       return;
     }
 
@@ -635,8 +692,15 @@ function loadGoogleScript() {
     script.async = true;
     script.defer = true;
     script.dataset.googleGsi = "true";
-    script.onload = () => resolve(window.google);
-    script.onerror = () => reject(new Error("Impossibile caricare Google Identity."));
+    script.dataset.googleGsiStatus = "loading";
+    script.onload = () => {
+      script.dataset.googleGsiStatus = "loaded";
+      cleanupAndResolve();
+    };
+    script.onerror = () => {
+      script.dataset.googleGsiStatus = "failed";
+      cleanupAndReject("Impossibile caricare Google Identity.");
+    };
     document.head.appendChild(script);
   });
 
@@ -792,7 +856,7 @@ export async function signInWithGoogle() {
       }
       settled = true;
       resolve({ ok: false, error: "Timeout login Google." });
-    }, 45000);
+    }, GOOGLE_LOGIN_STEP_TIMEOUT_MS);
 
     const startPrompt = (useFedCmPrompt) => {
       window.google.accounts.id.cancel?.();
