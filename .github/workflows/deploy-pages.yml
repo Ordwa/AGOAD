@@ -69,6 +69,8 @@ jobs:
           if [ -n "${API_BASE_URL}" ]; then
             API_BASE_URL_ESCAPED="$(escape_for_sed "${API_BASE_URL}")"
             sed -i "s|<meta name=\"api-base-url\" content=\"[^\"]*\" />|<meta name=\"api-base-url\" content=\"${API_BASE_URL_ESCAPED}\" />|" dist/index.html
+          else
+            echo "::warning::API_BASE_URL non configurato: il frontend Pages non potrà usare le API backend."
           fi
 
       - name: Upload artifact
