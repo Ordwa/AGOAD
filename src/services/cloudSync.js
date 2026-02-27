@@ -767,8 +767,18 @@ export async function signInWithGoogle() {
   }
 
   if (!window.google?.accounts?.id) {
-    if (embeddedBrowser) {
-      return createExternalBrowserLoginResult("Google Identity non disponibile su browser integrato.");
+    const popupTokenResult = await requestGoogleAccessTokenWithPopup(
+      clientId,
+      "Google Identity non disponibile.",
+    );
+    if (popupTokenResult.ok) {
+      return authenticateWithGoogleToken({
+        accessToken: popupTokenResult.accessToken,
+      });
+    }
+
+    if (embeddedBrowser || shouldSuggestExternalBrowser(popupTokenResult.error || "")) {
+      return createExternalBrowserLoginResult(popupTokenResult.error || "Google Identity non disponibile.");
     }
     return startGoogleRedirectLogin("Google Identity non disponibile.");
   }
@@ -853,7 +863,25 @@ export async function signInWithGoogle() {
       return createExternalBrowserLoginResult(idTokenResult.error || "");
     }
 
-    return startGoogleRedirectLogin(idTokenResult.error || "");
+    const popupTokenResult = await requestGoogleAccessTokenWithPopup(
+      clientId,
+      idTokenResult.error || "Login Google non disponibile.",
+    );
+    if (popupTokenResult.ok) {
+      return authenticateWithGoogleToken({
+        accessToken: popupTokenResult.accessToken,
+      });
+    }
+
+    if (shouldSuggestExternalBrowser(popupTokenResult.error || "")) {
+      return createExternalBrowserLoginResult(popupTokenResult.error || idTokenResult.error || "");
+    }
+
+    if (!shouldUseButtonFallback(popupTokenResult.error || "")) {
+      return popupTokenResult;
+    }
+
+    return startGoogleRedirectLogin(popupTokenResult.error || idTokenResult.error || "");
   }
 
   return authenticateWithGoogleToken({
