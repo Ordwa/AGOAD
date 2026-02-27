@@ -3160,8 +3160,8 @@ function clampNumber(value, min, max) {
 function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.86, 220, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.19, 92, 360));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.774, 198, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(clampNumber(surfaceHeight * 0.171, 83, 324));
   return {
     x: Math.floor((surfaceWidth - bannerW) / 2),
     y: topInset,
