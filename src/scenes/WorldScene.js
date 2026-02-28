@@ -88,10 +88,6 @@ function drawWorldBase(ctx, width, height, backgroundImage, time) {
     ctx.fillRect(0, 0, width, height);
   }
 
-  const vignetteAlpha = 0.34 + Math.sin(time * 0.5) * 0.02;
-  ctx.fillStyle = `rgba(7, 16, 27, ${clampNumber(vignetteAlpha, 0.28, 0.4)})`;
-  ctx.fillRect(0, 0, width, height);
-
   ctx.restore();
 }
 

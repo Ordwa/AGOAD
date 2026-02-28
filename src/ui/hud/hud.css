@@ -1,8 +1,6 @@
 :root {
   --hud-gold: #d8932d;
   --hud-gold-bright: #f2be62;
-  --hud-ink: #0a0f1a;
-  --hud-navy: #0d1630;
   --hud-label: #e9ddb8;
   --hud-shadow: rgba(0, 0, 0, 0.62);
 }
@@ -18,23 +16,22 @@
 }
 
 .game-hud {
-  --hud-controls-height: clamp(178px, 24%, 260px);
-  --hud-viewport-min: clamp(220px, 52%, 620px);
+  --hud-pad-x: clamp(10px, 2.8vw, 16px);
+  --hud-pad-bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(10px, 2vh, 16px));
+  --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.6vh, 12px));
+  --hud-topbar-height: clamp(118px, 16.8vh, 162px);
+  --hud-dpad-size: clamp(168px, 33vw, 292px);
+  --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(8px, 2.2vh, 20px));
+  --hud-controls-zone-height: calc(var(--hud-dpad-size) + var(--hud-dpad-bottom) + clamp(18px, 2.6vh, 28px));
+  --hud-action-size: clamp(76px, 14vw, 112px);
+  --hud-action-bottom: calc(var(--hud-dpad-bottom) + clamp(78px, 10.5vh, 126px));
 
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template-rows: auto auto minmax(var(--hud-viewport-min), 1fr) var(--hud-controls-height);
-  gap: clamp(8px, 1.2vh, 12px);
-  padding-top: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.6vh, 12px));
-  padding-right: clamp(10px, 2.8vw, 16px);
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(10px, 2vh, 16px));
-  padding-left: clamp(10px, 2.8vw, 16px);
   pointer-events: none;
   user-select: none;
 }
 
-.game-hud__topbar-shell,
 .game-hud__topbar,
 .game-hud__tutorial,
 .game-hud__viewport,
@@ -49,6 +46,11 @@
 }
 
 .game-hud__topbar-shell {
+  position: absolute;
+  left: var(--hud-pad-x);
+  right: var(--hud-pad-x);
+  top: var(--hud-top-offset);
+  height: var(--hud-topbar-height);
   z-index: 40;
   border-radius: 10px;
   border: 1px solid #c8821d;
@@ -64,14 +66,14 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: clamp(6px, 1.3vw, 10px);
   width: 100%;
+  height: 100%;
 }
 
 .game-hud__top-button {
   appearance: none;
   border: 0;
   width: 100%;
-  aspect-ratio: 1 / 1;
-  min-height: 66px;
+  min-height: 0;
   padding: clamp(5px, 1.1vw, 7px);
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -174,6 +176,10 @@
 
 .game-hud__tutorial {
   z-index: 35;
+  position: absolute;
+  left: var(--hud-pad-x);
+  right: var(--hud-pad-x);
+  top: calc(var(--hud-top-offset) + var(--hud-topbar-height) + clamp(16px, 2.2vh, 20px));
   min-height: 44px;
   padding: 8px 12px;
   border-radius: 10px;
@@ -194,68 +200,70 @@
 
 .game-hud__viewport {
   z-index: 10;
-  min-height: 0;
+  position: absolute;
+  left: calc(var(--hud-pad-x) + clamp(4px, 0.8vw, 8px));
+  right: calc(var(--hud-pad-x) + clamp(4px, 0.8vw, 8px));
+  top: calc(var(--hud-top-offset) + var(--hud-topbar-height) + clamp(10px, 1.6vh, 14px));
+  bottom: var(--hud-controls-zone-height);
   overflow: hidden;
-  border-radius: 16px;
-  border: 2px solid #d9942d;
-  box-shadow:
-    inset 0 0 0 2px #2a190a,
-    0 10px 18px #00000066;
+  border: clamp(2px, 0.6vw, 4px) solid #d88a1b;
+  border-radius: 18px;
   background: #000;
+  box-shadow: inset 0 0 0 2px #251509;
+}
+
+.game-hud__tutorial:not([hidden]) ~ .game-hud__viewport {
+  top: calc(var(--hud-top-offset) + var(--hud-topbar-height) + clamp(62px, 9vh, 86px));
 }
 
 .game-hud__viewport-surface {
-  position: absolute;
-  inset: 0;
-  background: #000;
+  display: none;
 }
 
 .game-hud__viewport-caption {
   position: absolute;
   left: 50%;
-  bottom: clamp(8px, 1.2vh, 12px);
+  bottom: clamp(12px, 1.8vh, 18px);
   transform: translateX(-50%);
   margin: 0;
-  padding: 6px 16px;
-  border-radius: 10px;
-  border: 1px solid #e1bc78;
-  background: #1a1d2ea8;
+  padding: clamp(6px, 1vh, 8px) clamp(14px, 3vw, 22px);
+  border-radius: 12px;
+  border: 1px solid #c5893a;
+  background: linear-gradient(180deg, #1d253f 0%, #121a30 100%);
+  box-shadow: inset 0 0 0 1px #2e1d11;
+  color: #f1e4c8;
   font-family: "Trebuchet MS", "Verdana", sans-serif;
-  font-size: clamp(0.58rem, 1.6vw, 0.74rem);
-  letter-spacing: 0.08em;
-  color: #f2e4c5;
+  font-size: clamp(0.6rem, 1.65vw, 0.78rem);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .game-hud__controls {
   z-index: 20;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: clamp(12px, 4vw, 20px);
-  min-height: 0;
-  height: 100%;
-  padding-right: clamp(10px, 2.8vw, 22px);
-  padding-left: clamp(12px, 3.6vw, 26px);
-  padding-bottom: clamp(4px, 1vh, 12px);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .game-hud__action-button {
   appearance: none;
   border: 0;
   background: transparent;
-  align-self: center;
-  width: min(23vw, 104px);
+  position: absolute;
+  left: 24%;
+  bottom: var(--hud-action-bottom);
+  transform: translateX(-50%);
+  width: var(--hud-action-size);
   aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
   cursor: pointer;
   padding: 0;
   touch-action: manipulation;
+  pointer-events: auto;
   filter: drop-shadow(0 6px 8px #0000007f);
   transition: transform 90ms steps(2), filter 120ms ease;
-  margin-left: clamp(18px, 5.2vw, 42px);
-  margin-bottom: clamp(8px, 1.4vh, 18px);
 }
 
 .game-hud__action-icon-frame,
@@ -271,14 +279,17 @@
 }
 
 .game-hud__dpad {
-  width: min(46vw, 218px);
+  position: absolute;
+  left: 69%;
+  bottom: var(--hud-dpad-bottom);
+  transform: translateX(-50%);
+  width: var(--hud-dpad-size);
   aspect-ratio: 1 / 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 0;
-  margin-right: clamp(10px, 3.2vw, 28px);
-  margin-bottom: 0;
+  pointer-events: none;
 }
 
 .game-hud__dpad-button {
@@ -291,6 +302,7 @@
   touch-action: none;
   padding: 0;
   transition: transform 90ms steps(2), filter 120ms ease;
+  pointer-events: auto;
 }
 
 .game-hud__dpad-button--up {
@@ -331,17 +343,19 @@
 }
 
 .game-hud__dpad-button.is-pressed,
-.game-hud__dpad-button:active,
-.game-hud__action-button.is-pressed,
-.game-hud__action-button:active {
+.game-hud__dpad-button:active {
   transform: translateY(2px) scale(0.96);
   filter: brightness(0.95);
 }
 
+.game-hud__action-button.is-pressed,
+.game-hud__action-button:active {
+  transform: translateX(-50%) translateY(2px) scale(0.96);
+  filter: brightness(0.95);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .game-hud__top-button:hover,
-  .game-hud__dpad-button:hover,
-  .game-hud__action-button:hover {
+  .game-hud__top-button:hover {
     transform: translateY(-1px);
     filter: brightness(1.05);
   }
@@ -349,48 +363,46 @@
 
 @media (max-height: 740px) {
   .game-hud {
-    --hud-controls-height: clamp(122px, 22%, 172px);
-    --hud-viewport-min: clamp(150px, 44%, 300px);
-    gap: 8px;
+    --hud-topbar-height: clamp(98px, 15.6vh, 130px);
+    --hud-dpad-size: clamp(136px, 29vw, 210px);
+    --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(6px, 1.8vh, 14px));
+    --hud-action-size: clamp(60px, 11.4vw, 90px);
+    --hud-action-bottom: calc(var(--hud-dpad-bottom) + clamp(58px, 8vh, 96px));
   }
 
   .game-hud__top-button {
-    min-height: 58px;
-  }
-
-  .game-hud__controls {
-    padding-right: clamp(8px, 2vw, 14px);
-    padding-left: clamp(8px, 2.4vw, 16px);
-    padding-bottom: clamp(2px, 0.8vh, 8px);
+    padding: 4px;
   }
 
   .game-hud__action-button {
-    width: min(20vw, 86px);
-    margin-left: clamp(10px, 3vw, 24px);
-    margin-bottom: clamp(2px, 0.8vh, 10px);
+    left: 23%;
   }
 
   .game-hud__dpad {
-    width: min(38vw, 168px);
-    margin-right: clamp(4px, 1.8vw, 12px);
+    left: 69.5%;
   }
 }
 
 @media (min-width: 720px) {
   .game-hud {
-    --hud-controls-height: clamp(186px, 24%, 286px);
-    --hud-viewport-min: clamp(250px, 54%, 760px);
-    padding-right: clamp(14px, 2.2vw, 22px);
-    padding-left: clamp(14px, 2.2vw, 22px);
+    --hud-pad-x: clamp(14px, 2.2vw, 22px);
+    --hud-topbar-height: clamp(118px, 15.4vh, 160px);
+    --hud-dpad-size: clamp(188px, 27vw, 292px);
+    --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(10px, 2.1vh, 22px));
+    --hud-action-size: clamp(84px, 10vw, 118px);
+    --hud-action-bottom: calc(var(--hud-dpad-bottom) + clamp(86px, 10vh, 138px));
   }
 
-  .game-hud__dpad {
-    width: min(33vw, 226px);
-    margin-right: clamp(8px, 2.2vw, 24px);
+  .game-hud__viewport {
+    left: calc(var(--hud-pad-x) + clamp(6px, 0.9vw, 12px));
+    right: calc(var(--hud-pad-x) + clamp(6px, 0.9vw, 12px));
   }
 
   .game-hud__action-button {
-    width: min(17vw, 102px);
-    margin-left: clamp(16px, 3vw, 36px);
+    left: 23.5%;
+  }
+
+  .game-hud__dpad {
+    left: 70%;
   }
 }
