@@ -1,5 +1,5 @@
 const HOLD_ACTIONS = new Set(["up", "down", "left", "right"]);
-const TAP_ACTIONS = new Set(["confirm", "back", "pause", "inventory", "profile"]);
+const TAP_ACTIONS = new Set(["confirm", "back", "inventory", "profile"]);
 
 export class MobileControls {
   constructor(rootElement, input, game = null) {

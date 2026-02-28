@@ -26,7 +26,7 @@ export class Input {
       ["p", "profile"],
       ["Enter", "confirm"],
       [" ", "back"],
-      ["Escape", ["back", "pause"]],
+      ["Escape", "back"],
     ]);
 
     this.onKeyDown = this.onKeyDown.bind(this);
