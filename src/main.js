@@ -10,6 +10,9 @@ const [
   { SetupScene },
   { StartScene },
   { WorldScene },
+  { GameHud },
+  { createHudBridge },
+  { HUD_DEFAULT_ACTIVE_TAB, HUD_DEFAULT_TUTORIAL },
 ] = await Promise.all([
   importWithVersion("./core/Game.js"),
   importWithVersion("./core/Input.js"),
@@ -18,6 +21,9 @@ const [
   importWithVersion("./scenes/SetupScene.js"),
   importWithVersion("./scenes/StartScene.js"),
   importWithVersion("./scenes/WorldScene.js"),
+  importWithVersion("./ui/hud/GameHud.js"),
+  importWithVersion("./ui/hud/hudBridge.js"),
+  importWithVersion("./ui/hud/hudConfig.js"),
 ]);
 
 const canvas = document.getElementById("game");
@@ -34,4 +40,29 @@ game.registerScene("start", new StartScene(game));
 game.registerScene("world", new WorldScene(game));
 game.registerScene("battle", new BattleScene(game));
 game.registerScene("profile", new ProfileScene(game));
+
+let hud = null;
+let hudBridge = null;
+const hudRoot = document.getElementById("game-hud-root");
+if (hudRoot instanceof HTMLElement) {
+  hud = new GameHud({
+    root: hudRoot,
+    activeTabId: HUD_DEFAULT_ACTIVE_TAB,
+    tutorialText: HUD_DEFAULT_TUTORIAL,
+    tutorialVisible: true,
+  });
+  hud.mount();
+  hudBridge = createHudBridge({ game, input, hud });
+  game.hud = hud;
+}
+
+window.addEventListener(
+  "beforeunload",
+  () => {
+    hudBridge?.destroy();
+    hud?.destroy();
+  },
+  { once: true },
+);
+
 game.start("start");

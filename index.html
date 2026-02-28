@@ -20,16 +20,19 @@
           document.querySelector('meta[name="google-client-id"]')?.getAttribute("content")?.trim() ?? "",
         apiBaseUrl: document.querySelector('meta[name="api-base-url"]')?.getAttribute("content")?.trim() ?? "",
       };
-      const stylesheet = document.createElement("link");
-      stylesheet.rel = "stylesheet";
-      stylesheet.href = `styles.css?v=${window.__APP_ASSET_VERSION__}`;
-      document.head.appendChild(stylesheet);
+      ["styles.css", "src/ui/hud/hud.css"].forEach((href) => {
+        const stylesheet = document.createElement("link");
+        stylesheet.rel = "stylesheet";
+        stylesheet.href = `${href}?v=${window.__APP_ASSET_VERSION__}`;
+        document.head.appendChild(stylesheet);
+      });
     </script>
   </head>
   <body>
     <main class="layout">
       <section class="game-shell">
         <canvas id="game" width="1170" height="2532" aria-label="Gioco RPG"></canvas>
+        <div id="game-hud-root" class="game-hud-layer" aria-label="HUD di gioco fantasy"></div>
       </section>
     </main>
 
