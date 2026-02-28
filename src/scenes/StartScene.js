@@ -1648,7 +1648,7 @@ export class StartScene extends Scene {
       : rect;
 
     if (image && image.complete && image.naturalWidth > 0) {
-      drawImageCover(ctx, image, visualRect.x, visualRect.y, visualRect.w, visualRect.h);
+      drawImageContain(ctx, image, visualRect.x, visualRect.y, visualRect.w, visualRect.h);
       return;
     }
 
