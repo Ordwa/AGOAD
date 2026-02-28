@@ -35,6 +35,12 @@ export class SetupScene extends Scene {
   update(dt, input) {
     this.timer += dt;
 
+    if (!this.areCoreUiAssetsReady()) {
+      input.consumeTypedChars();
+      input.consumeBackspaceCount();
+      return;
+    }
+
     if (this.step === "name") {
       this.updateNameStep(input);
       return;
@@ -133,6 +139,11 @@ export class SetupScene extends Scene {
   render(ctx) {
     const canvasWidth = this.game.canvas.width;
     const canvasHeight = this.game.canvas.height;
+    if (!this.areCoreUiAssetsReady()) {
+      this.drawUiLoadingScreen(ctx, canvasWidth, canvasHeight);
+      return;
+    }
+
     const layout = getSetupLayout(canvasWidth, canvasHeight);
 
     ctx.save();
@@ -145,12 +156,45 @@ export class SetupScene extends Scene {
     ctx.restore();
   }
 
+  getCoreUiImages() {
+    return [this.uiBackgroundImage, this.titleBannerImage];
+  }
+
+  areCoreUiAssetsReady() {
+    return this.getCoreUiImages().every((image) => isUiImageSettled(image));
+  }
+
+  drawUiLoadingScreen(ctx, surfaceWidth, surfaceHeight) {
+    const spinnerSize = Math.round(clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.13, 28, 86));
+    const spinnerStroke = Math.max(4, Math.round(spinnerSize * 0.13));
+    const spinnerRadius = Math.round((spinnerSize - spinnerStroke) / 2);
+    const centerX = Math.round(surfaceWidth * 0.5);
+    const centerY = Math.round(surfaceHeight * 0.5);
+    const spinAngle = (this.timer * Math.PI * 2) / 0.9;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#0f1116";
+    ctx.fillRect(0, 0, surfaceWidth, surfaceHeight);
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, spinnerRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.26)";
+    ctx.lineWidth = spinnerStroke;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, spinnerRadius, spinAngle, spinAngle + Math.PI * 1.45);
+    ctx.strokeStyle = "#b1ccff";
+    ctx.lineWidth = spinnerStroke;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawBackground(ctx, surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
-    if (
-      this.uiBackgroundImage &&
-      this.uiBackgroundImage.complete &&
-      this.uiBackgroundImage.naturalWidth > 0
-    ) {
+    if (isUiImageUsable(this.uiBackgroundImage)) {
       drawImageCover(ctx, this.uiBackgroundImage, 0, 0, surfaceWidth, surfaceHeight);
       return;
     }
@@ -160,11 +204,7 @@ export class SetupScene extends Scene {
   }
 
   drawTitle(ctx, layout) {
-    if (
-      this.titleBannerImage &&
-      this.titleBannerImage.complete &&
-      this.titleBannerImage.naturalWidth > 0
-    ) {
+    if (isUiImageUsable(this.titleBannerImage)) {
       drawImageCover(
         ctx,
         this.titleBannerImage,
@@ -549,8 +589,36 @@ function createUiImage(relativePath) {
   const imageUrl = buildVersionedAssetUrl(relativePath);
   const image = new Image();
   image.decoding = "async";
+  image.__agoadLoadState = "loading";
+  image.addEventListener("load", () => {
+    image.__agoadLoadState = "ready";
+  });
+  image.addEventListener("error", () => {
+    image.__agoadLoadState = "error";
+  });
   image.src = imageUrl.toString();
   return image;
+}
+
+function isUiImageUsable(image) {
+  return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+}
+
+function isUiImageSettled(image) {
+  if (!image) {
+    return true;
+  }
+
+  if (image.__agoadLoadState === "ready" || image.__agoadLoadState === "error") {
+    return true;
+  }
+
+  if (!image.complete) {
+    return false;
+  }
+
+  image.__agoadLoadState = isUiImageUsable(image) ? "ready" : "error";
+  return true;
 }
 
 function buildVersionedAssetUrl(relativePath) {

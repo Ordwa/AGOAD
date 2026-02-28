@@ -43,7 +43,6 @@ export class StartScene extends Scene {
     this.gmPasswordBuffer = "";
     this.gmAuthStatus = "";
     this.gmAuthUnlockedSession = false;
-    this.gmAuthUnlockedSession = false;
     this.gmAuthToken = 0;
     this.gmActionBusy = false;
     this.gmActionToken = 0;
@@ -1421,6 +1420,11 @@ export class StartScene extends Scene {
   }
 
   render(ctx) {
+    if (!this.areCoreUiAssetsReady()) {
+      this.drawUiLoadingScreen(ctx);
+      return;
+    }
+
     if (this.mode === "auth") {
       this.drawAuthMenu(ctx);
       return;
@@ -1462,6 +1466,51 @@ export class StartScene extends Scene {
     if (this.notice.length > 0) {
       this.drawNotice(ctx, this.notice);
     }
+  }
+
+  getCoreUiImages() {
+    return [
+      this.homeBackgroundImage,
+      this.homeTitleBannerImage,
+      this.homeContinueButtonImage,
+      this.homeNewGameButtonImage,
+      this.homeSettingsButtonImage,
+    ];
+  }
+
+  areCoreUiAssetsReady() {
+    return this.getCoreUiImages().every((image) => isUiImageSettled(image));
+  }
+
+  drawUiLoadingScreen(ctx) {
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+    const spinnerSize = Math.round(clampNumber(Math.min(canvasWidth, canvasHeight) * 0.13, 28, 86));
+    const spinnerStroke = Math.max(4, Math.round(spinnerSize * 0.13));
+    const spinnerRadius = Math.round((spinnerSize - spinnerStroke) / 2);
+    const centerX = Math.round(canvasWidth * 0.5);
+    const centerY = Math.round(canvasHeight * 0.5);
+    const spinAngle = (this.time * Math.PI * 2) / 0.9;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#0f1116";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, spinnerRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(130, 168, 224, 0.26)";
+    ctx.lineWidth = spinnerStroke;
+    ctx.lineCap = "round";
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, spinnerRadius, spinAngle, spinAngle + Math.PI * 1.45);
+    ctx.strokeStyle = "#b1ccff";
+    ctx.lineWidth = spinnerStroke;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    ctx.restore();
   }
 
   drawAuthMenu(ctx) {
@@ -1554,14 +1603,6 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-    if (this.areMainMenuButtonsLoading()) {
-      this.drawMainMenuLoadingHint(ctx, layout);
-      if (this.notice.length > 0) {
-        this.drawMainNotice(ctx, layout.noticeRect, this.notice, layout.noticeFontSize);
-      }
-      ctx.restore();
-      return;
-    }
 
     const primaryOption = hasSavedProgress ? MAIN_OPTION_CONTINUE : MAIN_OPTION_NEW_GAME;
     const primaryImage =
@@ -1599,38 +1640,11 @@ export class StartScene extends Scene {
       this.homeNewGameButtonImage,
       this.homeSettingsButtonImage,
     ];
-    return requiredImages.some((image) => image && !image.complete);
-  }
-
-  drawMainMenuLoadingHint(ctx, layout) {
-    const hintWidth = Math.round(clampNumber(layout.primaryRect.w * 0.52, 120, layout.primaryRect.w));
-    const hintHeight = Math.round(clampNumber(layout.primaryRect.h * 0.36, 20, 72));
-    const x = Math.floor((this.game.canvas.width - hintWidth) / 2);
-    const y = Math.floor(layout.primaryRect.y + (layout.primaryRect.h - hintHeight) / 2);
-    const radius = Math.max(8, Math.round(hintHeight * 0.28));
-
-    ctx.fillStyle = "rgba(7, 18, 33, 0.46)";
-    fillRoundedRect(ctx, x, y, hintWidth, hintHeight, radius);
-    ctx.strokeStyle = "rgba(167, 204, 247, 0.72)";
-    ctx.lineWidth = Math.max(2, Math.round(hintHeight * 0.1));
-    strokeRoundedRect(ctx, x, y, hintWidth, hintHeight, radius);
-
-    const dotCount = (Math.floor(this.time * 3) % 3) + 1;
-    ctx.fillStyle = "#e6f1ff";
-    ctx.font = `${Math.round(clampNumber(hintHeight * 0.45, 10, 34))}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(`LOADING${".".repeat(dotCount)}`, x + hintWidth / 2, y + hintHeight / 2 + 0.5);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
+    return requiredImages.some((image) => !isUiImageSettled(image));
   }
 
   drawMainBanner(ctx, rect) {
-    if (
-      this.homeTitleBannerImage &&
-      this.homeTitleBannerImage.complete &&
-      this.homeTitleBannerImage.naturalWidth > 0
-    ) {
+    if (isUiImageUsable(this.homeTitleBannerImage)) {
       drawImageCover(ctx, this.homeTitleBannerImage, rect.x, rect.y, rect.w, rect.h);
     }
   }
@@ -1646,7 +1660,7 @@ export class StartScene extends Scene {
         }
       : rect;
 
-    if (image && image.complete && image.naturalWidth > 0) {
+    if (isUiImageUsable(image)) {
       drawImageCover(ctx, image, visualRect.x, visualRect.y, visualRect.w, visualRect.h);
       return;
     }
@@ -1788,34 +1802,6 @@ export class StartScene extends Scene {
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.restore();
-  }
-
-  drawOverlayTitleCard(ctx, rect, label) {
-    ctx.fillStyle = "rgba(3, 16, 30, 0.5)";
-    fillRoundedRect(
-      ctx,
-      rect.x,
-      rect.y,
-      rect.w,
-      rect.h,
-      Math.max(10, Math.round(rect.h * 0.3)),
-    );
-    ctx.strokeStyle = "rgba(167, 204, 247, 0.66)";
-    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
-    strokeRoundedRect(
-      ctx,
-      rect.x,
-      rect.y,
-      rect.w,
-      rect.h,
-      Math.max(10, Math.round(rect.h * 0.3)),
-    );
-
-    ctx.fillStyle = "#e8f2ff";
-    ctx.font = `${Math.round(clampNumber(rect.h * 0.43, 11, 44))}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
   }
 
   drawMenuCard(ctx, rect, selected) {
@@ -2418,7 +2404,6 @@ function getAuthMenuLayout(
 
   return {
     bannerRect,
-    titleRect,
     loginRect,
     externalActionRect,
     noticeRect,
@@ -2435,8 +2420,36 @@ function createUiImage(relativePath) {
 
   const image = new Image();
   image.decoding = "async";
+  image.__agoadLoadState = "loading";
+  image.addEventListener("load", () => {
+    image.__agoadLoadState = "ready";
+  });
+  image.addEventListener("error", () => {
+    image.__agoadLoadState = "error";
+  });
   image.src = imageUrl.toString();
   return image;
+}
+
+function isUiImageUsable(image) {
+  return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+}
+
+function isUiImageSettled(image) {
+  if (!image) {
+    return true;
+  }
+
+  if (image.__agoadLoadState === "ready" || image.__agoadLoadState === "error") {
+    return true;
+  }
+
+  if (!image.complete) {
+    return false;
+  }
+
+  image.__agoadLoadState = isUiImageUsable(image) ? "ready" : "error";
+  return true;
 }
 
 function buildVersionedAssetUrl(relativePath) {
@@ -2456,21 +2469,6 @@ function drawImageCover(ctx, image, targetX, targetY, targetW, targetH) {
   }
 
   const scale = Math.max(targetW / sourceW, targetH / sourceH);
-  const drawW = sourceW * scale;
-  const drawH = sourceH * scale;
-  const offsetX = targetX + (targetW - drawW) / 2;
-  const offsetY = targetY + (targetH - drawH) / 2;
-  ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
-}
-
-function drawImageContain(ctx, image, targetX, targetY, targetW, targetH) {
-  const sourceW = image.naturalWidth || image.width;
-  const sourceH = image.naturalHeight || image.height;
-  if (sourceW <= 0 || sourceH <= 0) {
-    return;
-  }
-
-  const scale = Math.min(targetW / sourceW, targetH / sourceH);
   const drawW = sourceW * scale;
   const drawH = sourceH * scale;
   const offsetX = targetX + (targetW - drawW) / 2;
@@ -2591,7 +2589,6 @@ function getOptionsMenuLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = 
 
   return {
     bannerRect,
-    titleRect,
     rowRects,
     soundMinusRect: soundControls.minusRect,
     soundValueRect: soundControls.valueRect,
@@ -2679,7 +2676,6 @@ function getGmAuthLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
 
   return {
     bannerRect,
-    titleRect,
     passwordCardRect,
     passwordInputRect,
     confirmRect,
@@ -2749,7 +2745,6 @@ function getGmEditLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_
 
   return {
     bannerRect,
-    titleRect,
     rowRects,
     debugToggleRect,
     noticeRect,
