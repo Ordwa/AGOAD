@@ -1485,7 +1485,6 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-    this.drawOverlayTitleCard(ctx, layout.titleRect, "ACCOUNT");
     this.drawSettingsRowCard(ctx, layout.loginRect, "LOGIN CON GOOGLE", "", true);
     if (hasExternalAction && layout.externalActionRect) {
       this.drawSettingsRowCard(
@@ -1717,11 +1716,6 @@ export class StartScene extends Scene {
     const layout = getSlotsMenuLayout(slots.length);
     this.drawPanel(ctx, layout.panelX, layout.panelY, layout.panelW, layout.panelH, "#eef2f6");
 
-    ctx.fillStyle = PALETTE.uiText;
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText("SCEGLI SALVATAGGIO", layout.panelX + 10, layout.panelY + 8);
-
     layout.rowRects.forEach((rect, index) => {
       const isBackRow = index === slots.length;
       const selected = this.slotIndex === index;
@@ -1767,8 +1761,6 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-
-    this.drawOverlayTitleCard(ctx, layout.titleRect, "SETTINGS");
 
     layout.rowRects.forEach((rect, index) => {
       const selected = this.optionsIndex === index;
@@ -1911,8 +1903,6 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-    this.drawOverlayTitleCard(ctx, layout.titleRect, "GM-EDIT");
-
     this.drawSettingsRowCard(ctx, layout.passwordCardRect, "PASSWORD", "", true);
     const { x: inputX, y: inputY, w: inputW, h: inputH } = layout.passwordInputRect;
 
@@ -1965,8 +1955,6 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-    this.drawOverlayTitleCard(ctx, layout.titleRect, "GM-EDIT");
-
     layout.rowRects.forEach((rect, index) => {
       const entry = GM_EDIT_MENU[index];
       if (!entry) {
@@ -2059,8 +2047,6 @@ export class StartScene extends Scene {
       layout.panelRect.h,
       panelRadius,
     );
-
-    this.drawOverlayTitleCard(ctx, layout.titleRect, "EDIT CLASSES");
 
     ctx.fillStyle = "rgba(5, 15, 26, 0.78)";
     fillRoundedRect(
@@ -2388,7 +2374,7 @@ function getAuthMenuLayout(
   const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 22, 72));
   const titleRect = {
     x: Math.floor((surfaceWidth - titleW) / 2),
-    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.02, 8, 26)),
+    y: bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.03, 12, 36)),
     w: titleW,
     h: titleH,
   };
