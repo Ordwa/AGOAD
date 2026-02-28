@@ -28,9 +28,8 @@
   --hud-action-size: clamp(96px, 22%, 138px);
   --hud-action-x: 23.6%;
   --hud-dpad-x: 69.9%;
-  --hud-action-center-y-offset: clamp(10px, 1.4vh, 14px);
   --hud-controls-center-from-bottom: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) / 2);
-  --hud-action-bottom: calc(var(--hud-controls-center-from-bottom) - var(--hud-action-size) / 2 - var(--hud-action-center-y-offset));
+  --hud-controls-center-y: calc(100% - var(--hud-controls-center-from-bottom));
   --hud-controls-zone-height: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) + clamp(2px, 0.8vh, 8px));
 
   position: absolute;
@@ -266,8 +265,8 @@
   background: transparent;
   position: absolute;
   left: var(--hud-action-x);
-  bottom: var(--hud-action-bottom);
-  transform: translateX(-50%);
+  top: var(--hud-controls-center-y);
+  transform: translate(-50%, -50%);
   width: var(--hud-action-size);
   aspect-ratio: 1 / 1;
   display: grid;
@@ -295,8 +294,8 @@
 .game-hud__dpad {
   position: absolute;
   left: var(--hud-dpad-x);
-  bottom: calc(var(--hud-controls-center-from-bottom) - var(--hud-dpad-size) / 2);
-  transform: translateX(-50%);
+  top: var(--hud-controls-center-y);
+  transform: translate(-50%, -50%);
   width: var(--hud-dpad-size);
   aspect-ratio: 1 / 1;
   display: block;
@@ -372,7 +371,7 @@
 
 .game-hud__action-button.is-pressed,
 .game-hud__action-button:active {
-  transform: translateX(-50%) translateY(2px) scale(0.96);
+  transform: translate(-50%, -50%) translateY(2px) scale(0.96);
   filter: brightness(0.95);
 }
 
@@ -392,7 +391,6 @@
     --hud-action-size: clamp(78px, 18%, 114px);
     --hud-action-x: 23.4%;
     --hud-dpad-x: 70.1%;
-    --hud-action-center-y-offset: clamp(8px, 1.1vh, 12px);
     --hud-menu-gap: clamp(4px, 1vw, 8px);
     --hud-viewport-x-grow: var(--hud-menu-gap);
   }
@@ -422,7 +420,6 @@
     --hud-action-size: clamp(104px, 15%, 142px);
     --hud-action-x: 23.8%;
     --hud-dpad-x: 70.4%;
-    --hud-action-center-y-offset: clamp(10px, 1vh, 14px);
   }
 
   .game-hud__action-button {
