@@ -32,9 +32,9 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -43,9 +43,9 @@
 .game-hud button,
 .game-hud__top-label,
 .game-hud__tab-glyph {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
   -webkit-tap-highlight-color: transparent;
 }
 

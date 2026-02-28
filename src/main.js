@@ -31,6 +31,16 @@ if (!(canvas instanceof HTMLCanvasElement)) {
   throw new Error("Canvas di gioco non trovato nel DOM.");
 }
 
+const gameShell = document.querySelector(".game-shell");
+if (gameShell instanceof HTMLElement) {
+  gameShell.addEventListener("selectstart", (event) => {
+    event.preventDefault();
+  });
+  gameShell.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
+}
+
 const input = new Input();
 const game = new Game(canvas, input);
 await game.initializeCloudSession();
