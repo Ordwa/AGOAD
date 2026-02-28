@@ -1648,7 +1648,7 @@ export class StartScene extends Scene {
       : rect;
 
     if (image && image.complete && image.naturalWidth > 0) {
-      drawImageContain(ctx, image, visualRect.x, visualRect.y, visualRect.w, visualRect.h);
+      drawImageCover(ctx, image, visualRect.x, visualRect.y, visualRect.w, visualRect.h);
       return;
     }
 
@@ -2324,8 +2324,7 @@ function getMainMenuLayout(
 
   const primaryW = Math.round(bannerRect.w * 0.62);
   const primaryH = Math.round(clampNumber(surfaceHeight * 0.13, 68, 260));
-  const baseSettingsSize = clampNumber(Math.min(surfaceWidth, surfaceHeight) * 0.18, 68, 240);
-  const settingsSize = Math.round(clampNumber(baseSettingsSize * 1.3, 88, 312));
+  const settingsSize = Math.round(clampNumber(bannerRect.w * 0.34, 110, 332));
   const buttonGap = Math.round(clampNumber(surfaceHeight * 0.028, 12, 56));
 
   const primaryRect = {
