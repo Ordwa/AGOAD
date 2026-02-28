@@ -23,7 +23,7 @@
   --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.6vh, 12px));
   --hud-topbar-height: clamp(84px, 12.5vh, 112px);
   --hud-dpad-size: clamp(214px, 39%, 306px);
-  --hud-dpad-button-size: 58%;
+  --hud-dpad-button-size: 56%;
   --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(8px, 2vh, 20px));
   --hud-action-size: clamp(96px, 22%, 138px);
   --hud-action-x: 23.6%;
@@ -386,7 +386,7 @@
   .game-hud {
     --hud-topbar-height: clamp(74px, 11.2vh, 96px);
     --hud-dpad-size: clamp(172px, 35%, 238px);
-    --hud-dpad-button-size: 57%;
+    --hud-dpad-button-size: 55%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(4px, 1.2vh, 12px));
     --hud-action-size: clamp(78px, 18%, 114px);
     --hud-action-x: 23.4%;
@@ -415,7 +415,7 @@
     --hud-viewport-x-grow: var(--hud-menu-gap);
     --hud-topbar-height: clamp(90px, 10.8vh, 118px);
     --hud-dpad-size: clamp(228px, 33%, 318px);
-    --hud-dpad-button-size: 58%;
+    --hud-dpad-button-size: 56%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(10px, 2.1vh, 22px));
     --hud-action-size: clamp(104px, 15%, 142px);
     --hud-action-x: 23.8%;

@@ -8,6 +8,7 @@ import {
 
 const NOOP = () => {};
 const POINTER_END_EVENTS = ["pointerup", "pointercancel", "pointerleave"];
+const DPAD_DIAMOND_HIT_THRESHOLD = 0.9;
 
 export class ConsoleShellHud {
   constructor({
@@ -360,6 +361,10 @@ export class ConsoleShellHud {
       return;
     }
 
+    if (!isPointInsideDiamond(event.currentTarget, event, DPAD_DIAMOND_HIT_THRESHOLD)) {
+      return;
+    }
+
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     this.activePointerDirections.set(event.pointerId, direction);
@@ -632,6 +637,29 @@ function escapeHtml(value) {
 
 function preventDefaultEvent(event) {
   event.preventDefault();
+}
+
+function isPointInsideDiamond(button, event, threshold = 1) {
+  if (!(button instanceof HTMLElement)) {
+    return false;
+  }
+
+  const rect = button.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  const localX = event.clientX - rect.left;
+  const localY = event.clientY - rect.top;
+
+  if (localX < 0 || localX > rect.width || localY < 0 || localY > rect.height) {
+    return false;
+  }
+
+  const normalizedX = Math.abs((localX / rect.width) * 2 - 1);
+  const normalizedY = Math.abs((localY / rect.height) * 2 - 1);
+
+  return normalizedX + normalizedY <= threshold;
 }
 
 export { ConsoleShellHud as GameHud };
