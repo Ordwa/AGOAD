@@ -314,6 +314,7 @@ export class GameHud {
       return;
     }
 
+    event.preventDefault();
     event.currentTarget.classList.add("is-pressed");
   }
 

@@ -32,7 +32,25 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.game-hud *,
+.game-hud img,
+.game-hud button,
+.game-hud__top-label,
+.game-hud__tab-glyph {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.game-hud img {
+  -webkit-user-drag: none;
 }
 
 .game-hud__topbar,
@@ -92,7 +110,7 @@
     inset 0 0 0 5px #2c1b0d,
     0 3px 0 #1b120b,
     0 7px 12px #0000008f;
-  touch-action: manipulation;
+  touch-action: none;
   transition: transform 110ms steps(2), filter 120ms ease, box-shadow 120ms ease;
 }
 
@@ -262,7 +280,7 @@
   place-items: center;
   cursor: pointer;
   padding: 0;
-  touch-action: manipulation;
+  touch-action: none;
   pointer-events: auto;
   filter: drop-shadow(0 6px 8px #0000007f);
   transition: transform 90ms steps(2), filter 120ms ease;
