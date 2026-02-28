@@ -1,5 +1,6 @@
 import { Scene } from "../core/Scene.js";
 
+// WorldScene renders only the in-game content shown inside the console screen window.
 export class WorldScene extends Scene {
   constructor(game) {
     super(game);
@@ -44,7 +45,7 @@ export class WorldScene extends Scene {
       return;
     }
 
-    drawWorldBase(ctx, canvasWidth, canvasHeight, this.uiBackgroundImage, this.time);
+    drawWorldScreenContent(ctx, canvasWidth, canvasHeight, this.uiBackgroundImage);
   }
 }
 
@@ -77,7 +78,7 @@ function drawLoading(ctx, width, height, time) {
   ctx.restore();
 }
 
-function drawWorldBase(ctx, width, height, backgroundImage, time) {
+function drawWorldScreenContent(ctx, width, height, backgroundImage) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 

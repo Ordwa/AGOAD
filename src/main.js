@@ -10,8 +10,8 @@ const [
   { SetupScene },
   { StartScene },
   { WorldScene },
-  { GameHud },
-  { createHudBridge },
+  { ConsoleShellHud },
+  { createConsoleShellBridge },
   { HUD_DEFAULT_ACTIVE_TAB, HUD_DEFAULT_TUTORIAL },
 ] = await Promise.all([
   importWithVersion("./core/Game.js"),
@@ -21,8 +21,8 @@ const [
   importWithVersion("./scenes/SetupScene.js"),
   importWithVersion("./scenes/StartScene.js"),
   importWithVersion("./scenes/WorldScene.js"),
-  importWithVersion("./ui/hud/GameHud.js"),
-  importWithVersion("./ui/hud/hudBridge.js"),
+  importWithVersion("./ui/hud/ConsoleShellHud.js"),
+  importWithVersion("./ui/hud/consoleShellBridge.js"),
   importWithVersion("./ui/hud/hudConfig.js"),
 ]);
 
@@ -51,27 +51,29 @@ game.registerScene("world", new WorldScene(game));
 game.registerScene("battle", new BattleScene(game));
 game.registerScene("profile", new ProfileScene(game));
 
-let hud = null;
-let hudBridge = null;
-const hudRoot = document.getElementById("game-hud-root");
-if (hudRoot instanceof HTMLElement) {
-  hud = new GameHud({
-    root: hudRoot,
+let consoleShellHud = null;
+let consoleShellBridge = null;
+const consoleShellRoot =
+  document.getElementById("game-console-shell-root") ?? document.getElementById("game-hud-root");
+if (consoleShellRoot instanceof HTMLElement) {
+  consoleShellHud = new ConsoleShellHud({
+    root: consoleShellRoot,
     activeTabId: HUD_DEFAULT_ACTIVE_TAB,
     tutorialText: HUD_DEFAULT_TUTORIAL,
     tutorialVisible: false,
     visible: false,
   });
-  hud.mount();
-  hudBridge = createHudBridge({ game, input, hud });
-  game.hud = hud;
+  consoleShellHud.mount();
+  consoleShellBridge = createConsoleShellBridge({ game, input, consoleShell: consoleShellHud });
+  game.consoleShellHud = consoleShellHud;
+  game.hud = consoleShellHud;
 }
 
 window.addEventListener(
   "beforeunload",
   () => {
-    hudBridge?.destroy();
-    hud?.destroy();
+    consoleShellBridge?.destroy();
+    consoleShellHud?.destroy();
   },
   { once: true },
 );
