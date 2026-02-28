@@ -2323,7 +2323,7 @@ function getMainMenuLayout(
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
   // Match button proportions to source assets for consistent scaling.
-  const primaryW = Math.round(clampNumber(bannerRect.w * 0.66, 168, bannerRect.w * 0.86));
+  const primaryW = Math.round(clampNumber(bannerRect.w * 0.70, 168, bannerRect.w * 0.86));
   const primaryH = Math.round(clampNumber(primaryW * (250 / 1098), 34, 98));
   const settingsSize = Math.round(clampNumber(bannerRect.w * 0.31, 86, bannerRect.w * 0.44));
   const buttonGap = Math.round(clampNumber(surfaceHeight * 0.022, 10, 34));
