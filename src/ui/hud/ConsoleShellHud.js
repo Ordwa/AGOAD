@@ -8,7 +8,7 @@ import {
 
 const NOOP = () => {};
 const POINTER_END_EVENTS = ["pointerup", "pointercancel", "pointerleave"];
-const DPAD_DIAMOND_HIT_THRESHOLD = 0.9;
+const DPAD_DIAMOND_HIT_THRESHOLD = 0.7;
 
 export class ConsoleShellHud {
   constructor({
