@@ -22,12 +22,13 @@
   --hud-pad-bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(10px, 2vh, 16px));
   --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.2vh, 10px));
   --hud-topbar-height: clamp(82px, 11.8vh, 104px);
-  --hud-dpad-size: clamp(214px, 39%, 306px);
-  --hud-dpad-button-size: 56%;
+  --hud-dpad-size: clamp(175px, 35.5%, 278px);
+  --hud-dpad-button-size: 54%;
+  --hud-dpad-center-offset: 27.6%;
   --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(8px, 2vh, 20px));
   --hud-action-size: clamp(96px, 22%, 138px);
   --hud-action-x: 23.6%;
-  --hud-dpad-x: 69.9%;
+  --hud-dpad-x: 65%;
   --hud-controls-center-from-bottom: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) / 2);
   --hud-controls-center-y: calc(100% - var(--hud-controls-center-from-bottom));
   --hud-controls-zone-height: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) + clamp(2px, 0.8vh, 8px));
@@ -76,13 +77,11 @@
   top: var(--hud-top-offset);
   height: auto;
   z-index: 40;
-  border: 2px solid #c8842a;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #0b0f18fa 0%, #070a10f5 100%);
-  padding: clamp(5px, 1vw, 8px);
-  box-shadow:
-    inset 0 0 0 1px #efc16752,
-    0 4px 10px #0000007a;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
 }
 
 .game-hud__topbar {
@@ -194,7 +193,7 @@
 }
 
 .game-hud__top-button:focus-visible,
-.game-hud__dpad-button:focus-visible,
+.game-hud__dpad-hitbox:focus-visible,
 .game-hud__action-button:focus-visible {
   outline: 2px solid #ffe4a8;
   outline-offset: 2px;
@@ -304,56 +303,63 @@
   pointer-events: none;
 }
 
-.game-hud__dpad-button {
-  appearance: none;
-  border: 0;
-  background: transparent;
+.game-hud__dpad-key {
   position: absolute;
   width: var(--hud-dpad-button-size);
   height: var(--hud-dpad-button-size);
   margin: 0;
   --dpad-base-transform: translate(0, 0);
   transform: var(--dpad-base-transform);
-  display: grid;
-  place-items: center;
+  pointer-events: none;
+}
+
+.game-hud__dpad-key--up {
+  left: 50%;
+  top: calc(50% - var(--hud-dpad-center-offset));
+  --dpad-base-transform: translate(-50%, -50%);
+}
+
+.game-hud__dpad-key--left {
+  left: calc(50% - var(--hud-dpad-center-offset));
+  top: 50%;
+  --dpad-base-transform: translate(-50%, -50%);
+}
+
+.game-hud__dpad-key--right {
+  left: calc(50% + var(--hud-dpad-center-offset));
+  top: 50%;
+  --dpad-base-transform: translate(-50%, -50%);
+}
+
+.game-hud__dpad-key--down {
+  left: 50%;
+  top: calc(50% + var(--hud-dpad-center-offset));
+  --dpad-base-transform: translate(-50%, -50%);
+}
+
+.game-hud__dpad-hitbox {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 1%, 99% 50%, 50% 99%, 1% 50%);
   cursor: pointer;
   touch-action: none;
-  padding: 0;
-  overflow: visible;
-  transition: transform 90ms steps(2), filter 120ms ease;
   pointer-events: auto;
-}
-
-.game-hud__dpad-button--up {
-  left: 50%;
-  top: 0;
-  --dpad-base-transform: translate(-50%, 0);
-}
-
-.game-hud__dpad-button--left {
-  left: 0;
-  top: 50%;
-  --dpad-base-transform: translate(0, -50%);
-}
-
-.game-hud__dpad-button--right {
-  right: 0;
-  top: 50%;
-  --dpad-base-transform: translate(0, -50%);
-}
-
-.game-hud__dpad-button--down {
-  left: 50%;
-  bottom: 0;
-  --dpad-base-transform: translate(-50%, 0);
 }
 
 .game-hud__dpad-icon-frame {
   width: 100%;
-  aspect-ratio: 1 / 1;
+  height: 100%;
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   pointer-events: none;
+  transition: transform 90ms steps(2), filter 120ms ease;
 }
 
 .game-hud__dpad-icon-frame img {
@@ -365,9 +371,9 @@
   filter: drop-shadow(0 4px 5px #0000008c);
 }
 
-.game-hud__dpad-button.is-pressed,
-.game-hud__dpad-button:active {
-  transform: var(--dpad-base-transform) translateY(2px) scale(0.96);
+.game-hud__dpad-hitbox.is-pressed + .game-hud__dpad-icon-frame,
+.game-hud__dpad-hitbox:active + .game-hud__dpad-icon-frame {
+  transform: translateY(2px) scale(0.96);
   filter: brightness(0.95);
 }
 
@@ -387,8 +393,9 @@
 @media (max-height: 740px) {
   .game-hud {
     --hud-topbar-height: clamp(72px, 10.8vh, 92px);
-    --hud-dpad-size: clamp(172px, 35%, 238px);
-    --hud-dpad-button-size: 55%;
+    --hud-dpad-size: clamp(160px, 32.8%, 220px);
+    --hud-dpad-button-size: 53%;
+    --hud-dpad-center-offset: 27.2%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(4px, 1.2vh, 12px));
     --hud-action-size: clamp(78px, 18%, 114px);
     --hud-action-x: 23.4%;
@@ -416,8 +423,9 @@
     --hud-menu-gap: clamp(6px, 1vw, 9px);
     --hud-viewport-x-grow: var(--hud-menu-gap);
     --hud-topbar-height: clamp(86px, 10.3vh, 112px);
-    --hud-dpad-size: clamp(228px, 33%, 318px);
-    --hud-dpad-button-size: 56%;
+    --hud-dpad-size: clamp(206px, 30.8%, 286px);
+    --hud-dpad-button-size: 54%;
+    --hud-dpad-center-offset: 27.8%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(10px, 2.1vh, 22px));
     --hud-action-size: clamp(104px, 15%, 142px);
     --hud-action-x: 23.8%;

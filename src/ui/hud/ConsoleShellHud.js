@@ -356,19 +356,23 @@ export class ConsoleShellHud {
       return;
     }
 
-    const direction = event.currentTarget.dataset.hudDirection;
-    if (!direction || this.activePointerDirections.has(event.pointerId)) {
+    if (this.activePointerDirections.has(event.pointerId)) {
       return;
     }
 
-    if (!isPointInsideDiamond(event.currentTarget, event, DPAD_DIAMOND_HIT_THRESHOLD)) {
+    const hit = this.resolveDpadHit(event);
+    if (!hit) {
       return;
     }
 
     event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    this.activePointerDirections.set(event.pointerId, direction);
-    event.currentTarget.classList.add("is-pressed");
+    const { direction, button } = hit;
+    button.setPointerCapture?.(event.pointerId);
+    this.activePointerDirections.set(event.pointerId, {
+      direction,
+      button,
+    });
+    button.classList.add("is-pressed");
 
     this.callbacks.onMove({
       direction,
@@ -382,17 +386,17 @@ export class ConsoleShellHud {
       return;
     }
 
-    const direction = this.activePointerDirections.get(event.pointerId);
-    if (!direction) {
+    const pointerState = this.activePointerDirections.get(event.pointerId);
+    if (!pointerState) {
       return;
     }
 
     this.activePointerDirections.delete(event.pointerId);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    event.currentTarget.classList.remove("is-pressed");
+    pointerState.button.releasePointerCapture?.(event.pointerId);
+    pointerState.button.classList.remove("is-pressed");
 
     this.callbacks.onMove({
-      direction,
+      direction: pointerState.direction,
       phase: "end",
       source: "pointer",
     });
@@ -470,9 +474,11 @@ export class ConsoleShellHud {
   }
 
   releaseAllDirections() {
-    this.activePointerDirections.forEach((direction) => {
+    this.activePointerDirections.forEach((pointerState, pointerId) => {
+      pointerState.button?.releasePointerCapture?.(pointerId);
+      pointerState.button?.classList.remove("is-pressed");
       this.callbacks.onMove({
-        direction,
+        direction: pointerState.direction,
         phase: "end",
         source: "pointer",
       });
@@ -513,6 +519,34 @@ export class ConsoleShellHud {
   getTabById(tabId) {
     return this.tabs.find((tab) => tab.id === tabId) ?? null;
   }
+
+  resolveDpadHit(event) {
+    let bestHit = null;
+
+    this.directionButtonById.forEach((button, direction) => {
+      const score = getDiamondHitScore(button, event);
+      if (score > DPAD_DIAMOND_HIT_THRESHOLD) {
+        return;
+      }
+
+      if (!bestHit || score < bestHit.score) {
+        bestHit = {
+          direction,
+          button,
+          score,
+        };
+      }
+    });
+
+    if (!bestHit) {
+      return null;
+    }
+
+    return {
+      direction: bestHit.direction,
+      button: bestHit.button,
+    };
+  }
 }
 
 function buildConsoleShellMarkup(tabs, dpadButtons, actionButton) {
@@ -544,16 +578,17 @@ function buildConsoleShellMarkup(tabs, dpadButtons, actionButton) {
       const iconSrc = escapeHtml(button.iconSrc ?? "");
 
       return `
-        <button
-          type="button"
-          class="game-hud__dpad-button game-hud__dpad-button--${slot}"
-          data-hud-direction="${direction}"
-          aria-label="${ariaLabel}"
-        >
+        <div class="game-hud__dpad-key game-hud__dpad-key--${slot}">
+          <button
+            type="button"
+            class="game-hud__dpad-hitbox"
+            data-hud-direction="${direction}"
+            aria-label="${ariaLabel}"
+          ></button>
           <span class="game-hud__dpad-icon-frame">
             <img src="${iconSrc}" alt="" draggable="false" />
           </span>
-        </button>
+        </div>
       `;
     })
     .join("");
@@ -639,27 +674,26 @@ function preventDefaultEvent(event) {
   event.preventDefault();
 }
 
-function isPointInsideDiamond(button, event, threshold = 1) {
+function getDiamondHitScore(button, event) {
   if (!(button instanceof HTMLElement)) {
-    return false;
+    return Number.POSITIVE_INFINITY;
   }
 
   const rect = button.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) {
-    return false;
+    return Number.POSITIVE_INFINITY;
   }
 
   const localX = event.clientX - rect.left;
   const localY = event.clientY - rect.top;
 
   if (localX < 0 || localX > rect.width || localY < 0 || localY > rect.height) {
-    return false;
+    return Number.POSITIVE_INFINITY;
   }
 
   const normalizedX = Math.abs((localX / rect.width) * 2 - 1);
   const normalizedY = Math.abs((localY / rect.height) * 2 - 1);
-
-  return normalizedX + normalizedY <= threshold;
+  return normalizedX + normalizedY;
 }
 
 export { ConsoleShellHud as GameHud };
