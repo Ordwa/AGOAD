@@ -5,14 +5,14 @@
     "email": "espositoalessandro1997@gmail.com",
     "name": "Alessandro Esposito"
   },
-  "updatedAt": 1772291964557,
+  "updatedAt": 1772291994458,
   "progress": {
     "version": 1,
-    "savedAt": 1772291964003,
+    "savedAt": 1772291994018,
     "summary": {
       "playerName": "Pippo",
       "className": "Guerriero",
-      "playTimeSeconds": 4185
+      "playTimeSeconds": 4215
     },
     "snapshot": {
       "player": {
@@ -37,7 +37,7 @@
         "battlesTotal": 0,
         "totalSteps": 0,
         "encounteredEnemyIds": [],
-        "playTimeSeconds": 4185.022600001797,
+        "playTimeSeconds": 4215.038600001877,
         "lastRestPoint": null
       },
       "world": {
