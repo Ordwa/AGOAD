@@ -16,6 +16,7 @@ export class GameHud {
     activeTabId = HUD_DEFAULT_ACTIVE_TAB,
     tutorialText = HUD_DEFAULT_TUTORIAL,
     tutorialVisible = true,
+    visible = true,
     callbacks = {},
   } = {}) {
     this.root = root;
@@ -24,6 +25,7 @@ export class GameHud {
     this.activeTabId = activeTabId;
     this.tutorialText = String(tutorialText ?? "").trim();
     this.tutorialVisible = Boolean(tutorialVisible);
+    this.visible = Boolean(visible);
 
     this.callbacks = {
       onTabChange: NOOP,
@@ -102,6 +104,7 @@ export class GameHud {
 
     this.syncTopTabs();
     this.syncTutorial();
+    this.setVisible(this.visible);
   }
 
   destroy() {
@@ -193,6 +196,22 @@ export class GameHud {
       this.callbacks.onTutorialChange({
         text: this.tutorialText,
         visible: this.tutorialVisible,
+      });
+    }
+  }
+
+  setVisible(visible) {
+    this.visible = Boolean(visible);
+    this.root.hidden = !this.visible;
+    this.root.classList.toggle("is-hidden", !this.visible);
+
+    if (!this.visible) {
+      this.releaseAllDirections();
+      this.tabButtonById.forEach((button) => {
+        button.classList.remove("is-pressed");
+      });
+      this.directionButtonById.forEach((button) => {
+        button.classList.remove("is-pressed");
       });
     }
   }

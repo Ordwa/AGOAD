@@ -4,11 +4,9 @@ const NOOP = () => {};
 
 const DEFAULT_TAB_ACTIONS = Object.freeze({
   settings: ({ game }) => {
-    if (game.currentSceneName !== "start") {
-      game.changeScene("start");
-    }
+    game.changeScene("start", { startMode: "options" });
   },
-  character: ({ input }) => {
+  profile: ({ input }) => {
     input.tapAction("profile");
   },
   bag: ({ input }) => {
@@ -25,6 +23,8 @@ export function createHudBridge({
   tabActions = {},
   onTabAction = NOOP,
   onMenuOpen = NOOP,
+  sceneTutorialsEnabled = false,
+  isHudVisibleInScene = defaultSceneVisibility,
 } = {}) {
   if (!game || !input || !hud) {
     throw new Error("createHudBridge richiede game, input e hud.");
@@ -46,9 +46,11 @@ export function createHudBridge({
       }
       onTabAction({ tabId, tab, sceneName: game.currentSceneName });
     },
-    onMenuOpen,
+    onMenuOpen: ({ tabId, tab }) => {
+      onMenuOpen({ tabId, tab, sceneName: game.currentSceneName });
+    },
     onMove: ({ direction, phase }) => {
-      if (!direction) {
+      if (!direction || !isHudVisibleInScene(game.currentSceneName)) {
         return;
       }
 
@@ -70,25 +72,10 @@ export function createHudBridge({
   };
 
   hud.updateCallbacks(callbacks);
-  hud.setTutorialText(resolveSceneTutorial(game.currentSceneName), {
-    autoShow: true,
-    emit: false,
-  });
+  syncHudForScene(true);
 
   const syncTimerId = window.setInterval(() => {
-    if (game.currentSceneName === lastSceneName) {
-      return;
-    }
-
-    lastSceneName = game.currentSceneName;
-    hud.setTutorialText(resolveSceneTutorial(lastSceneName), {
-      autoShow: true,
-      emit: false,
-    });
-
-    if (lastSceneName === "profile") {
-      hud.setActiveTab("character", { emit: false });
-    }
+    syncHudForScene(false);
   }, 120);
 
   return {
@@ -106,6 +93,40 @@ export function createHudBridge({
       });
     },
   };
+
+  function syncHudForScene(force) {
+    const sceneName = game.currentSceneName;
+    if (!force && sceneName === lastSceneName) {
+      return;
+    }
+
+    lastSceneName = sceneName;
+    const visible = isHudVisibleInScene(sceneName);
+    hud.setVisible(visible);
+
+    if (!visible) {
+      heldDirections.forEach((direction) => {
+        input.releaseAction(direction);
+      });
+      heldDirections.clear();
+      hud.setTutorialVisible(false, { emit: false });
+      return;
+    }
+
+    if (sceneTutorialsEnabled) {
+      hud.setTutorialText(resolveSceneTutorial(sceneName), {
+        autoShow: true,
+        emit: false,
+      });
+      return;
+    }
+
+    hud.setTutorialVisible(false, { emit: false });
+  }
+}
+
+function defaultSceneVisibility(sceneName) {
+  return sceneName === "world";
 }
 
 function resolveSceneTutorial(sceneName) {

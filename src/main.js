@@ -49,7 +49,8 @@ if (hudRoot instanceof HTMLElement) {
     root: hudRoot,
     activeTabId: HUD_DEFAULT_ACTIVE_TAB,
     tutorialText: HUD_DEFAULT_TUTORIAL,
-    tutorialVisible: true,
+    tutorialVisible: false,
+    visible: false,
   });
   hud.mount();
   hudBridge = createHudBridge({ game, input, hud });

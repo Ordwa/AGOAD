@@ -1,6 +1,6 @@
 const assetUrl = (fileName) => new URL(`../../assets/${fileName}`, import.meta.url).href;
 
-export const HUD_DEFAULT_ACTIVE_TAB = "character";
+export const HUD_DEFAULT_ACTIVE_TAB = "profile";
 
 export const HUD_TOP_TABS = Object.freeze([
   {
@@ -15,13 +15,13 @@ export const HUD_TOP_TABS = Object.freeze([
     tutorialText: "Regola audio, preferenze e opzioni avanzate.",
   },
   {
-    id: "character",
-    label: "Scheda",
-    ariaLabel: "Apri scheda personaggio",
+    id: "profile",
+    label: "Profilo",
+    ariaLabel: "Apri profilo personaggio",
     icon: {
-      type: "glyph",
-      glyph: "PG",
-      style: "character",
+      type: "image",
+      src: assetUrl("UI_button_pg.png"),
+      alt: "",
     },
     tutorialText: "Apri la scheda personaggio per statistiche e equipaggiamento.",
   },
@@ -87,8 +87,7 @@ export const HUD_DPAD_BUTTONS = Object.freeze([
   },
 ]);
 
-export const HUD_DEFAULT_TUTORIAL =
-  "Benvenuto avventuriero. Usa il D-pad per muoverti e la top bar per gestire menu rapidi.";
+export const HUD_DEFAULT_TUTORIAL = "";
 
 export const HUD_SCENE_TUTORIALS = Object.freeze({
   start: "Dal menu iniziale puoi configurare il personaggio, poi entrare nel mondo.",

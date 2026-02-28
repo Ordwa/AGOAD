@@ -23,11 +23,15 @@
   z-index: 6;
 }
 
+.game-hud-layer[hidden] {
+  display: none;
+}
+
 .game-hud {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(220px, 1fr) auto;
   gap: clamp(8px, 1.6vh, 16px);
   padding-top: calc(env(safe-area-inset-top, 0px) + clamp(8px, 2vh, 16px));
   padding-right: clamp(10px, 3vw, 18px);
@@ -44,10 +48,27 @@
 }
 
 .game-hud__topbar {
+  z-index: 40;
+}
+
+.game-hud__tutorial {
+  z-index: 35;
+}
+
+.game-hud__viewport {
+  z-index: 10;
+}
+
+.game-hud__controls {
+  z-index: 20;
+}
+
+.game-hud__topbar {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: clamp(6px, 1.6vw, 12px);
   width: 100%;
+  position: relative;
 }
 
 .game-hud__top-button {
@@ -184,6 +205,7 @@
   letter-spacing: 0.03em;
   color: var(--hud-text-main);
   text-shadow: 0 1px 0 #090b11;
+  position: relative;
 }
 
 .game-hud__tutorial[hidden] {
@@ -304,6 +326,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-end;
+  position: relative;
 }
 
 .game-hud__dpad {
@@ -420,6 +443,7 @@
 @media (max-height: 720px) {
   .game-hud {
     gap: 8px;
+    grid-template-rows: auto auto minmax(160px, 1fr) auto;
   }
 
   .game-hud__tutorial {

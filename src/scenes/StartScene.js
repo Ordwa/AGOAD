@@ -73,9 +73,16 @@ export class StartScene extends Scene {
     this.onPointerCancel = this.onPointerCancel.bind(this);
   }
 
-  onEnter() {
+  onEnter(payload = {}) {
     this.time = 0;
-    this.mode = this.game.isAuthenticated() ? "main" : "auth";
+    const authenticated = this.game.isAuthenticated();
+    const requestedMode = typeof payload.startMode === "string" ? payload.startMode.trim() : "";
+    const allowedRequestedModes = new Set(["auth", "main", "options"]);
+    const defaultMode = authenticated ? "main" : "auth";
+    this.mode = allowedRequestedModes.has(requestedMode) ? requestedMode : defaultMode;
+    if (!authenticated && this.mode !== "auth") {
+      this.mode = "auth";
+    }
     this.mainIndex = 0;
     this.slotIndex = 0;
     this.optionsIndex = 0;
