@@ -191,7 +191,7 @@
 
 .game-hud__viewport {
   z-index: 10;
-  min-height: 0;
+  min-height: 52%;
   overflow: hidden;
   border-radius: 16px;
   border: 2px solid #d9942d;
@@ -226,18 +226,24 @@
 
 .game-hud__controls {
   z-index: 20;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
   gap: clamp(12px, 4vw, 20px);
-  min-height: clamp(118px, 21vh, 190px);
+  min-height: clamp(122px, 22vh, 196px);
+  padding-right: clamp(4px, 1vw, 10px);
+  padding-left: clamp(10px, 2.8vw, 18px);
+  padding-bottom: clamp(0px, 0.8vh, 8px);
 }
 
 .game-hud__action-button {
   appearance: none;
   border: 0;
   background: transparent;
-  width: min(23vw, 112px);
+  grid-column: 1;
+  justify-self: start;
+  align-self: center;
+  width: min(23vw, 108px);
   aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
@@ -261,7 +267,10 @@
 }
 
 .game-hud__dpad {
-  width: min(44vw, 210px);
+  grid-column: 3;
+  justify-self: end;
+  align-self: end;
+  width: min(46vw, 224px);
   aspect-ratio: 1 / 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -346,15 +355,15 @@
   }
 
   .game-hud__controls {
-    min-height: clamp(104px, 19vh, 164px);
+    min-height: clamp(98px, 18vh, 156px);
   }
 
   .game-hud__action-button {
-    width: min(21vw, 96px);
+    width: min(20vw, 90px);
   }
 
   .game-hud__dpad {
-    width: min(40vw, 186px);
+    width: min(38vw, 176px);
   }
 }
 
@@ -365,10 +374,10 @@
   }
 
   .game-hud__dpad {
-    width: min(34vw, 220px);
+    width: min(33vw, 230px);
   }
 
   .game-hud__action-button {
-    width: min(18vw, 116px);
+    width: min(17vw, 110px);
   }
 }
