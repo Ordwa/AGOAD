@@ -92,12 +92,6 @@ function drawWorldBase(ctx, width, height, backgroundImage, time) {
   ctx.fillStyle = `rgba(7, 16, 27, ${clampNumber(vignetteAlpha, 0.28, 0.4)})`;
   ctx.fillRect(0, 0, width, height);
 
-  ctx.fillStyle = "rgba(20, 45, 66, 0.14)";
-  const stripeH = Math.max(8, Math.round(height * 0.028));
-  for (let y = 0; y < height + stripeH; y += stripeH * 2) {
-    ctx.fillRect(0, y, width, stripeH);
-  }
-
   ctx.restore();
 }
 
