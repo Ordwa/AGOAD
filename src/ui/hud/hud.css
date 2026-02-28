@@ -16,12 +16,12 @@
 }
 
 .game-hud {
-  --hud-pad-x: clamp(10px, 2.8vw, 16px);
-  --hud-menu-gap: clamp(6px, 1.3vw, 10px);
+  --hud-pad-x: clamp(10px, 2.2vw, 14px);
+  --hud-menu-gap: clamp(6px, 1.1vw, 8px);
   --hud-viewport-x-grow: var(--hud-menu-gap);
   --hud-pad-bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(10px, 2vh, 16px));
-  --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.6vh, 12px));
-  --hud-topbar-height: clamp(84px, 12.5vh, 112px);
+  --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.2vh, 10px));
+  --hud-topbar-height: clamp(82px, 11.8vh, 104px);
   --hud-dpad-size: clamp(214px, 39%, 306px);
   --hud-dpad-button-size: 56%;
   --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(8px, 2vh, 20px));
@@ -76,11 +76,13 @@
   top: var(--hud-top-offset);
   height: auto;
   z-index: 40;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  box-shadow: none;
+  border: 2px solid #c8842a;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0b0f18fa 0%, #070a10f5 100%);
+  padding: clamp(5px, 1vw, 8px);
+  box-shadow:
+    inset 0 0 0 1px #efc16752,
+    0 4px 10px #0000007a;
 }
 
 .game-hud__topbar {
@@ -170,13 +172,13 @@
 }
 
 .game-hud__top-button.is-selected {
-  filter: brightness(1.08);
+  filter: brightness(1.04);
   box-shadow:
-    inset 0 0 0 1px #ffdf9c63,
-    inset 0 0 0 3px var(--hud-gold-bright),
+    inset 0 0 0 1px #ffdf9c52,
+    inset 0 0 0 3px #f0c06a,
     inset 0 0 0 5px #3b250f,
     0 3px 0 #201106,
-    0 0 14px #f0c06a4f;
+    0 0 8px #f0c06a33;
 }
 
 .game-hud__top-button.is-pressed,
@@ -384,7 +386,7 @@
 
 @media (max-height: 740px) {
   .game-hud {
-    --hud-topbar-height: clamp(74px, 11.2vh, 96px);
+    --hud-topbar-height: clamp(72px, 10.8vh, 92px);
     --hud-dpad-size: clamp(172px, 35%, 238px);
     --hud-dpad-button-size: 55%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(4px, 1.2vh, 12px));
@@ -411,9 +413,9 @@
 @media (min-width: 720px) {
   .game-hud {
     --hud-pad-x: clamp(14px, 2.2vw, 22px);
-    --hud-menu-gap: clamp(6px, 1.1vw, 10px);
+    --hud-menu-gap: clamp(6px, 1vw, 9px);
     --hud-viewport-x-grow: var(--hud-menu-gap);
-    --hud-topbar-height: clamp(90px, 10.8vh, 118px);
+    --hud-topbar-height: clamp(86px, 10.3vh, 112px);
     --hud-dpad-size: clamp(228px, 33%, 318px);
     --hud-dpad-button-size: 56%;
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(10px, 2.1vh, 22px));

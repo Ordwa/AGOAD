@@ -5,7 +5,12 @@ export class WorldScene extends Scene {
   constructor(game) {
     super(game);
     this.time = 0;
-    this.uiBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
+    this.uiBackgroundImage = createUiImageWithFallback([
+      "../assets/goblin_bg_1080x2340 copia.png",
+      "../assets/goblin_bg_1080x2340_copia.png",
+      "../assets/goblin_bg_1080x2340.png",
+      "../assets/UI_startscene_background.png",
+    ]);
   }
 
   onEnter() {
@@ -110,6 +115,44 @@ function createUiImage(relativePath) {
     image.__agoadLoadState = "error";
   });
   image.src = imageUrl.toString();
+  return image;
+}
+
+function createUiImageWithFallback(relativePaths) {
+  if (typeof Image === "undefined") {
+    return null;
+  }
+
+  const candidates = Array.isArray(relativePaths) ? relativePaths.filter(Boolean) : [];
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const image = new Image();
+  image.decoding = "async";
+  image.__agoadLoadState = "loading";
+
+  let candidateIndex = 0;
+  const tryLoadNext = () => {
+    if (candidateIndex >= candidates.length) {
+      image.__agoadLoadState = "error";
+      return;
+    }
+
+    const candidate = candidates[candidateIndex];
+    candidateIndex += 1;
+    const imageUrl = buildVersionedAssetUrl(candidate);
+    image.src = imageUrl.toString();
+  };
+
+  image.addEventListener("load", () => {
+    image.__agoadLoadState = "ready";
+  });
+  image.addEventListener("error", () => {
+    tryLoadNext();
+  });
+
+  tryLoadNext();
   return image;
 }
 

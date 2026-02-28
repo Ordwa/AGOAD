@@ -81,14 +81,7 @@ body::before {
 }
 
 .game-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, #f8dc9b0a 0%, #00000000 28%, #0000003b 100%),
-    radial-gradient(circle at 50% -10%, #f8d18f1f 0%, transparent 52%);
-  z-index: 2;
+  content: none;
 }
 
 #game {
