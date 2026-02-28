@@ -2325,8 +2325,9 @@ function getMainMenuLayout(
   // Match button proportions to source assets for consistent scaling.
   const primaryW = Math.round(clampNumber(bannerRect.w * 0.66, 168, bannerRect.w * 0.86));
   const primaryH = Math.round(clampNumber(primaryW * (250 / 1098), 34, 98));
-  const settingsSize = Math.round(clampNumber(primaryW * 0.56, 92, 220));
+  const settingsSize = Math.round(clampNumber(bannerRect.w * 0.31, 86, bannerRect.w * 0.44));
   const buttonGap = Math.round(clampNumber(surfaceHeight * 0.022, 10, 34));
+  const settingsDropOffset = Math.round(clampNumber(surfaceHeight * 0.012, 4, 16));
 
   const primaryRect = {
     x: Math.floor((surfaceWidth - primaryW) / 2),
@@ -2344,7 +2345,7 @@ function getMainMenuLayout(
     h: noticeH,
   };
 
-  const actionStackH = primaryH + buttonGap + settingsSize;
+  const actionStackH = primaryH + buttonGap + settingsDropOffset + settingsSize;
   const minPrimaryY = bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.035, 14, 34));
   const maxPrimaryY =
     noticeRect.y - Math.round(clampNumber(surfaceHeight * 0.02, 10, 30)) - actionStackH;
@@ -2356,7 +2357,7 @@ function getMainMenuLayout(
 
   const settingsRect = {
     x: Math.floor((surfaceWidth - settingsSize) / 2),
-    y: primaryRect.y + primaryRect.h + buttonGap,
+    y: primaryRect.y + primaryRect.h + buttonGap + settingsDropOffset,
     w: settingsSize,
     h: settingsSize,
   };

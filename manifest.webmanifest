@@ -3,6 +3,7 @@
   "short_name": "AGOAD",
   "start_url": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0f1f33",
   "theme_color": "#0f1f33",
   "icons": [

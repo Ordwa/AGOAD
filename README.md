@@ -12,6 +12,20 @@ node server/index.mjs
 
 Apri `http://localhost:8080`.
 
+### Launcher Chrome locale (macOS)
+
+Per aprire il gioco in finestra app con dimensione iniziale iPhone 13:
+
+```bash
+./scripts/launch-chrome-app-local.sh
+```
+
+Opzionale: URL custom
+
+```bash
+./scripts/launch-chrome-app-local.sh http://localhost:8080
+```
+
 ## Ambienti
 
 - Test locale: `http://localhost:8080`
