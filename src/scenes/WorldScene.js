@@ -18,15 +18,13 @@ export class WorldScene extends Scene {
     if (input.wasPressed("profile")) {
       this.game.changeScene("profile", {
         returnScene: "world",
-        view: "profile",
       });
       return;
     }
 
     if (input.wasPressed("inventory")) {
-      this.game.changeScene("profile", {
+      this.game.changeScene("inventory", {
         returnScene: "world",
-        view: "inventory",
       });
       return;
     }

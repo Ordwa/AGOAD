@@ -5,16 +5,33 @@ const NOOP = () => {};
 const DEFAULT_TAB_ACTIONS = Object.freeze({
   settings: ({ game }) => {
     const originScene = game.currentSceneName;
-    game.changeScene("start", {
-      startMode: "options",
-      returnScene: originScene === "world" ? "world" : "",
+    const returnScene =
+      typeof originScene === "string" && originScene.length > 0 && originScene !== "settings"
+        ? originScene
+        : "start";
+    game.changeScene("settings", {
+      returnScene,
     });
   },
-  profile: ({ input }) => {
-    input.tapAction("profile");
+  profile: ({ game }) => {
+    const originScene = game.currentSceneName;
+    const returnScene =
+      typeof originScene === "string" && originScene.length > 0 && originScene !== "profile"
+        ? originScene
+        : "world";
+    game.changeScene("profile", {
+      returnScene,
+    });
   },
-  bag: ({ input }) => {
-    input.tapAction("inventory");
+  bag: ({ game }) => {
+    const originScene = game.currentSceneName;
+    const returnScene =
+      typeof originScene === "string" && originScene.length > 0 && originScene !== "inventory"
+        ? originScene
+        : "world";
+    game.changeScene("inventory", {
+      returnScene,
+    });
   },
   slot_a: NOOP,
   slot_b: NOOP,

@@ -97,8 +97,10 @@ export const HUD_DEFAULT_TUTORIAL = "";
 
 export const HUD_SCENE_TUTORIALS = Object.freeze({
   start: "Dal menu iniziale puoi configurare il personaggio, poi entrare nel mondo.",
+  settings: "Regola audio, musiche e opzioni di supporto al gameplay.",
   setup: "Completa setup nome/classe e conferma per iniziare la tua avventura.",
   world: "Esplora la mappa, parla con gli NPC e preparati ai combattimenti.",
   battle: "Scegli ATTACK, BAG o SKILLS in base alla situazione del turno.",
   profile: "Gestisci statistiche, inventario e progressione personaggio.",
+  inventory: "Controlla oggetti, consumabili e materiali disponibili.",
 });

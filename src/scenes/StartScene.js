@@ -677,21 +677,15 @@ export class StartScene extends Scene {
     }
 
     if (option === MAIN_OPTION_SETTINGS) {
-      this.mode = "options";
-      this.optionsIndex = 0;
-      this.notice = "";
-      this.optionsBackTargetScene = "";
-      this.optionsBackTargetPayload = null;
-      this.deleteProfileConfirmArmed = false;
+      this.game.changeScene("settings", {
+        returnScene: "start",
+      });
       return;
     }
 
-    this.mode = "options";
-    this.optionsIndex = 0;
-    this.notice = "";
-    this.optionsBackTargetScene = "";
-    this.optionsBackTargetPayload = null;
-    this.deleteProfileConfirmArmed = false;
+    this.game.changeScene("settings", {
+      returnScene: "start",
+    });
   }
 
   startGoogleLoginFlow() {

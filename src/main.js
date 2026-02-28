@@ -6,7 +6,9 @@ const [
   { Game },
   { Input },
   { BattleScene },
+  { InventoryScene },
   { ProfileScene },
+  { SettingsScene },
   { SetupScene },
   { StartScene },
   { WorldScene },
@@ -17,7 +19,9 @@ const [
   importWithVersion("./core/Game.js"),
   importWithVersion("./core/Input.js"),
   importWithVersion("./scenes/BattleScene.js"),
+  importWithVersion("./scenes/InventoryScene.js"),
   importWithVersion("./scenes/ProfileScene.js"),
+  importWithVersion("./scenes/SettingsScene.js"),
   importWithVersion("./scenes/SetupScene.js"),
   importWithVersion("./scenes/StartScene.js"),
   importWithVersion("./scenes/WorldScene.js"),
@@ -47,9 +51,11 @@ await game.initializeCloudSession();
 
 game.registerScene("setup", new SetupScene(game));
 game.registerScene("start", new StartScene(game));
+game.registerScene("settings", new SettingsScene(game));
 game.registerScene("world", new WorldScene(game));
 game.registerScene("battle", new BattleScene(game));
 game.registerScene("profile", new ProfileScene(game));
+game.registerScene("inventory", new InventoryScene(game));
 
 let consoleShellHud = null;
 let consoleShellBridge = null;

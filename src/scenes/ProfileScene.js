@@ -31,8 +31,10 @@ export class ProfileScene extends Scene {
         return;
       }
 
-      this.view = "profile";
-      this.inventoryNotice = "";
+      this.game.changeScene("profile", {
+        returnScene: this.returnScene,
+        returnPayload: this.returnPayload,
+      });
       return;
     }
 
@@ -42,7 +44,10 @@ export class ProfileScene extends Scene {
         return;
       }
 
-      this.view = "inventory";
+      this.game.changeScene("inventory", {
+        returnScene: this.returnScene,
+        returnPayload: this.returnPayload,
+      });
       return;
     }
 
