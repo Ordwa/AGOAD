@@ -17,15 +17,16 @@
 
 .game-hud {
   --hud-pad-x: clamp(10px, 2.8vw, 16px);
-  --hud-viewport-x-grow: clamp(3px, 0.8vw, 7px);
+  --hud-menu-gap: clamp(6px, 1.3vw, 10px);
+  --hud-viewport-x-grow: var(--hud-menu-gap);
   --hud-pad-bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(10px, 2vh, 16px));
   --hud-top-offset: calc(env(safe-area-inset-top, 0px) + clamp(8px, 1.6vh, 12px));
   --hud-topbar-height: clamp(74px, 11vh, 98px);
   --hud-dpad-size: clamp(228px, 42%, 316px);
   --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(8px, 2vh, 20px));
   --hud-action-size: clamp(96px, 22%, 138px);
-  --hud-controls-center-y: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) / 2);
-  --hud-action-bottom: calc(var(--hud-controls-center-y) - var(--hud-action-size) / 2);
+  --hud-controls-center-from-bottom: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) / 2);
+  --hud-action-bottom: calc(var(--hud-controls-center-from-bottom) - var(--hud-action-size) / 2);
   --hud-controls-zone-height: calc(var(--hud-dpad-bottom) + var(--hud-dpad-size) + clamp(2px, 0.8vh, 8px));
 
   position: absolute;
@@ -63,7 +64,7 @@
 .game-hud__topbar {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: clamp(6px, 1.3vw, 10px);
+  gap: var(--hud-menu-gap);
   width: 100%;
   height: auto;
   align-items: start;
@@ -282,7 +283,7 @@
 .game-hud__dpad {
   position: absolute;
   left: 70%;
-  bottom: var(--hud-dpad-bottom);
+  bottom: calc(var(--hud-controls-center-from-bottom) - var(--hud-dpad-size) / 2);
   transform: translateX(-50%);
   width: var(--hud-dpad-size);
   aspect-ratio: 1 / 1;
@@ -297,10 +298,9 @@
   appearance: none;
   border: 0;
   background: transparent;
-  width: 90%;
-  height: 90%;
+  width: 74%;
+  height: 74%;
   place-self: center;
-  clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -331,7 +331,7 @@
 }
 
 .game-hud__dpad-icon-frame {
-  width: 136%;
+  width: 152%;
   aspect-ratio: 1 / 1;
   display: grid;
   place-items: center;
@@ -339,19 +339,19 @@
 }
 
 .game-hud__dpad-button--up .game-hud__dpad-icon-frame {
-  transform: translateY(16%);
+  transform: translateY(18%);
 }
 
 .game-hud__dpad-button--left .game-hud__dpad-icon-frame {
-  transform: translateX(16%);
+  transform: translateX(18%);
 }
 
 .game-hud__dpad-button--right .game-hud__dpad-icon-frame {
-  transform: translateX(-16%);
+  transform: translateX(-18%);
 }
 
 .game-hud__dpad-button--down .game-hud__dpad-icon-frame {
-  transform: translateY(-16%);
+  transform: translateY(-18%);
 }
 
 .game-hud__dpad-icon-frame img {
@@ -388,7 +388,8 @@
     --hud-dpad-size: clamp(176px, 37%, 248px);
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(4px, 1.2vh, 12px));
     --hud-action-size: clamp(78px, 18%, 114px);
-    --hud-viewport-x-grow: clamp(2px, 0.6vw, 5px);
+    --hud-menu-gap: clamp(4px, 1vw, 8px);
+    --hud-viewport-x-grow: var(--hud-menu-gap);
   }
 
   .game-hud__top-button {
@@ -407,7 +408,8 @@
 @media (min-width: 720px) {
   .game-hud {
     --hud-pad-x: clamp(14px, 2.2vw, 22px);
-    --hud-viewport-x-grow: clamp(4px, 0.9vw, 10px);
+    --hud-menu-gap: clamp(6px, 1.1vw, 10px);
+    --hud-viewport-x-grow: var(--hud-menu-gap);
     --hud-topbar-height: clamp(72px, 8.8vh, 96px);
     --hud-dpad-size: clamp(232px, 34%, 320px);
     --hud-dpad-bottom: calc(var(--hud-pad-bottom) + clamp(10px, 2.1vh, 22px));
