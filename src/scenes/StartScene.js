@@ -2317,15 +2317,16 @@ function getMainMenuLayout(
   surfaceHeight = GAME_CONFIG.height,
   hasSavedProgress = false,
 ) {
-  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
+  const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 96));
   const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
 
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
-  const primaryW = Math.round(bannerRect.w * 0.62);
-  const primaryH = Math.round(clampNumber(surfaceHeight * 0.13, 68, 260));
-  const settingsSize = Math.round(clampNumber(bannerRect.w * 0.34, 110, 332));
-  const buttonGap = Math.round(clampNumber(surfaceHeight * 0.028, 12, 56));
+  // Match button proportions to source assets for consistent scaling.
+  const primaryW = Math.round(clampNumber(bannerRect.w * 0.66, 168, bannerRect.w * 0.86));
+  const primaryH = Math.round(clampNumber(primaryW * (250 / 1098), 34, 98));
+  const settingsSize = Math.round(clampNumber(primaryW * 0.56, 92, 220));
+  const buttonGap = Math.round(clampNumber(surfaceHeight * 0.022, 10, 34));
 
   const primaryRect = {
     x: Math.floor((surfaceWidth - primaryW) / 2),
@@ -2336,9 +2337,17 @@ function getMainMenuLayout(
 
   const noticeW = surfaceWidth - sidePadding * 2;
   const noticeH = Math.round(clampNumber(surfaceHeight * 0.055, 18, 54));
-  const minPrimaryY = bannerRect.y + bannerRect.h + 18;
+  const noticeRect = {
+    x: sidePadding,
+    y: surfaceHeight - topInset - noticeH,
+    w: noticeW,
+    h: noticeH,
+  };
+
+  const actionStackH = primaryH + buttonGap + settingsSize;
+  const minPrimaryY = bannerRect.y + bannerRect.h + Math.round(clampNumber(surfaceHeight * 0.035, 14, 34));
   const maxPrimaryY =
-    surfaceHeight - topInset - noticeH - 14 - (settingsSize + buttonGap);
+    noticeRect.y - Math.round(clampNumber(surfaceHeight * 0.02, 10, 30)) - actionStackH;
   const safeMaxPrimaryY = Math.max(minPrimaryY, maxPrimaryY);
   const primaryY = Math.round(
     clampNumber(surfaceHeight * 0.5 - primaryH / 2, minPrimaryY, safeMaxPrimaryY),
@@ -2350,13 +2359,6 @@ function getMainMenuLayout(
     y: primaryRect.y + primaryRect.h + buttonGap,
     w: settingsSize,
     h: settingsSize,
-  };
-
-  const noticeRect = {
-    x: sidePadding,
-    y: surfaceHeight - topInset - noticeH,
-    w: noticeW,
-    h: noticeH,
   };
 
   return {
@@ -3158,9 +3160,15 @@ function clampNumber(value, min, max) {
 
 function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.05, 10, 80));
-  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
-  const bannerW = Math.round(clampNumber(surfaceWidth * 0.8, 205, surfaceWidth - sidePadding * 2));
-  const bannerH = Math.round(clampNumber(surfaceHeight * 0.177, 88, 335));
+  const topInset = Math.round(clampNumber(surfaceHeight * 0.042, 12, 96));
+  const bannerW = Math.round(clampNumber(surfaceWidth * 0.82, 220, surfaceWidth - sidePadding * 2));
+  const bannerH = Math.round(
+    clampNumber(
+      bannerW * (369 / 1226),
+      68,
+      Math.min(220, surfaceHeight * 0.22),
+    ),
+  );
   return {
     x: Math.floor((surfaceWidth - bannerW) / 2),
     y: topInset,
