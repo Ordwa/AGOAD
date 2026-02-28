@@ -49,6 +49,8 @@ export class StartScene extends Scene {
     this.authActionBusy = false;
     this.authRecoveryAction = null;
     this.notice = "";
+    this.optionsBackTargetScene = "";
+    this.optionsBackTargetPayload = null;
     this.deleteProfileConfirmArmed = false;
     this.pointerEventsBound = false;
     this.activePointerId = null;
@@ -80,9 +82,28 @@ export class StartScene extends Scene {
     const allowedRequestedModes = new Set(["auth", "main", "options"]);
     const defaultMode = authenticated ? "main" : "auth";
     this.mode = allowedRequestedModes.has(requestedMode) ? requestedMode : defaultMode;
-    if (!authenticated && this.mode !== "auth") {
+    const hasExplicitReturnScene =
+      typeof payload.returnScene === "string" && payload.returnScene.trim().length > 0;
+    const allowOptionsFromScene = this.mode === "options" && hasExplicitReturnScene;
+    if (!authenticated && this.mode !== "auth" && !allowOptionsFromScene) {
       this.mode = "auth";
     }
+    const payloadReturnScene =
+      this.mode === "options" && typeof payload.returnScene === "string" ? payload.returnScene : "";
+    const fallbackReturnScene =
+      this.mode === "options" && typeof this.game.getPreviousSceneName === "function"
+        ? String(this.game.getPreviousSceneName() ?? "")
+        : "";
+    this.optionsBackTargetScene =
+      payloadReturnScene.length > 0
+        ? payloadReturnScene
+        : fallbackReturnScene.length > 0 && fallbackReturnScene !== "start"
+          ? fallbackReturnScene
+          : "";
+    this.optionsBackTargetPayload =
+      this.mode === "options" && payload.returnPayload && typeof payload.returnPayload === "object"
+        ? { ...payload.returnPayload }
+        : null;
     this.mainIndex = 0;
     this.slotIndex = 0;
     this.optionsIndex = 0;
@@ -124,6 +145,8 @@ export class StartScene extends Scene {
     this.gmClassesEditor = null;
     this.gmClassesSelection = { row: 0, classIndex: 0 };
     this.gmClassesRowOffset = 0;
+    this.optionsBackTargetScene = "";
+    this.optionsBackTargetPayload = null;
     this.deleteProfileConfirmArmed = false;
     this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
@@ -550,7 +573,7 @@ export class StartScene extends Scene {
     }
 
     if (input.wasPressed("back")) {
-      this.mode = "main";
+      this.handleOptionsBack();
       this.deleteProfileConfirmArmed = false;
       return;
     }
@@ -657,6 +680,8 @@ export class StartScene extends Scene {
       this.mode = "options";
       this.optionsIndex = 0;
       this.notice = "";
+      this.optionsBackTargetScene = "";
+      this.optionsBackTargetPayload = null;
       this.deleteProfileConfirmArmed = false;
       return;
     }
@@ -664,6 +689,8 @@ export class StartScene extends Scene {
     this.mode = "options";
     this.optionsIndex = 0;
     this.notice = "";
+    this.optionsBackTargetScene = "";
+    this.optionsBackTargetPayload = null;
     this.deleteProfileConfirmArmed = false;
   }
 
@@ -718,6 +745,8 @@ export class StartScene extends Scene {
         this.mode = "auth";
         this.mainIndex = 0;
         this.optionsIndex = 0;
+        this.optionsBackTargetScene = "";
+        this.optionsBackTargetPayload = null;
         this.authRecoveryAction = null;
         this.gmAuthUnlockedSession = false;
         this.notice = "Disconnesso. Accedi con Google.";
@@ -749,6 +778,8 @@ export class StartScene extends Scene {
         this.mode = "main";
         this.mainIndex = 0;
         this.optionsIndex = 0;
+        this.optionsBackTargetScene = "";
+        this.optionsBackTargetPayload = null;
         this.notice = "Progressi eliminati. Avvia NEW GAME.";
       })
       .catch((error) => {
@@ -888,8 +919,24 @@ export class StartScene extends Scene {
       return;
     }
 
-    this.mode = "main";
+    this.handleOptionsBack();
     this.deleteProfileConfirmArmed = false;
+  }
+
+  handleOptionsBack() {
+    if (this.optionsBackTargetScene.length > 0) {
+      const targetScene = this.optionsBackTargetScene;
+      const payload =
+        this.optionsBackTargetPayload && typeof this.optionsBackTargetPayload === "object"
+          ? { ...this.optionsBackTargetPayload }
+          : {};
+      this.optionsBackTargetScene = "";
+      this.optionsBackTargetPayload = null;
+      this.game.changeScene(targetScene, payload);
+      return;
+    }
+
+    this.mode = "main";
   }
 
   shiftSoundLevel(delta) {

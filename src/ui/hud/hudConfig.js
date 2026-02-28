@@ -87,6 +87,12 @@ export const HUD_DPAD_BUTTONS = Object.freeze([
   },
 ]);
 
+export const HUD_ACTION_BUTTON = Object.freeze({
+  action: "confirm",
+  ariaLabel: "Azione principale",
+  iconSrc: assetUrl("UI_button_action.png"),
+});
+
 export const HUD_DEFAULT_TUTORIAL = "";
 
 export const HUD_SCENE_TUTORIALS = Object.freeze({

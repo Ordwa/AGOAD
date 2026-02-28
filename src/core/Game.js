@@ -416,6 +416,7 @@ export class Game {
     this.scenes = new Map();
     this.currentScene = null;
     this.currentSceneName = "";
+    this.previousSceneName = "";
     this.lastFrameTime = 0;
 
     this.account = {
@@ -601,10 +602,12 @@ export class Game {
       throw new Error(`Scene "${name}" non trovata.`);
     }
 
+    const outgoingSceneName = this.currentSceneName;
     if (this.currentScene) {
       this.currentScene.onExit();
     }
 
+    this.previousSceneName = outgoingSceneName;
     this.currentSceneName = name;
     this.currentScene = nextScene;
 
@@ -616,6 +619,10 @@ export class Game {
     }
 
     this.currentScene.onEnter(payload);
+  }
+
+  getPreviousSceneName() {
+    return this.previousSceneName;
   }
 
   defineAutoSaveTrigger(triggerId, config = {}) {

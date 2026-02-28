@@ -1,4 +1,5 @@
 import {
+  HUD_ACTION_BUTTON,
   HUD_DEFAULT_ACTIVE_TAB,
   HUD_DEFAULT_TUTORIAL,
   HUD_DPAD_BUTTONS,
@@ -13,30 +14,36 @@ export class GameHud {
     root,
     tabs = HUD_TOP_TABS,
     dpadButtons = HUD_DPAD_BUTTONS,
+    actionButton = HUD_ACTION_BUTTON,
     activeTabId = HUD_DEFAULT_ACTIVE_TAB,
     tutorialText = HUD_DEFAULT_TUTORIAL,
     tutorialVisible = true,
+    enableTabTutorial = false,
     visible = true,
     callbacks = {},
   } = {}) {
     this.root = root;
     this.tabs = Array.isArray(tabs) ? tabs : HUD_TOP_TABS;
     this.dpadButtons = Array.isArray(dpadButtons) ? dpadButtons : HUD_DPAD_BUTTONS;
+    this.actionButton = actionButton && typeof actionButton === "object" ? actionButton : HUD_ACTION_BUTTON;
     this.activeTabId = activeTabId;
     this.tutorialText = String(tutorialText ?? "").trim();
     this.tutorialVisible = Boolean(tutorialVisible);
+    this.enableTabTutorial = Boolean(enableTabTutorial);
     this.visible = Boolean(visible);
 
     this.callbacks = {
       onTabChange: NOOP,
       onMenuOpen: NOOP,
       onMove: NOOP,
+      onAction: NOOP,
       onTutorialChange: NOOP,
       ...callbacks,
     };
 
     this.tabButtonById = new Map();
     this.directionButtonById = new Map();
+    this.actionControlButtons = [];
     this.activePointerDirections = new Map();
     this.activeKeyboardDirections = new Set();
 
@@ -51,6 +58,10 @@ export class GameHud {
     this.onDpadKeyDown = this.onDpadKeyDown.bind(this);
     this.onDpadKeyUp = this.onDpadKeyUp.bind(this);
     this.onDpadBlur = this.onDpadBlur.bind(this);
+
+    this.onActionPointerDown = this.onActionPointerDown.bind(this);
+    this.onActionPointerUp = this.onActionPointerUp.bind(this);
+    this.onActionKeyDown = this.onActionKeyDown.bind(this);
   }
 
   mount() {
@@ -58,7 +69,7 @@ export class GameHud {
       throw new Error("Root HUD non valido.");
     }
 
-    this.root.innerHTML = buildHudMarkup(this.tabs, this.dpadButtons);
+    this.root.innerHTML = buildHudMarkup(this.tabs, this.dpadButtons, this.actionButton);
     this.root.classList.add("game-hud");
 
     this.tutorialElement = this.root.querySelector("[data-hud-tutorial]");
@@ -97,6 +108,16 @@ export class GameHud {
       button.addEventListener("contextmenu", preventDefaultEvent);
     });
 
+    this.actionControlButtons = Array.from(this.root.querySelectorAll("[data-hud-action]"));
+    this.actionControlButtons.forEach((button) => {
+      button.addEventListener("pointerdown", this.onActionPointerDown);
+      button.addEventListener("pointerup", this.onActionPointerUp);
+      button.addEventListener("pointercancel", this.onActionPointerUp);
+      button.addEventListener("pointerleave", this.onActionPointerUp);
+      button.addEventListener("keydown", this.onActionKeyDown);
+      button.addEventListener("contextmenu", preventDefaultEvent);
+    });
+
     if (!this.tabButtonById.has(this.activeTabId)) {
       const fallbackTab = this.tabs[0]?.id ?? "";
       this.activeTabId = fallbackTab;
@@ -127,6 +148,16 @@ export class GameHud {
       button.removeEventListener("blur", this.onDpadBlur);
       button.removeEventListener("contextmenu", preventDefaultEvent);
     });
+
+    this.actionControlButtons.forEach((button) => {
+      button.removeEventListener("pointerdown", this.onActionPointerDown);
+      button.removeEventListener("pointerup", this.onActionPointerUp);
+      button.removeEventListener("pointercancel", this.onActionPointerUp);
+      button.removeEventListener("pointerleave", this.onActionPointerUp);
+      button.removeEventListener("keydown", this.onActionKeyDown);
+      button.removeEventListener("contextmenu", preventDefaultEvent);
+    });
+    this.actionControlButtons = [];
 
     this.releaseAllDirections();
     this.root.innerHTML = "";
@@ -213,7 +244,65 @@ export class GameHud {
       this.directionButtonById.forEach((button) => {
         button.classList.remove("is-pressed");
       });
+      this.actionControlButtons.forEach((button) => {
+        button.classList.remove("is-pressed");
+      });
     }
+  }
+
+  onActionPointerDown(event) {
+    if (!(event.currentTarget instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    const action = event.currentTarget.dataset.hudAction;
+    if (!action) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.classList.add("is-pressed");
+    this.callbacks.onAction({
+      action,
+      source: "pointer",
+    });
+  }
+
+  onActionPointerUp(event) {
+    if (!(event.currentTarget instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    event.currentTarget.classList.remove("is-pressed");
+  }
+
+  onActionKeyDown(event) {
+    if (!(event.currentTarget instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const action = event.currentTarget.dataset.hudAction;
+    if (!action) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.classList.add("is-pressed");
+    this.callbacks.onAction({
+      action,
+      source: "keyboard",
+    });
+    window.setTimeout(() => {
+      event.currentTarget.classList.remove("is-pressed");
+    }, 120);
   }
 
   onTopButtonPressStart(event) {
@@ -249,7 +338,7 @@ export class GameHud {
     this.setActiveTab(tabId, { emit: true });
 
     const tab = this.getTabById(tabId);
-    if (tab?.tutorialText) {
+    if (this.enableTabTutorial && tab?.tutorialText) {
       this.setTutorialText(tab.tutorialText, { autoShow: true, emit: true });
     }
   }
@@ -418,7 +507,7 @@ export class GameHud {
   }
 }
 
-function buildHudMarkup(tabs, dpadButtons) {
+function buildHudMarkup(tabs, dpadButtons, actionButton) {
   const topBar = tabs
     .map((tab) => {
       const label = escapeHtml(tab.label ?? tab.id ?? "Tab");
@@ -461,30 +550,51 @@ function buildHudMarkup(tabs, dpadButtons) {
     })
     .join("");
 
+  const actionMarkup = renderActionButton(actionButton);
+
   return `
-    <nav class="game-hud__topbar" aria-label="HUD top navigation">
-      ${topBar}
-    </nav>
+    <section class="game-hud__topbar-shell">
+      <nav class="game-hud__topbar" aria-label="HUD top navigation">
+        ${topBar}
+      </nav>
+    </section>
 
     <section class="game-hud__tutorial" data-hud-tutorial role="status" aria-live="polite"></section>
 
     <section class="game-hud__viewport" aria-label="Area di gioco">
-      <div class="game-hud__viewport-surface" aria-hidden="true">
-        <div class="game-hud__tile-layer"></div>
-        <div class="game-hud__shadow-layer"></div>
-        <div class="game-hud__hero" aria-hidden="true">
-          <span class="game-hud__hero-head"></span>
-          <span class="game-hud__hero-body"></span>
-        </div>
-      </div>
+      <div class="game-hud__viewport-surface" aria-hidden="true"></div>
       <p class="game-hud__viewport-caption">World viewport placeholder</p>
     </section>
 
     <section class="game-hud__controls" aria-label="Controlli touch">
+      ${actionMarkup}
       <div class="game-hud__dpad" role="group" aria-label="Croce direzionale">
         ${dpad}
       </div>
     </section>
+  `;
+}
+
+function renderActionButton(actionButton) {
+  if (!actionButton || typeof actionButton !== "object") {
+    return "";
+  }
+
+  const action = escapeHtml(actionButton.action ?? "confirm");
+  const ariaLabel = escapeHtml(actionButton.ariaLabel ?? "Azione");
+  const iconSrc = escapeHtml(actionButton.iconSrc ?? "");
+
+  return `
+    <button
+      type="button"
+      class="game-hud__action-button"
+      data-hud-action="${action}"
+      aria-label="${ariaLabel}"
+    >
+      <span class="game-hud__action-icon-frame">
+        <img src="${iconSrc}" alt="" draggable="false" />
+      </span>
+    </button>
   `;
 }
 

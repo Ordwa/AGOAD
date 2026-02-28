@@ -4,7 +4,11 @@ const NOOP = () => {};
 
 const DEFAULT_TAB_ACTIONS = Object.freeze({
   settings: ({ game }) => {
-    game.changeScene("start", { startMode: "options" });
+    const originScene = game.currentSceneName;
+    game.changeScene("start", {
+      startMode: "options",
+      returnScene: originScene === "world" ? "world" : "",
+    });
   },
   profile: ({ input }) => {
     input.tapAction("profile");
@@ -69,6 +73,13 @@ export function createHudBridge({
       heldDirections.delete(direction);
       input.releaseAction(direction);
     },
+    onAction: ({ action }) => {
+      if (!action || !isHudVisibleInScene(game.currentSceneName)) {
+        return;
+      }
+
+      input.tapAction(action);
+    },
   };
 
   hud.updateCallbacks(callbacks);
@@ -90,6 +101,7 @@ export function createHudBridge({
         onTabChange: NOOP,
         onMenuOpen: NOOP,
         onMove: NOOP,
+        onAction: NOOP,
       });
     },
   };
