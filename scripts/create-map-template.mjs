@@ -32,7 +32,7 @@ mkdirSync(mapDir, { recursive: true });
 const template = {
   id: mapId,
   name: toLabel(mapId),
-  asset: "./map.png",
+  asset: `./${mapId}.png`,
   layout: {
     cols,
     rows,
@@ -53,7 +53,7 @@ const template = {
   },
 };
 
-writeFileSync(path.resolve(mapDir, "map.json"), `${JSON.stringify(template, null, 2)}\n`, "utf8");
+writeFileSync(path.resolve(mapDir, `${mapId}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
 
 let manifest = {
   defaultMapId: mapId,
@@ -70,7 +70,7 @@ if (!Array.isArray(manifest.maps)) {
 if (!manifest.maps.some((entry) => entry?.id === mapId)) {
   manifest.maps.push({
     id: mapId,
-    definition: `./${mapId}/map.json`,
+    definition: `./${mapId}/${mapId}.json`,
   });
 }
 
@@ -82,8 +82,8 @@ writeFileSync(MAPS_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf
 
 console.log(`Mappa '${mapId}' creata in ${mapDir}`);
 console.log("Prossimi passi:");
-console.log("1. Copia il PNG della mappa in src/maps/<mapId>/map.png");
-console.log("2. Modifica collisionMap.rows in src/maps/<mapId>/map.json");
+console.log("1. Copia il PNG della mappa in src/maps/<mapId>/<mapId>.png");
+console.log("2. Modifica collisionMap.rows in src/maps/<mapId>/<mapId>.json");
 console.log("3. (Opzionale) passa ?map=<mapId> nell'URL per provarla subito.");
 
 function buildCollisionRowsTemplate(cols, rows) {

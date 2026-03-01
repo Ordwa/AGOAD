@@ -87,11 +87,15 @@
 
 .game-hud__topbar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--hud-visible-tabs, 4), minmax(0, 1fr));
   gap: var(--hud-menu-gap);
   width: 100%;
   height: auto;
   align-items: stretch;
+}
+
+.game-hud__top-button.is-hidden-by-layout {
+  display: none;
 }
 
 .game-hud__top-button {

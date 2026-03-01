@@ -32,6 +32,13 @@ export class ConsoleShellHud {
     this.tutorialVisible = Boolean(tutorialVisible);
     this.enableTabTutorial = Boolean(enableTabTutorial);
     this.visible = Boolean(visible);
+    this.topbarVisible = true;
+    this.controlsVisible = true;
+    this.visibleTabIds = new Set(
+      this.tabs
+        .map((tab) => String(tab?.id ?? "").trim())
+        .filter((tabId) => tabId.length > 0),
+    );
 
     this.callbacks = {
       onTabChange: NOOP,
@@ -49,6 +56,8 @@ export class ConsoleShellHud {
     this.activeKeyboardDirections = new Set();
 
     this.tutorialElement = null;
+    this.topbarShellElement = null;
+    this.controlsElement = null;
 
     this.onTopButtonPressStart = this.onTopButtonPressStart.bind(this);
     this.onTopButtonPressEnd = this.onTopButtonPressEnd.bind(this);
@@ -75,6 +84,8 @@ export class ConsoleShellHud {
     this.root.classList.add("game-console-shell");
 
     this.tutorialElement = this.root.querySelector("[data-hud-tutorial]");
+    this.topbarShellElement = this.root.querySelector("[data-hud-topbar-shell]");
+    this.controlsElement = this.root.querySelector("[data-hud-controls]");
 
     const tabButtons = Array.from(this.root.querySelectorAll("[data-hud-tab]"));
     tabButtons.forEach((button) => {
@@ -126,6 +137,8 @@ export class ConsoleShellHud {
     }
 
     this.syncTopTabs();
+    this.syncTopbarVisibility();
+    this.syncControlsVisibility();
     this.syncTutorial();
     this.setVisible(this.visible);
   }
@@ -168,6 +181,8 @@ export class ConsoleShellHud {
     this.tabButtonById.clear();
     this.directionButtonById.clear();
     this.tutorialElement = null;
+    this.topbarShellElement = null;
+    this.controlsElement = null;
   }
 
   updateCallbacks(callbacks = {}) {
@@ -250,6 +265,41 @@ export class ConsoleShellHud {
       this.actionControlButtons.forEach((button) => {
         button.classList.remove("is-pressed");
       });
+    }
+  }
+
+  setTopbarVisible(visible) {
+    this.topbarVisible = Boolean(visible);
+    this.syncTopbarVisibility();
+  }
+
+  setControlsVisible(visible) {
+    this.controlsVisible = Boolean(visible);
+    this.syncControlsVisibility();
+  }
+
+  setVisibleTabIds(tabIds = []) {
+    const nextVisibleTabIds = new Set(
+      (Array.isArray(tabIds) ? tabIds : [])
+        .map((tabId) => String(tabId ?? "").trim())
+        .filter((tabId) => tabId.length > 0),
+    );
+    this.visibleTabIds = nextVisibleTabIds;
+    this.syncTopTabs();
+  }
+
+  applyLayout(layout = {}) {
+    const visibleTabIds = Array.isArray(layout.visibleTabIds)
+      ? layout.visibleTabIds
+      : this.tabs.map((tab) => tab.id);
+    this.setVisibleTabIds(visibleTabIds);
+    this.setTopbarVisible(layout.topbarVisible !== false);
+    this.setControlsVisible(layout.controlsVisible !== false);
+
+    if (typeof layout.activeTabId === "string" && layout.activeTabId.length > 0) {
+      this.setActiveTab(layout.activeTabId, { emit: false });
+    } else {
+      this.syncTopTabs();
     }
   }
 
@@ -496,8 +546,35 @@ export class ConsoleShellHud {
   }
 
   syncTopTabs() {
+    const visibleTabs = [];
+
     this.tabButtonById.forEach((button, tabId) => {
+      const isTabVisible = this.visibleTabIds.has(tabId);
+      button.hidden = !isTabVisible;
+      button.classList.toggle("is-hidden-by-layout", !isTabVisible);
+      if (isTabVisible) {
+        visibleTabs.push(tabId);
+      }
+
       const selected = tabId === this.activeTabId;
+      const canSelect = isTabVisible && selected;
+      button.classList.toggle("is-selected", canSelect);
+      button.setAttribute("aria-pressed", String(canSelect));
+      button.dataset.selected = canSelect ? "true" : "false";
+    });
+
+    const visibleTabsCount = Math.max(1, visibleTabs.length);
+    this.root.style.setProperty("--hud-visible-tabs", String(visibleTabsCount));
+
+    if (!this.visibleTabIds.has(this.activeTabId)) {
+      const fallbackTabId = visibleTabs[0] ?? "";
+      if (fallbackTabId.length > 0) {
+        this.activeTabId = fallbackTabId;
+      }
+    }
+
+    this.tabButtonById.forEach((button, tabId) => {
+      const selected = tabId === this.activeTabId && !button.hidden;
       button.classList.toggle("is-selected", selected);
       button.setAttribute("aria-pressed", String(selected));
       button.dataset.selected = selected ? "true" : "false";
@@ -518,6 +595,20 @@ export class ConsoleShellHud {
 
   getTabById(tabId) {
     return this.tabs.find((tab) => tab.id === tabId) ?? null;
+  }
+
+  syncTopbarVisibility() {
+    if (!(this.topbarShellElement instanceof HTMLElement)) {
+      return;
+    }
+    this.topbarShellElement.hidden = !this.topbarVisible;
+  }
+
+  syncControlsVisibility() {
+    if (!(this.controlsElement instanceof HTMLElement)) {
+      return;
+    }
+    this.controlsElement.hidden = !this.controlsVisible;
   }
 
   resolveDpadHit(event) {
@@ -596,8 +687,8 @@ function buildConsoleShellMarkup(tabs, dpadButtons, actionButton) {
   const actionMarkup = renderActionButton(actionButton);
 
   return `
-    <section class="game-hud__topbar-shell">
-      <nav class="game-hud__topbar" aria-label="Console shell top navigation">
+    <section class="game-hud__topbar-shell" data-hud-topbar-shell>
+      <nav class="game-hud__topbar" aria-label="Console shell top navigation" data-hud-topbar>
         ${topBar}
       </nav>
     </section>
@@ -613,7 +704,7 @@ function buildConsoleShellMarkup(tabs, dpadButtons, actionButton) {
       <p class="game-hud__viewport-caption">Game screen placeholder</p>
     </section>
 
-    <section class="game-hud__controls" aria-label="Controlli console shell">
+    <section class="game-hud__controls" data-hud-controls aria-label="Controlli console shell">
       ${actionMarkup}
       <div class="game-hud__dpad" role="group" aria-label="Croce direzionale">
         ${dpad}

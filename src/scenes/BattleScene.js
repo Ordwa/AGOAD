@@ -238,7 +238,7 @@ export class BattleScene extends Scene {
         return;
       }
 
-      this.performSpecialAction();
+      this.performSpecialAction(selected.id);
       return;
     }
 
@@ -314,18 +314,17 @@ export class BattleScene extends Scene {
 
   getSkillOptions() {
     const player = this.game.state.player;
-    const specialName = player.specialName ?? "SPECIAL";
-    const specialDescription = this.getSpecialDescription(player.specialId);
-
-    return [
-      {
-        id: "special",
-        label: specialName.toUpperCase(),
-        manaCost: player.specialCost ?? 0,
+    const skillEntries = Object.values(this.game.state.skills ?? {});
+    return skillEntries
+      .filter((skill) => skill && typeof skill === "object" && skill.usableInBattle !== false)
+      .map((skill) => ({
+        id: String(skill.id ?? ""),
+        label: String(skill.label ?? "SKILL").toUpperCase(),
+        manaCost: Math.max(0, Number(skill.manaCost) || 0),
         manaLeft: player.mana ?? 0,
-        description: specialDescription,
-      },
-    ];
+        description: String(skill.description ?? ""),
+        priority: Boolean(skill.priority),
+      }));
   }
 
   getSkillMenuEntries() {
@@ -345,32 +344,6 @@ export class BattleScene extends Scene {
         isBack: true,
       },
     ];
-  }
-
-  getSpecialDescription(specialId) {
-    const playerDescription = this.game.state.player.specialDescription;
-    if (typeof playerDescription === "string" && playerDescription.trim().length > 0) {
-      return playerDescription.trim();
-    }
-
-    const classData = this.game.getClasses().find((entry) => entry?.special?.id === specialId);
-    if (classData?.special?.description) {
-      return classData.special.description;
-    }
-
-    if (specialId === "shield_bash") {
-      return "Stordisce il nemico 1 turno";
-    }
-
-    if (specialId === "arcane_heal") {
-      return "Ripristina HP";
-    }
-
-    if (specialId === "shadow_escape") {
-      return "Fuga certa con priorita'";
-    }
-
-    return "Nessun effetto";
   }
 
   getBattleInventoryEntries() {
@@ -438,21 +411,27 @@ export class BattleScene extends Scene {
     });
   }
 
-  performSpecialAction() {
-    const specialId = this.game.state.player.specialId;
-
-    if (specialId === "shield_bash") {
-      this.performShieldBashTurn();
+  performSpecialAction(skillId) {
+    const selectedSkill = this.getSkillOptions().find((skill) => skill.id === skillId);
+    if (!selectedSkill) {
+      this.queueMessages(["Abilita' non disponibile."], () => {
+        this.phase = "menu-main";
+      });
       return;
     }
 
-    if (specialId === "arcane_heal") {
-      this.performMageHealTurn();
+    if (selectedSkill.id === "shield_bash") {
+      this.performShieldBashTurn(selectedSkill);
       return;
     }
 
-    if (specialId === "shadow_escape") {
-      this.performRogueEscapeTurn();
+    if (selectedSkill.id === "arcane_heal") {
+      this.performMageHealTurn(selectedSkill);
+      return;
+    }
+
+    if (selectedSkill.id === "shadow_escape") {
+      this.performRogueEscapeTurn(selectedSkill);
       return;
     }
 
@@ -461,8 +440,8 @@ export class BattleScene extends Scene {
     });
   }
 
-  performShieldBashTurn() {
-    const manaCost = this.game.state.player.specialCost ?? 10;
+  performShieldBashTurn(skill) {
+    const manaCost = Math.max(0, Number(skill?.manaCost) || 0);
 
     this.resolveTurn((done) => {
       if (!this.consumePlayerMana(manaCost)) {
@@ -487,8 +466,8 @@ export class BattleScene extends Scene {
     });
   }
 
-  performMageHealTurn() {
-    const manaCost = this.game.state.player.specialCost ?? 10;
+  performMageHealTurn(skill) {
+    const manaCost = Math.max(0, Number(skill?.manaCost) || 0);
 
     this.resolveTurn((done) => {
       const player = this.game.state.player;
@@ -517,9 +496,9 @@ export class BattleScene extends Scene {
     });
   }
 
-  performRogueEscapeTurn() {
-    const manaCost = this.game.state.player.specialCost ?? 10;
-    const hasPriority = this.game.state.player.specialPriority === true;
+  performRogueEscapeTurn(skill) {
+    const manaCost = Math.max(0, Number(skill?.manaCost) || 0);
+    const hasPriority = Boolean(skill?.priority);
 
     this.resolveTurn(
       (done) => {

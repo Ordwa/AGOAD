@@ -156,14 +156,14 @@ Nota: se il browser tiene cache vecchia, fai una ricarica forzata o riapri dalla
 
 Ogni mappa vive in una cartella dedicata sotto `src/maps/<mapId>/`:
 
-- `map.png`: asset visivo
-- `map.json`: layout + collision map + punti mappa
+- `<mapId>.png`: asset visivo
+- `<mapId>.json`: layout + collision map + punti mappa
 
 Registry mappe:
 
 - `src/maps/maps.json`
 
-Formato collisione in `map.json`:
+Formato collisione in `<mapId>.json`:
 
 - `collisionMap.rows`: array di stringhe (una per riga)
 - `collisionMap.legend`: simbolo -> tipo tile
@@ -183,8 +183,8 @@ node scripts/create-map-template.mjs forest --cols 24 --rows 16 --tile-size 64
 
 Poi:
 
-1. Copia il png in `src/maps/forest/map.png`
-2. Disegna la collision map in `src/maps/forest/map.json` modificando `collisionMap.rows`
+1. Copia il png in `src/maps/forest/forest.png`
+2. Disegna la collision map in `src/maps/forest/forest.json` modificando `collisionMap.rows`
 3. Prova subito con `http://localhost:8080/?map=forest`
 
 ## Nota stile

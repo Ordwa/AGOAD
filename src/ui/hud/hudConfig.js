@@ -37,26 +37,15 @@ export const HUD_TOP_TABS = Object.freeze([
     tutorialText: "Controlla oggetti, consumabili e materiali nel tuo zaino.",
   },
   {
-    id: "slot_a",
-    label: "Slot A",
-    ariaLabel: "Apri tab placeholder A",
-    icon: {
-      type: "glyph",
-      glyph: "A",
-      style: "placeholder",
-    },
-    tutorialText: "Slot UI libero: missioni, crafting o mappa rapida.",
-  },
-  {
     id: "slot_b",
-    label: "Slot B",
-    ariaLabel: "Apri tab placeholder B",
+    label: "Chiudi",
+    ariaLabel: "Chiudi menu",
     icon: {
       type: "glyph",
-      glyph: "B",
+      glyph: "X",
       style: "placeholder",
     },
-    tutorialText: "Slot UI libero: social, gilda o notifiche evento.",
+    tutorialText: "Torna alla schermata precedente.",
   },
 ]);
 
@@ -98,7 +87,7 @@ export const HUD_DEFAULT_TUTORIAL = "";
 export const HUD_SCENE_TUTORIALS = Object.freeze({
   start: "Dal menu iniziale puoi configurare il personaggio, poi entrare nel mondo.",
   settings: "Regola audio, musiche e opzioni di supporto al gameplay.",
-  setup: "Completa setup nome/classe e conferma per iniziare la tua avventura.",
+  setup: "Completa setup nome e conferma per iniziare la tua avventura.",
   world: "Esplora la mappa, parla con gli NPC e preparati ai combattimenti.",
   battle: "Scegli ATTACK, BAG o SKILLS in base alla situazione del turno.",
   profile: "Gestisci statistiche, inventario e progressione personaggio.",

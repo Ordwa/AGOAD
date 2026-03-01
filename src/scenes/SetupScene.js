@@ -1,6 +1,5 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG } from "../data/constants.js";
-import { applyClassToPlayer } from "../data/classes.js";
 
 const MAX_NAME_LENGTH = 12;
 
@@ -9,7 +8,6 @@ export class SetupScene extends Scene {
     super(game);
     this.step = "name";
     this.nameBuffer = "";
-    this.classIndex = 0;
     this.infoText = "";
     this.timer = 0;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
@@ -19,10 +17,8 @@ export class SetupScene extends Scene {
   onEnter() {
     this.game.syncPlayerClassData();
     const player = this.game.state.player;
-    const classes = this.getAvailableClasses();
     this.step = "name";
     this.nameBuffer = (player.name ?? "").slice(0, MAX_NAME_LENGTH);
-    this.classIndex = this.getCurrentClassIndex(player.classId, classes);
     this.infoText = "";
     this.timer = 0;
     this.game.input.setTextCapture(true);
@@ -41,12 +37,7 @@ export class SetupScene extends Scene {
       return;
     }
 
-    if (this.step === "name") {
-      this.updateNameStep(input);
-      return;
-    }
-
-    this.updateClassStep(input);
+    this.updateNameStep(input);
   }
 
   updateNameStep(input) {
@@ -76,9 +67,14 @@ export class SetupScene extends Scene {
       }
 
       this.nameBuffer = trimmed;
-      this.infoText = "";
-      this.step = "class";
-      return;
+      this.game.state.player.name = this.nameBuffer;
+      this.game.syncPlayerClassData();
+      this.game.changeScene("world", {
+        resetToSpawn: true,
+        safeSteps: 5,
+        saveAfterEnter: true,
+        message: `${this.nameBuffer} il GOBLIN e' pronto all'avventura.`,
+      });
     }
 
     if (input.wasPressed("back")) {
@@ -89,51 +85,6 @@ export class SetupScene extends Scene {
 
       this.nameBuffer = this.nameBuffer.slice(0, -1);
     }
-  }
-
-  updateClassStep(input) {
-    const classes = this.getAvailableClasses();
-    if (classes.length === 0) {
-      return;
-    }
-
-    input.consumeTypedChars();
-    input.consumeBackspaceCount();
-
-    if (input.wasPressed("up")) {
-      this.classIndex = (this.classIndex + classes.length - 1) % classes.length;
-      return;
-    }
-
-    if (input.wasPressed("down")) {
-      this.classIndex = (this.classIndex + 1) % classes.length;
-      return;
-    }
-
-    if (input.wasPressed("back")) {
-      this.step = "name";
-      return;
-    }
-
-    if (input.wasPressed("confirm")) {
-      const selectedClass = classes[this.classIndex];
-      applyClassToPlayer(this.game.state.player, selectedClass, this.nameBuffer);
-      this.game.changeScene("world", {
-        resetToSpawn: true,
-        safeSteps: 5,
-        saveAfterEnter: true,
-        message: `${this.nameBuffer} il ${selectedClass.label} e' pronto all'avventura.`,
-      });
-    }
-  }
-
-  getCurrentClassIndex(classId, classes = this.getAvailableClasses()) {
-    const index = classes.findIndex((classData) => classData.id === classId);
-    return index >= 0 ? index : 0;
-  }
-
-  getAvailableClasses() {
-    return this.game.getClasses();
   }
 
   render(ctx) {
@@ -285,72 +236,44 @@ export class SetupScene extends Scene {
   }
 
   drawClassPanel(ctx, layout) {
-    const classes = this.getAvailableClasses();
-    if (classes.length === 0) {
-      return;
-    }
-
-    const safeIndex = Math.min(this.classIndex, classes.length - 1);
-    this.classIndex = safeIndex;
-    const selectedClass = classes[safeIndex];
-
-    this.drawSetupCard(ctx, layout.classRect, this.step === "class");
+    this.drawSetupCard(ctx, layout.classRect, false);
     ctx.fillStyle = "#e6f2ff";
     ctx.font = `${Math.round(clampNumber(layout.classRect.h * 0.1, 10, 28))}px monospace`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText(
-      "SCEGLI LA CLASSE",
+      "PROFILO GOBLIN",
       layout.classRect.x + Math.round(clampNumber(layout.classRect.w * 0.04, 10, 28)),
       layout.classRect.y + Math.round(clampNumber(layout.classRect.h * 0.06, 8, 18)),
     );
 
-    const listRect = layout.classListRect;
-    const listGap = Math.round(clampNumber(listRect.h * 0.04, 6, 20));
-    const rowH = Math.floor((listRect.h - listGap * (classes.length - 1)) / classes.length);
-
-    classes.forEach((classData, index) => {
-      const rowRect = {
-        x: listRect.x,
-        y: listRect.y + index * (rowH + listGap),
-        w: listRect.w,
-        h: rowH,
-      };
-      const selected = this.step === "class" && index === this.classIndex;
-      this.drawSetupOptionRow(ctx, rowRect, classData.label, selected);
-    });
-
-    const detailsRect = layout.classDetailsRect;
-    this.drawSetupCard(ctx, detailsRect, false);
-
-    const desc = selectedClass.description ?? "Nessuna descrizione.";
-    const descFont = Math.round(clampNumber(detailsRect.h * 0.11, 10, 24));
-    const maxChars = Math.max(16, Math.floor((detailsRect.w - 20) / Math.max(6, descFont * 0.56)));
-    const descriptionLines = wrapClassText(desc, maxChars).slice(0, 3);
-
+    const desc =
+      "Tutti i goblin hanno statistiche base uguali. Migliora il personaggio con equipaggiamenti e abilita'.";
+    const descFont = Math.round(clampNumber(layout.classRect.h * 0.09, 10, 22));
+    const maxChars = Math.max(20, Math.floor((layout.classRect.w - 20) / Math.max(6, descFont * 0.56)));
+    const descriptionLines = wrapClassText(desc, maxChars).slice(0, 4);
     ctx.fillStyle = "#eaf5ff";
     ctx.font = `${descFont}px monospace`;
     ctx.textBaseline = "top";
     descriptionLines.forEach((line, index) => {
       ctx.fillText(
         line,
-        detailsRect.x + Math.round(clampNumber(detailsRect.w * 0.06, 10, 24)),
-        detailsRect.y + Math.round(clampNumber(detailsRect.h * 0.12, 8, 20)) + index * Math.round(descFont * 1.25),
+        layout.classRect.x + Math.round(clampNumber(layout.classRect.w * 0.05, 10, 24)),
+        layout.classRect.y +
+          Math.round(clampNumber(layout.classRect.h * 0.24, 28, 88)) +
+          index * Math.round(descFont * 1.25),
       );
     });
 
-    const statsY = detailsRect.y + detailsRect.h - Math.round(clampNumber(detailsRect.h * 0.3, 24, 72));
-    const chipGap = Math.round(clampNumber(detailsRect.w * 0.025, 6, 18));
-    const chipW = Math.floor((detailsRect.w - chipGap * 4) / 3);
-    const chipH = Math.round(clampNumber(detailsRect.h * 0.2, 24, 68));
-    const stats = [
-      `HP ${selectedClass.maxHp}`,
-      `ATK ${selectedClass.attackMin}-${selectedClass.attackMax}`,
-      `MP ${selectedClass.maxMana}`,
-    ];
+    const chipGap = Math.round(clampNumber(layout.classRect.w * 0.02, 6, 14));
+    const chipW = Math.floor((layout.classRect.w - chipGap * 4) / 3);
+    const chipH = Math.round(clampNumber(layout.classRect.h * 0.18, 24, 48));
+    const statsY =
+      layout.classRect.y + layout.classRect.h - chipH - Math.round(clampNumber(layout.classRect.h * 0.08, 10, 26));
+    const stats = ["HP 30", "MP 30", "SP 3"];
 
     stats.forEach((stat, index) => {
-      const chipX = detailsRect.x + chipGap + index * (chipW + chipGap);
+      const chipX = layout.classRect.x + chipGap + index * (chipW + chipGap);
       this.drawSetupStatChip(ctx, { x: chipX, y: statsY, w: chipW, h: chipH }, stat);
     });
   }
@@ -362,17 +285,8 @@ export class SetupScene extends Scene {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    if (this.step === "name") {
-      ctx.fillText(
-        "A CONFERMA   ABC/CANC PER NOME",
-        layout.footerRect.x + layout.footerRect.w / 2,
-        layout.footerRect.y + layout.footerRect.h / 2 + 0.5,
-      );
-      return;
-    }
-
     ctx.fillText(
-      "A CONFERMA   B INDIETRO",
+      "A CONFERMA   B INDIETRO   ABC/CANC PER NOME",
       layout.footerRect.x + layout.footerRect.w / 2,
       layout.footerRect.y + layout.footerRect.h / 2 + 0.5,
     );

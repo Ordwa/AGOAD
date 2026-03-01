@@ -1,5 +1,5 @@
 import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
-import { PLAYER_CLASSES, applyClassToPlayer, getClassById } from "../data/classes.js";
+import { PLAYER_CLASSES } from "../data/classes.js";
 import { ENEMIES } from "../data/enemies.js";
 import { AUTO_SAVE_TRIGGER, DEFAULT_AUTO_SAVE_TRIGGER_CONFIG } from "../data/autoSave.js";
 import {
@@ -20,6 +20,44 @@ const PRIMARY_SAVE_SLOT_INDEX = 0;
 const DEFAULT_AUTO_SAVE_INTERVAL_SECONDS = 30;
 const DEFAULT_AUTO_SAVE_MIN_GAP_SECONDS = 2;
 const DEFAULT_AUTO_SAVE_RETRY_SECONDS = 5;
+const GOBLIN_PLAYER_BASE = Object.freeze({
+  pgTitle: "Goblin",
+  maxHp: 30,
+  maxMana: 30,
+  speed: 3,
+  attackMin: 3,
+  attackMax: 5,
+});
+
+const DEFAULT_PLAYER_SKILLS = Object.freeze([
+  Object.freeze({
+    id: "shield_bash",
+    label: "Shield Bash",
+    description: "Stordisce il nemico e infligge danno.",
+    manaCost: 10,
+    usableInBattle: true,
+    priority: false,
+    effect: "stun_attack",
+  }),
+  Object.freeze({
+    id: "arcane_heal",
+    label: "Cura Arcana",
+    description: "Ripristina HP durante il combattimento.",
+    manaCost: 10,
+    usableInBattle: true,
+    priority: false,
+    effect: "heal",
+  }),
+  Object.freeze({
+    id: "shadow_escape",
+    label: "Fuga Garantita",
+    description: "Permette una fuga certa dal combattimento.",
+    manaCost: 10,
+    usableInBattle: true,
+    priority: true,
+    effect: "escape",
+  }),
+]);
 
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -32,11 +70,26 @@ function createDefaultGameData() {
   };
 }
 
-function createDefaultPlayer(classes = PLAYER_CLASSES) {
-  const defaultClass = getClassById("warrior", classes);
-  const player = {};
-  applyClassToPlayer(player, defaultClass, "Pippo");
-  return player;
+function createDefaultPlayer(_classes = PLAYER_CLASSES) {
+  return {
+    name: "Pippo",
+    pgTitle: GOBLIN_PLAYER_BASE.pgTitle,
+    maxHp: GOBLIN_PLAYER_BASE.maxHp,
+    hp: GOBLIN_PLAYER_BASE.maxHp,
+    attackMin: GOBLIN_PLAYER_BASE.attackMin,
+    attackMax: GOBLIN_PLAYER_BASE.attackMax,
+    speed: GOBLIN_PLAYER_BASE.speed,
+    maxMana: GOBLIN_PLAYER_BASE.maxMana,
+    mana: GOBLIN_PLAYER_BASE.maxMana,
+  };
+}
+
+function createDefaultSkills() {
+  const skills = {};
+  DEFAULT_PLAYER_SKILLS.forEach((skill) => {
+    skills[skill.id] = cloneData(skill);
+  });
+  return skills;
 }
 
 function createDefaultInventory() {
@@ -71,7 +124,7 @@ function createInitialState(classes = PLAYER_CLASSES) {
     progress: {
       battlesWon: 0,
       battlesTotal: 0,
-      totalSteps: 0,
+      coins: 0,
       encounteredEnemyIds: [],
       playTimeSeconds: 0,
       lastRestPoint: null,
@@ -82,6 +135,7 @@ function createInitialState(classes = PLAYER_CLASSES) {
       facing: "down",
     },
     inventory: createDefaultInventory(),
+    skills: createDefaultSkills(),
   };
 }
 
@@ -116,10 +170,53 @@ function normalizeInventory(savedInventory, fallbackInventory) {
   return inventory;
 }
 
+function normalizeSkills(savedSkills, fallbackSkills) {
+  const skills = cloneData(fallbackSkills);
+  if (!savedSkills || typeof savedSkills !== "object") {
+    return skills;
+  }
+
+  Object.entries(savedSkills).forEach(([key, rawSkill]) => {
+    if (!rawSkill || typeof rawSkill !== "object") {
+      return;
+    }
+
+    const safeKey = String(key ?? "").trim();
+    if (!safeKey) {
+      return;
+    }
+
+    const baseSkill = skills[safeKey] ?? {
+      id: safeKey,
+      label: "ABILITA'",
+      description: "",
+      manaCost: 0,
+      usableInBattle: true,
+      priority: false,
+      effect: "",
+    };
+
+    const manaCost = toNumberInRange(rawSkill.manaCost, 0, 999, baseSkill.manaCost ?? 0);
+    skills[safeKey] = {
+      ...baseSkill,
+      ...rawSkill,
+      id: toSafeString(rawSkill.id, baseSkill.id),
+      label: toSafeString(rawSkill.label, baseSkill.label),
+      description: toSafeString(rawSkill.description, baseSkill.description),
+      manaCost,
+      usableInBattle: toBooleanValue(rawSkill.usableInBattle, baseSkill.usableInBattle !== false),
+      priority: toBooleanValue(rawSkill.priority, Boolean(baseSkill.priority)),
+      effect: toSafeString(rawSkill.effect, baseSkill.effect ?? ""),
+    };
+  });
+
+  return skills;
+}
+
 function formatSaveSummary(state) {
   return {
     playerName: state.player?.name ?? "Player",
-    className: state.player?.className ?? "Classe",
+    playerTitle: state.player?.pgTitle ?? GOBLIN_PLAYER_BASE.pgTitle,
     playTimeSeconds: Math.floor(state.progress?.playTimeSeconds ?? 0),
   };
 }
@@ -942,26 +1039,14 @@ export class Game {
       return;
     }
 
-    const classData = getClassById(player.classId, this.getClasses());
-    if (!classData) {
-      return;
-    }
-
     const currentHp = Number(player.hp);
     const currentMana = Number(player.mana);
-
-    player.classId = classData.id;
-    player.className = classData.label;
-    player.maxHp = classData.maxHp;
-    player.attackMin = classData.attackMin;
-    player.attackMax = classData.attackMax;
-    player.speed = classData.speed ?? 3;
-    player.maxMana = classData.maxMana ?? 0;
-    player.specialId = classData.special?.id ?? "";
-    player.specialName = classData.special?.name ?? "";
-    player.specialCost = classData.special?.cost ?? 0;
-    player.specialPriority = Boolean(classData.special?.priority);
-    player.specialDescription = classData.special?.description ?? "";
+    player.pgTitle = toSafeString(player.pgTitle, GOBLIN_PLAYER_BASE.pgTitle);
+    player.maxHp = GOBLIN_PLAYER_BASE.maxHp;
+    player.attackMin = GOBLIN_PLAYER_BASE.attackMin;
+    player.attackMax = GOBLIN_PLAYER_BASE.attackMax;
+    player.speed = GOBLIN_PLAYER_BASE.speed;
+    player.maxMana = GOBLIN_PLAYER_BASE.maxMana;
 
     player.hp = Number.isFinite(currentHp)
       ? Math.max(0, Math.min(player.maxHp, Math.round(currentHp)))
@@ -969,6 +1054,15 @@ export class Game {
     player.mana = Number.isFinite(currentMana)
       ? Math.max(0, Math.min(player.maxMana, Math.round(currentMana)))
       : player.maxMana;
+
+    const progress = this.state?.progress;
+    if (progress && typeof progress === "object") {
+      progress.coins = Math.max(0, Math.floor(Number(progress.coins) || 0));
+      progress.battlesWon = Math.max(0, Math.floor(Number(progress.battlesWon) || 0));
+      progress.battlesTotal = Math.max(0, Math.floor(Number(progress.battlesTotal) || 0));
+    }
+
+    this.state.skills = normalizeSkills(this.state.skills, createDefaultSkills());
   }
 
   readPersistedGmData() {
@@ -1093,6 +1187,7 @@ export class Game {
         ...(loaded.world ?? {}),
       },
       inventory: normalizeInventory(loaded.inventory, fallback.inventory),
+      skills: normalizeSkills(loaded.skills, fallback.skills),
     };
   }
 

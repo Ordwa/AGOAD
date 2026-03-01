@@ -109,7 +109,7 @@ function normalizeMapDefinition(expectedId, definition, definitionUrl) {
   const legend = normalizeCollisionLegend(definition?.collisionMap?.legend);
   const collisionGrid = parseCollisionRows(rows, layout, legend, definitionUrl);
   const points = normalizeWorldPoints(definition?.points);
-  const assetPath = resolveMapAssetPath(definition?.asset, definitionUrl);
+  const assetPath = resolveMapAssetPath(definition?.asset, id, definitionUrl);
 
   return {
     id,
@@ -196,12 +196,21 @@ function normalizeWorldPoints(rawPoints) {
   };
 }
 
-function resolveMapAssetPath(rawAssetPath, definitionUrl) {
-  const assetPath = String(rawAssetPath ?? "./map.png").trim();
+function resolveMapAssetPath(rawAssetPath, mapId, definitionUrl) {
+  const fallbackAssetPath = `./${sanitizeMapFileStem(mapId)}.png`;
+  const assetPath = String(rawAssetPath ?? fallbackAssetPath).trim();
   if (!assetPath) {
-    return buildVersionedUrl(new URL("./map.png", definitionUrl)).toString();
+    return buildVersionedUrl(new URL(fallbackAssetPath, definitionUrl)).toString();
   }
   return buildVersionedUrl(new URL(assetPath, definitionUrl)).toString();
+}
+
+function sanitizeMapFileStem(mapId) {
+  const sanitized = String(mapId ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "");
+  return sanitized.length > 0 ? sanitized : "map";
 }
 
 function toPositiveInt(value, fallback) {

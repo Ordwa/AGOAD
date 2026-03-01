@@ -419,12 +419,6 @@ export class WorldScene extends Scene {
       stateWorld.facing = this.player.facing;
     }
 
-    if (this.game?.state?.progress && typeof this.game.state.progress === "object") {
-      this.game.state.progress.totalSteps = Math.max(
-        0,
-        Math.floor(Number(this.game.state.progress.totalSteps) || 0) + 1,
-      );
-    }
   }
 
   tryInteract() {
