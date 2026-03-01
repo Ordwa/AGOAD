@@ -15,6 +15,7 @@ const DEFAULT_COLLISION_LEGEND = Object.freeze({
 
 const EMPTY_POINTS = Object.freeze({
   interactionPoints: Object.freeze([]),
+  battleZones: Object.freeze([]),
   healTile: null,
 });
 
@@ -205,11 +206,15 @@ function normalizeWorldPoints(rawPoints) {
   const interactionPoints = Array.isArray(rawPoints.interactionPoints)
     ? rawPoints.interactionPoints.map((point) => ({ ...point }))
     : [];
+  const battleZones = Array.isArray(rawPoints.battleZones)
+    ? rawPoints.battleZones.map((zone) => ({ ...zone }))
+    : [];
   const healTile =
     rawPoints.healTile && typeof rawPoints.healTile === "object" ? { ...rawPoints.healTile } : null;
 
   return {
     interactionPoints,
+    battleZones,
     healTile,
   };
 }

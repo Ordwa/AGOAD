@@ -80,6 +80,16 @@
         "text": "Totem teschio: un simbolo di protezione tribale."
       }
     ],
+    "battleZones": [
+      {
+        "id": "training_zone",
+        "x": 17,
+        "y": 18,
+        "w": 2,
+        "h": 2,
+        "text": "Zona di combattimento"
+      }
+    ],
     "healTile": {
       "x": 8,
       "y": 6,

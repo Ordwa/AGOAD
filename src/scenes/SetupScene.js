@@ -102,8 +102,6 @@ export class SetupScene extends Scene {
     this.drawBackground(ctx, canvasWidth, canvasHeight);
     this.drawTitle(ctx, layout);
     this.drawNamePanel(ctx, layout);
-    this.drawClassPanel(ctx, layout);
-    this.drawFooter(ctx, layout);
     ctx.restore();
   }
 
@@ -164,16 +162,10 @@ export class SetupScene extends Scene {
         layout.bannerRect.w,
         layout.bannerRect.h,
       );
-    } else {
-      this.drawSetupCard(ctx, layout.bannerRect, false);
+      return;
     }
 
-    this.drawSetupCard(ctx, layout.titleRect, false);
-    ctx.fillStyle = "#f3f9ff";
-    ctx.font = `${Math.round(clampNumber(layout.titleRect.h * 0.4, 12, 40))}px monospace`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("NEW GAME", layout.titleRect.x + layout.titleRect.w / 2, layout.titleRect.y + layout.titleRect.h / 2);
+    this.drawSetupCard(ctx, layout.bannerRect, false);
   }
 
   drawNamePanel(ctx, layout) {
@@ -371,25 +363,15 @@ function wrapClassText(text, maxChars) {
 
 function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {
   const sidePadding = Math.round(clampNumber(surfaceWidth * 0.06, 12, 90));
-  const topInset = Math.round(clampNumber(surfaceHeight * 0.04, 12, 120));
   const verticalGap = Math.round(clampNumber(surfaceHeight * 0.02, 10, 30));
 
   const bannerRect = getHomeBannerRect(surfaceWidth, surfaceHeight);
 
-  const titleW = Math.round(clampNumber(surfaceWidth * 0.56, 160, surfaceWidth - sidePadding * 2));
-  const titleH = Math.round(clampNumber(surfaceHeight * 0.06, 24, 72));
-  const titleRect = {
-    x: Math.floor((surfaceWidth - titleW) / 2),
-    y: bannerRect.y + bannerRect.h + verticalGap,
-    w: titleW,
-    h: titleH,
-  };
-
   const cardW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
-  const nameH = Math.round(clampNumber(surfaceHeight * 0.18, 86, 250));
+  const nameH = Math.round(clampNumber(surfaceHeight * 0.24, 96, 250));
   const nameRect = {
     x: Math.floor((surfaceWidth - cardW) / 2),
-    y: titleRect.y + titleRect.h + verticalGap,
+    y: bannerRect.y + bannerRect.h + verticalGap,
     w: cardW,
     h: nameH,
   };
@@ -405,51 +387,10 @@ function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_C
     h: fieldH,
   };
 
-  const footerH = Math.round(clampNumber(surfaceHeight * 0.075, 30, 92));
-  const footerRect = {
-    x: nameRect.x,
-    y: surfaceHeight - topInset - footerH,
-    w: cardW,
-    h: footerH,
-  };
-
-  const classY = nameRect.y + nameRect.h + verticalGap;
-  const classMaxH = Math.max(90, footerRect.y - verticalGap - classY);
-  const classH = Math.round(clampNumber(surfaceHeight * 0.34, 120, classMaxH));
-  const classRect = {
-    x: nameRect.x,
-    y: classY,
-    w: cardW,
-    h: classH,
-  };
-
-  const classContentTop = classRect.y + Math.round(clampNumber(classRect.h * 0.2, 32, 90));
-  const classContentH = classRect.h - (classContentTop - classRect.y) - Math.round(clampNumber(classRect.h * 0.08, 10, 30));
-  const classListW = Math.round(clampNumber(classRect.w * 0.34, 88, classRect.w * 0.45));
-  const classListRect = {
-    x: classRect.x + Math.round(clampNumber(classRect.w * 0.04, 8, 24)),
-    y: classContentTop,
-    w: classListW,
-    h: classContentH,
-  };
-  const detailsX = classListRect.x + classListRect.w + Math.round(clampNumber(classRect.w * 0.03, 8, 22));
-  const detailsW = classRect.x + classRect.w - Math.round(clampNumber(classRect.w * 0.04, 8, 24)) - detailsX;
-  const classDetailsRect = {
-    x: detailsX,
-    y: classContentTop,
-    w: detailsW,
-    h: classContentH,
-  };
-
   return {
     bannerRect,
-    titleRect,
     nameRect,
     nameFieldRect,
-    classRect,
-    classListRect,
-    classDetailsRect,
-    footerRect,
   };
 }
 

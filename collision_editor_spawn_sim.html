@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Collision Map Editor</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --border: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --accent-2: #38bdf8;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
+      color: var(--text);
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 380px minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .panel {
+      background: rgba(17, 24, 39, 0.95);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-inner {
+      padding: 16px;
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-height: 0;
+    }
+
+    .topbar,
+    .bottombar {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .bottombar {
+      border-bottom: 0;
+      border-top: 1px solid var(--border);
+      justify-content: space-between;
+    }
+
+    .canvas-wrap {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      background:
+        radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 35%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.7));
+    }
+
+    .canvas-stage {
+      min-height: 100%;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    canvas {
+      border-radius: 14px;
+      border: 1px solid #475569;
+      background: #0b1220;
+      image-rendering: pixelated;
+      box-shadow: var(--shadow);
+      max-width: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: #f8fafc;
+      letter-spacing: 0.02em;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: rgba(31, 41, 55, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 10px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea,
+    select {
+      width: 100%;
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid #475569;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 130px;
+      line-height: 1.4;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button,
+    .file-btn {
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      cursor: pointer;
+      transition: 0.18s ease;
+      white-space: nowrap;
+    }
+
+    button:hover,
+    .file-btn:hover {
+      transform: translateY(-1px);
+      border-color: #64748b;
+      background: #162033;
+    }
+
+    button.primary {
+      background: linear-gradient(180deg, #22c55e, #16a34a);
+      border-color: #16a34a;
+      color: white;
+    }
+
+    button.secondary {
+      background: linear-gradient(180deg, #38bdf8, #0284c7);
+      border-color: #0284c7;
+      color: white;
+    }
+
+    button.warn {
+      background: linear-gradient(180deg, #f59e0b, #d97706);
+      border-color: #d97706;
+      color: white;
+    }
+
+    button.ghost.active {
+      outline: 2px solid rgba(56, 189, 248, 0.55);
+      border-color: var(--accent-2);
+      background: #172554;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .kbd {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      padding: 2px 6px;
+      border-radius: 8px;
+      border: 1px solid #64748b;
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .status {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .status.error {
+      border-color: rgba(239, 68, 68, 0.55);
+      color: #fecaca;
+      background: rgba(127, 29, 29, 0.25);
+    }
+
+    .status.success {
+      border-color: rgba(34, 197, 94, 0.55);
+      color: #bbf7d0;
+      background: rgba(20, 83, 45, 0.25);
+    }
+
+    .spacer {
+      flex: 1 1 auto;
+    }
+
+    .small {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1200px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: auto;
+        min-height: 100vh;
+      }
+      .sidebar { max-height: none; }
+    }
+
+    @media (max-width: 720px) {
+      .grid-2,
+      .grid-3 { grid-template-columns: 1fr; }
+      .topbar,
+      .bottombar { align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel sidebar">
+      <div class="sidebar-inner">
+        <div>
+          <h1>Collision Map Editor</h1>
+          <div class="hint" style="margin-top:8px;">
+            Carica <strong>mappa immagine</strong> e <strong>JSON opzionale</strong>. Se il JSON non esiste,
+            puoi generarlo da zero e scaricarlo già pronto.
+          </div>
+        </div>
+
+        <section class="card">
+          <h2>1. Input file</h2>
+          <div class="row">
+            <label class="file-btn">
+              Carica immagine
+              <input id="imageInput" type="file" accept="image/*" />
+            </label>
+            <label class="file-btn">
+              Carica JSON
+              <input id="jsonInput" type="file" accept="application/json,.json" />
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="newJsonBtn" class="primary">Nuovo JSON</button>
+            <button id="exportBtn" class="secondary">Scarica JSON</button>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Se carichi solo l'immagine, la UI crea una base JSON usando tileSize, righe e colonne impostate qui sotto.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>2. Metadati mappa</h2>
+          <div class="grid-2">
+            <label>
+              ID mappa
+              <input id="mapId" type="text" value="map" />
+            </label>
+            <label>
+              Nome mappa
+              <input id="mapName" type="text" value="Nuova mappa" />
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px;">
+            <label>
+              Asset immagine nel JSON
+              <input id="assetPath" type="text" value="./map.png" />
+            </label>
+            <label>
+              Tile size (px)
+              <input id="tileSize" type="number" min="1" step="1" value="64" />
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px;">
+            <label>
+              Colonne
+              <input id="cols" type="number" min="1" step="1" value="24" />
+            </label>
+            <label>
+              Righe
+              <input id="rows" type="number" min="1" step="1" value="16" />
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="inferBtn">Ricava da immagine</button>
+            <button id="applyLayoutBtn">Applica layout</button>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Se l'immagine misura 1536×1024 con tileSize 64, il layout corretto è 24×16.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>3. Collisioni</h2>
+          <div class="grid-2">
+            <label>
+              Carattere libero
+              <input id="passableChar" type="text" maxlength="1" value="." />
+            </label>
+            <label>
+              Etichetta libero
+              <input id="passableLabel" type="text" value="PATH" />
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px;">
+            <label>
+              Carattere bloccato
+              <input id="blockedChar" type="text" maxlength="1" value="#" />
+            </label>
+            <label>
+              Etichetta bloccato
+              <input id="blockedLabel" type="text" value="TREE" />
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="toolFree" class="ghost">Pennello libero</button>
+            <button id="toolBlocked" class="ghost active">Pennello bloccato</button>
+            <button id="toolToggle" class="ghost">Toggle</button>
+            <button id="toolSpawn" class="ghost">Seleziona spawn</button>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Trascina sul canvas per dipingere. Tasto destro = applica il pennello opposto. Scorciatoie:
+            <span class="kbd">B</span> bloccato,
+            <span class="kbd">L</span> libero,
+            <span class="kbd">T</span> toggle,
+            <span class="kbd">P</span> spawn,
+            <span class="kbd">Ctrl/Cmd+Z</span> undo,
+            <span class="kbd">Ctrl/Cmd+Y</span> redo.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>4. Spawn e simulazione</h2>
+          <div class="grid-3">
+            <label>
+              Spawn X
+              <input id="spawnX" type="number" min="0" step="1" />
+            </label>
+            <label>
+              Spawn Y
+              <input id="spawnY" type="number" min="0" step="1" />
+            </label>
+            <label>
+              Facing
+              <select id="spawnFacing">
+                <option value="down">down</option>
+                <option value="up">up</option>
+                <option value="left">left</option>
+                <option value="right">right</option>
+              </select>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="applySpawnBtn">Applica spawn</button>
+            <button id="clearSpawnBtn">Rimuovi spawn</button>
+            <button id="simulateBtn" class="secondary">Avvia simulazione</button>
+            <button id="resetPlayerBtn">Reset PG su spawn</button>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Usa <strong>Seleziona spawn</strong> e clicca una tile libera, oppure inserisci X/Y manualmente.
+            Durante la simulazione muovi il PG con <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span>.
+            Il movimento rispetta le collisioni e parte dallo spawn salvato nel JSON.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>5. JSON avanzato</h2>
+          <label>
+            Points
+            <textarea id="pointsEditor" spellcheck="false"></textarea>
+          </label>
+          <div class="hint" style="margin-top:8px;">
+            Questo campo viene preservato nel file finale. Puoi usarlo per interactionPoints, healTile e altri dati del nodo points.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>6. Righe collisionMap</h2>
+          <label>
+            rows
+            <textarea id="rowsEditor" spellcheck="false"></textarea>
+          </label>
+          <div class="row" style="margin-top:10px;">
+            <button id="applyRowsBtn">Applica righe manuali</button>
+          </div>
+          <div class="hint" style="margin-top:8px;">
+            Ogni riga deve avere esattamente lo stesso numero di colonne del layout.
+          </div>
+        </section>
+
+        <div id="status" class="status">Pronto.</div>
+      </div>
+    </aside>
+
+    <main class="panel main">
+      <div class="topbar">
+        <div class="stats">
+          <span><span class="dot" style="background:#ef4444;"></span>celle bloccate: <strong id="blockedCount">0</strong></span>
+          <span><span class="dot" style="background:#38bdf8;"></span>zoom: <strong id="zoomValue">100%</strong></span>
+          <span><span class="dot" style="background:#22c55e;"></span>spawn: <strong id="spawnTile">-</strong></span>
+          <span><span class="dot" style="background:#f8fafc;"></span>PG: <strong id="playerTile">-</strong></span>
+          <span>hover tile: <strong id="hoverTile">-</strong></span>
+        </div>
+        <div class="spacer"></div>
+        <button id="zoomOutBtn">-</button>
+        <button id="zoomResetBtn">100%</button>
+        <button id="zoomInBtn">+</button>
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <div class="canvas-stage">
+          <canvas id="mapCanvas" width="1536" height="1024"></canvas>
+        </div>
+      </div>
+
+      <div class="bottombar">
+        <div class="small">
+          Stato corrente: <strong id="summaryText">24×16 tiles, tileSize 64</strong>
+        </div>
+        <div class="small">
+          JSON esportato con <code>layout</code>, <code>collisionMap</code> e <code>points</code> pronti per l'uso.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const el = {
+      imageInput: document.getElementById('imageInput'),
+      jsonInput: document.getElementById('jsonInput'),
+      mapId: document.getElementById('mapId'),
+      mapName: document.getElementById('mapName'),
+      assetPath: document.getElementById('assetPath'),
+      tileSize: document.getElementById('tileSize'),
+      cols: document.getElementById('cols'),
+      rows: document.getElementById('rows'),
+      passableChar: document.getElementById('passableChar'),
+      blockedChar: document.getElementById('blockedChar'),
+      passableLabel: document.getElementById('passableLabel'),
+      blockedLabel: document.getElementById('blockedLabel'),
+      spawnX: document.getElementById('spawnX'),
+      spawnY: document.getElementById('spawnY'),
+      spawnFacing: document.getElementById('spawnFacing'),
+      pointsEditor: document.getElementById('pointsEditor'),
+      rowsEditor: document.getElementById('rowsEditor'),
+      status: document.getElementById('status'),
+      blockedCount: document.getElementById('blockedCount'),
+      hoverTile: document.getElementById('hoverTile'),
+      spawnTile: document.getElementById('spawnTile'),
+      playerTile: document.getElementById('playerTile'),
+      summaryText: document.getElementById('summaryText'),
+      zoomValue: document.getElementById('zoomValue'),
+      canvasWrap: document.getElementById('canvasWrap'),
+      canvas: document.getElementById('mapCanvas'),
+      newJsonBtn: document.getElementById('newJsonBtn'),
+      exportBtn: document.getElementById('exportBtn'),
+      inferBtn: document.getElementById('inferBtn'),
+      applyLayoutBtn: document.getElementById('applyLayoutBtn'),
+      applyRowsBtn: document.getElementById('applyRowsBtn'),
+      applySpawnBtn: document.getElementById('applySpawnBtn'),
+      clearSpawnBtn: document.getElementById('clearSpawnBtn'),
+      simulateBtn: document.getElementById('simulateBtn'),
+      resetPlayerBtn: document.getElementById('resetPlayerBtn'),
+      toolFree: document.getElementById('toolFree'),
+      toolBlocked: document.getElementById('toolBlocked'),
+      toolToggle: document.getElementById('toolToggle'),
+      toolSpawn: document.getElementById('toolSpawn'),
+      zoomOutBtn: document.getElementById('zoomOutBtn'),
+      zoomResetBtn: document.getElementById('zoomResetBtn'),
+      zoomInBtn: document.getElementById('zoomInBtn'),
+      undoBtn: document.getElementById('undoBtn'),
+      redoBtn: document.getElementById('redoBtn')
+    };
+
+    const ctx = el.canvas.getContext('2d');
+
+    const state = {
+      id: 'map',
+      name: 'Nuova mappa',
+      asset: './map.png',
+      tileSize: 64,
+      cols: 24,
+      rows: 16,
+      passableChar: '.',
+      blockedChar: '#',
+      passableLabel: 'PATH',
+      blockedLabel: 'TREE',
+      points: {
+        interactionPoints: [],
+        healTile: null
+      },
+      spawn: {
+        x: null,
+        y: null,
+        facing: 'down'
+      },
+      player: {
+        x: null,
+        y: null,
+        facing: 'down',
+        active: false
+      },
+      grid: [],
+      image: null,
+      imageUrl: '',
+      imageFileName: 'map.png',
+      tool: 'blocked',
+      zoom: 1,
+      hover: null,
+      mouseDown: false,
+      importedRoot: {},
+      hasImportedJson: false
+    };
+
+    const history = [];
+    const redoStack = [];
+
+    function deepClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function makeBlankGrid(cols, rows, fillChar) {
+      return Array.from({ length: rows }, () => Array.from({ length: cols }, () => fillChar));
+    }
+
+    function serializeGrid(grid) {
+      return grid.map(row => row.join(''));
+    }
+
+    function parseRowsToGrid(rows, cols, expectedRows) {
+      if (!Array.isArray(rows) || rows.length !== expectedRows) {
+        throw new Error(`Il numero di righe deve essere ${expectedRows}.`);
+      }
+      return rows.map((row, y) => {
+        if (typeof row !== 'string') {
+          throw new Error(`La riga ${y + 1} non è una stringa.`);
+        }
+        if (row.length !== cols) {
+          throw new Error(`La riga ${y + 1} deve contenere ${cols} caratteri.`);
+        }
+        return row.split('');
+      });
+    }
+
+    function resizeGridPreserve(oldGrid, oldCols, oldRows, newCols, newRows, fillChar) {
+      const next = makeBlankGrid(newCols, newRows, fillChar);
+      const minRows = Math.min(oldRows, newRows);
+      const minCols = Math.min(oldCols, newCols);
+      for (let y = 0; y < minRows; y++) {
+        for (let x = 0; x < minCols; x++) {
+          next[y][x] = oldGrid[y][x];
+        }
+      }
+      return next;
+    }
+
+    function snapshot() {
+      return deepClone({
+        cols: state.cols,
+        rows: state.rows,
+        tileSize: state.tileSize,
+        grid: state.grid,
+        points: state.points,
+        spawn: state.spawn,
+        passableChar: state.passableChar,
+        blockedChar: state.blockedChar,
+        passableLabel: state.passableLabel,
+        blockedLabel: state.blockedLabel
+      });
+    }
+
+    function pushHistory() {
+      history.push(snapshot());
+      if (history.length > 80) history.shift();
+      redoStack.length = 0;
+      updateHistoryButtons();
+    }
+
+    function restoreSnapshot(snap) {
+      state.cols = snap.cols;
+      state.rows = snap.rows;
+      state.tileSize = snap.tileSize;
+      state.grid = deepClone(snap.grid);
+      state.points = deepClone(snap.points);
+      state.spawn = deepClone(snap.spawn || { x: null, y: null, facing: 'down' });
+      state.player = {
+        x: state.spawn.x,
+        y: state.spawn.y,
+        facing: normalizeFacing(state.spawn.facing),
+        active: false
+      };
+      state.passableChar = snap.passableChar;
+      state.blockedChar = snap.blockedChar;
+      state.passableLabel = snap.passableLabel;
+      state.blockedLabel = snap.blockedLabel;
+      syncStateToInputs();
+      syncRowsEditor();
+      render();
+    }
+
+    function undo() {
+      if (!history.length) return;
+      redoStack.push(snapshot());
+      const prev = history.pop();
+      restoreSnapshot(prev);
+      updateHistoryButtons();
+      setStatus('Undo eseguito.', 'success');
+    }
+
+    function redo() {
+      if (!redoStack.length) return;
+      history.push(snapshot());
+      const next = redoStack.pop();
+      restoreSnapshot(next);
+      updateHistoryButtons();
+      setStatus('Redo eseguito.', 'success');
+    }
+
+    function updateHistoryButtons() {
+      el.undoBtn.disabled = history.length === 0;
+      el.redoBtn.disabled = redoStack.length === 0;
+    }
+
+    function syncStateFromInputs() {
+      state.id = el.mapId.value.trim() || 'map';
+      state.name = el.mapName.value.trim() || 'Nuova mappa';
+      state.asset = el.assetPath.value.trim() || './map.png';
+      state.tileSize = Math.max(1, parseInt(el.tileSize.value || '64', 10));
+      state.cols = Math.max(1, parseInt(el.cols.value || '1', 10));
+      state.rows = Math.max(1, parseInt(el.rows.value || '1', 10));
+      state.passableChar = (el.passableChar.value || '.').charAt(0) || '.';
+      state.blockedChar = (el.blockedChar.value || '#').charAt(0) || '#';
+      if (state.passableChar === state.blockedChar) {
+        throw new Error('I caratteri libero e bloccato devono essere diversi.');
+      }
+      state.passableLabel = el.passableLabel.value.trim() || 'PATH';
+      state.blockedLabel = el.blockedLabel.value.trim() || 'BLOCKED';
+      state.spawn.facing = normalizeFacing(el.spawnFacing.value || state.spawn.facing);
+    }
+
+    function syncStateToInputs() {
+      el.mapId.value = state.id;
+      el.mapName.value = state.name;
+      el.assetPath.value = state.asset;
+      el.tileSize.value = state.tileSize;
+      el.cols.value = state.cols;
+      el.rows.value = state.rows;
+      el.passableChar.value = state.passableChar;
+      el.blockedChar.value = state.blockedChar;
+      el.passableLabel.value = state.passableLabel;
+      el.blockedLabel.value = state.blockedLabel;
+      syncSpawnInputs();
+      el.pointsEditor.value = JSON.stringify(state.points, null, 2);
+      updateToolButtons();
+      updateSimulationButton();
+    }
+
+    function setStatus(message, tone = '') {
+      el.status.textContent = message;
+      el.status.className = 'status' + (tone ? ` ${tone}` : '');
+    }
+
+
+    function normalizeFacing(value) {
+      return ['up', 'down', 'left', 'right'].includes(value) ? value : 'down';
+    }
+
+    function isInsideGrid(x, y) {
+      return Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < state.cols && y < state.rows;
+    }
+
+    function hasSpawnCoordinates() {
+      return Number.isInteger(state.spawn?.x) && Number.isInteger(state.spawn?.y);
+    }
+
+    function hasValidSpawn() {
+      return hasSpawnCoordinates() && isInsideGrid(state.spawn.x, state.spawn.y);
+    }
+
+    function hasActivePlayer() {
+      return state.player.active && isInsideGrid(state.player.x, state.player.y);
+    }
+
+    function isBlockedTile(x, y) {
+      return !isInsideGrid(x, y) || state.grid[y][x] === state.blockedChar;
+    }
+
+    function syncSpawnInputs() {
+      el.spawnX.value = hasValidSpawn() ? state.spawn.x : '';
+      el.spawnY.value = hasValidSpawn() ? state.spawn.y : '';
+      el.spawnFacing.value = normalizeFacing(state.spawn.facing);
+    }
+
+    function updateSimulationButton() {
+      el.simulateBtn.textContent = state.player.active ? 'Ferma simulazione' : 'Avvia simulazione';
+      el.simulateBtn.classList.toggle('active', state.player.active);
+    }
+
+    function clearSpawn(options = {}) {
+      const { silent = false } = options;
+      state.spawn = {
+        x: null,
+        y: null,
+        facing: normalizeFacing(el.spawnFacing.value || state.spawn?.facing || 'down')
+      };
+      state.player = {
+        x: null,
+        y: null,
+        facing: state.spawn.facing,
+        active: false
+      };
+      syncSpawnInputs();
+      updateSummary();
+      render();
+      if (!silent) {
+        setStatus('Spawn rimosso.', 'success');
+      }
+    }
+
+    function setSpawnAt(x, y, facing = state.spawn.facing, options = {}) {
+      const { silent = false } = options;
+      if (!Number.isInteger(x) || !Number.isInteger(y)) {
+        throw new Error('Le coordinate dello spawn devono essere numeri interi.');
+      }
+      if (!isInsideGrid(x, y)) {
+        throw new Error('Lo spawn deve rientrare nel layout della mappa.');
+      }
+      if (isBlockedTile(x, y)) {
+        throw new Error('Lo spawn deve essere posizionato su una tile libera.');
+      }
+      state.spawn = {
+        x,
+        y,
+        facing: normalizeFacing(facing)
+      };
+      state.player = {
+        x,
+        y,
+        facing: normalizeFacing(facing),
+        active: state.player.active
+      };
+      syncSpawnInputs();
+      updateSummary();
+      render();
+      if (!silent) {
+        setStatus(`Spawn impostato su ${x}, ${y} (${state.spawn.facing}).`, 'success');
+      }
+    }
+
+    function applySpawnFromInputs() {
+      try {
+        syncStateFromInputs();
+        const x = Number(el.spawnX.value);
+        const y = Number(el.spawnY.value);
+        pushHistory();
+        setSpawnAt(x, y, el.spawnFacing.value);
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function resetPlayerToSpawn(options = {}) {
+      const { activate = state.player.active, silent = false } = options;
+      if (!hasValidSpawn()) {
+        throw new Error('Imposta prima uno spawn valido.');
+      }
+      if (isBlockedTile(state.spawn.x, state.spawn.y)) {
+        throw new Error('La tile di spawn è bloccata.');
+      }
+      state.player = {
+        x: state.spawn.x,
+        y: state.spawn.y,
+        facing: normalizeFacing(state.spawn.facing),
+        active: Boolean(activate)
+      };
+      updateSimulationButton();
+      updateSummary();
+      render();
+      if (!silent) {
+        setStatus(`PG riportato allo spawn (${state.player.x}, ${state.player.y}).`, 'success');
+      }
+    }
+
+    function toggleSimulation() {
+      try {
+        if (state.player.active) {
+          state.player.active = false;
+          updateSimulationButton();
+          updateSummary();
+          render();
+          setStatus('Simulazione disattivata.', 'success');
+          return;
+        }
+        resetPlayerToSpawn({ activate: true, silent: true });
+        updateSimulationButton();
+        updateSummary();
+        render();
+        setStatus('Simulazione attiva: usa WASD per muovere il PG.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function movePlayer(direction) {
+      if (!state.player.active) return false;
+      const deltas = {
+        up: { x: 0, y: -1 },
+        down: { x: 0, y: 1 },
+        left: { x: -1, y: 0 },
+        right: { x: 1, y: 0 }
+      };
+      const delta = deltas[direction];
+      if (!delta) return false;
+
+      state.player.facing = direction;
+      const nextX = state.player.x + delta.x;
+      const nextY = state.player.y + delta.y;
+
+      if (isBlockedTile(nextX, nextY)) {
+        render();
+        return false;
+      }
+
+      state.player.x = nextX;
+      state.player.y = nextY;
+      updateSummary();
+      render();
+      return true;
+    }
+
+    function validateActorsAfterGridChange() {
+      let note = '';
+
+      if (hasSpawnCoordinates() && !hasValidSpawn()) {
+        clearSpawn({ silent: true });
+        note = 'Spawn rimosso perché fuori dal layout.';
+      } else if (hasValidSpawn() && isBlockedTile(state.spawn.x, state.spawn.y)) {
+        clearSpawn({ silent: true });
+        note = 'Spawn rimosso perché la tile è diventata bloccata.';
+      }
+
+      if (state.player.active && !hasActivePlayer()) {
+        if (hasValidSpawn()) {
+          resetPlayerToSpawn({ activate: true, silent: true });
+          note = note || 'PG riportato allo spawn.';
+        } else {
+          state.player.active = false;
+          updateSimulationButton();
+          note = note || 'Simulazione fermata: PG fuori mappa.';
+        }
+      }
+
+      if (state.player.active && isBlockedTile(state.player.x, state.player.y)) {
+        if (hasValidSpawn()) {
+          resetPlayerToSpawn({ activate: true, silent: true });
+          note = note || 'PG riportato allo spawn.';
+        } else {
+          state.player = { x: null, y: null, facing: 'down', active: false };
+          updateSimulationButton();
+          note = note || 'Simulazione fermata: tile del PG non valida.';
+        }
+      }
+
+      syncSpawnInputs();
+      updateSimulationButton();
+      updateSummary();
+      return note;
+    }
+
+    function safeParsePointsEditor() {
+      const raw = el.pointsEditor.value.trim();
+      if (!raw) return { interactionPoints: [], healTile: null };
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed;
+        }
+        throw new Error('Il nodo points deve essere un oggetto JSON.');
+      } catch (error) {
+        throw new Error('Points non valido: ' + error.message);
+      }
+    }
+
+    function syncRowsEditor() {
+      el.rowsEditor.value = serializeGrid(state.grid).join('\n');
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const blocked = countBlocked();
+      el.blockedCount.textContent = blocked;
+      el.summaryText.textContent = `${state.cols}×${state.rows} tiles, tileSize ${state.tileSize}`;
+      el.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+      el.spawnTile.textContent = hasValidSpawn()
+        ? `${state.spawn.x}, ${state.spawn.y} (${state.spawn.facing})`
+        : '-';
+      el.playerTile.textContent = hasActivePlayer()
+        ? `${state.player.x}, ${state.player.y} (${state.player.facing})`
+        : (state.player.active ? 'fuori mappa' : '-');
+      updateSimulationButton();
+    }
+
+    function countBlocked() {
+      let total = 0;
+      for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+          if (state.grid[y][x] === state.blockedChar) total++;
+        }
+      }
+      return total;
+    }
+
+    function updateToolButtons() {
+      el.toolFree.classList.toggle('active', state.tool === 'free');
+      el.toolBlocked.classList.toggle('active', state.tool === 'blocked');
+      el.toolToggle.classList.toggle('active', state.tool === 'toggle');
+      el.toolSpawn.classList.toggle('active', state.tool === 'spawn');
+    }
+
+    function setTool(tool) {
+      state.tool = tool;
+      updateToolButtons();
+      setStatus(`Strumento attivo: ${tool}.`);
+    }
+
+    function initBlankState() {
+      state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
+      state.points = { interactionPoints: [], healTile: null };
+      state.spawn = { x: null, y: null, facing: 'down' };
+      state.player = { x: null, y: null, facing: 'down', active: false };
+      state.importedRoot = {};
+      state.hasImportedJson = false;
+      syncStateToInputs();
+      syncRowsEditor();
+      render();
+    }
+
+    function buildJson() {
+      syncStateFromInputs();
+      state.points = safeParsePointsEditor();
+      const rows = serializeGrid(state.grid);
+      const base = deepClone(state.importedRoot || {});
+      base.id = state.id;
+      base.name = state.name;
+      base.asset = state.asset;
+      base.layout = {
+        ...(base.layout || {}),
+        cols: state.cols,
+        rows: state.rows,
+        tileSize: state.tileSize
+      };
+      base.collisionMap = {
+        ...(base.collisionMap || {}),
+        legend: {
+          [state.passableChar]: state.passableLabel,
+          [state.blockedChar]: state.blockedLabel
+        },
+        rows
+      };
+      if (hasValidSpawn()) {
+        base.collisionMap.spawn = {
+          x: state.spawn.x,
+          y: state.spawn.y,
+          facing: normalizeFacing(state.spawn.facing)
+        };
+      } else {
+        delete base.collisionMap.spawn;
+      }
+      base.points = state.points;
+      return base;
+    }
+
+    function render() {
+      const mapWidth = Math.max(1, state.cols * state.tileSize);
+      const mapHeight = Math.max(1, state.rows * state.tileSize);
+      const width = state.image ? Math.max(mapWidth, state.image.naturalWidth) : mapWidth;
+      const height = state.image ? Math.max(mapHeight, state.image.naturalHeight) : mapHeight;
+
+      el.canvas.width = width;
+      el.canvas.height = height;
+      el.canvas.style.width = `${Math.round(width * state.zoom)}px`;
+      el.canvas.style.height = `${Math.round(height * state.zoom)}px`;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#0b1220';
+      ctx.fillRect(0, 0, width, height);
+
+      if (state.image) {
+        ctx.drawImage(state.image, 0, 0);
+      }
+
+      for (let y = 0; y < state.rows; y++) {
+        for (let x = 0; x < state.cols; x++) {
+          const value = state.grid[y][x];
+          const px = x * state.tileSize;
+          const py = y * state.tileSize;
+
+          if (value === state.blockedChar) {
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.28)';
+            ctx.fillRect(px, py, state.tileSize, state.tileSize);
+          }
+
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(px + 0.5, py + 0.5, state.tileSize, state.tileSize);
+        }
+      }
+
+      if (state.hover && state.hover.x >= 0 && state.hover.y >= 0 && state.hover.x < state.cols && state.hover.y < state.rows) {
+        const px = state.hover.x * state.tileSize;
+        const py = state.hover.y * state.tileSize;
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+        ctx.fillRect(px, py, state.tileSize, state.tileSize);
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px + 1, py + 1, state.tileSize - 2, state.tileSize - 2);
+      }
+
+      if (hasValidSpawn()) {
+        const px = state.spawn.x * state.tileSize;
+        const py = state.spawn.y * state.tileSize;
+        const inset = Math.max(3, Math.round(state.tileSize * 0.12));
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.95)';
+        ctx.lineWidth = Math.max(2, Math.round(state.tileSize * 0.08));
+        ctx.strokeRect(px + inset, py + inset, state.tileSize - inset * 2, state.tileSize - inset * 2);
+        ctx.beginPath();
+        ctx.moveTo(px + state.tileSize / 2, py + inset);
+        ctx.lineTo(px + state.tileSize - inset, py + state.tileSize / 2);
+        ctx.lineTo(px + state.tileSize / 2, py + state.tileSize - inset);
+        ctx.lineTo(px + inset, py + state.tileSize / 2);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      if (hasActivePlayer()) {
+        const centerX = state.player.x * state.tileSize + state.tileSize / 2;
+        const centerY = state.player.y * state.tileSize + state.tileSize / 2;
+        const radius = Math.max(6, state.tileSize * 0.26);
+        const facingVectors = {
+          up: { x: 0, y: -1 },
+          down: { x: 0, y: 1 },
+          left: { x: -1, y: 0 },
+          right: { x: 1, y: 0 }
+        };
+        const vector = facingVectors[state.player.facing] || facingVectors.down;
+
+        ctx.fillStyle = 'rgba(248, 250, 252, 0.95)';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.lineWidth = Math.max(2, state.tileSize * 0.08);
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(centerX + vector.x * radius, centerY + vector.y * radius);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius + 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      updateSummary();
+    }
+
+    function getTileFromPointer(event) {
+      const rect = el.canvas.getBoundingClientRect();
+      const scaleX = el.canvas.width / rect.width;
+      const scaleY = el.canvas.height / rect.height;
+      const x = Math.floor(((event.clientX - rect.left) * scaleX) / state.tileSize);
+      const y = Math.floor(((event.clientY - rect.top) * scaleY) / state.tileSize);
+      return { x, y };
+    }
+
+    function applyToolAt(x, y, alternate = false) {
+      if (x < 0 || y < 0 || x >= state.cols || y >= state.rows) return false;
+      const current = state.grid[y][x];
+      let next = current;
+
+      const activeTool = alternate
+        ? (state.tool === 'blocked' ? 'free' : state.tool === 'free' ? 'blocked' : 'toggle')
+        : state.tool;
+
+      if (activeTool === 'blocked') next = state.blockedChar;
+      if (activeTool === 'free') next = state.passableChar;
+      if (activeTool === 'toggle') next = current === state.blockedChar ? state.passableChar : state.blockedChar;
+
+      if (next === current) return false;
+      if (next === state.blockedChar && hasValidSpawn() && state.spawn.x === x && state.spawn.y === y) {
+        setStatus('La tile di spawn deve restare libera.', 'error');
+        return false;
+      }
+      if (next === state.blockedChar && hasActivePlayer() && state.player.x === x && state.player.y === y) {
+        setStatus('Non puoi bloccare la tile occupata dal PG.', 'error');
+        return false;
+      }
+      state.grid[y][x] = next;
+      return true;
+    }
+
+    function startStroke(event) {
+      try {
+        syncStateFromInputs();
+      } catch (error) {
+        setStatus(error.message, 'error');
+        return;
+      }
+
+      const tile = getTileFromPointer(event);
+      state.hover = tile;
+
+      if (state.tool === 'spawn') {
+        if (event.button === 2) {
+          pushHistory();
+          clearSpawn();
+        } else {
+          try {
+            pushHistory();
+            setSpawnAt(tile.x, tile.y, el.spawnFacing.value);
+          } catch (error) {
+            setStatus(error.message, 'error');
+          }
+        }
+        event.preventDefault();
+        return;
+      }
+
+      state.mouseDown = true;
+      pushHistory();
+      const changed = applyToolAt(tile.x, tile.y, event.button === 2);
+      if (changed) {
+        syncRowsEditor();
+        const note = validateActorsAfterGridChange();
+        if (note) setStatus(note);
+      }
+      render();
+      event.preventDefault();
+    }
+
+    function moveStroke(event) {
+      const tile = getTileFromPointer(event);
+      state.hover = tile;
+      el.hoverTile.textContent = `${tile.x}, ${tile.y}`;
+      if (state.mouseDown && state.tool !== 'spawn') {
+        const changed = applyToolAt(tile.x, tile.y, event.buttons === 2 || event.button === 2);
+        if (changed) {
+          syncRowsEditor();
+          const note = validateActorsAfterGridChange();
+          if (note) setStatus(note);
+        }
+      }
+      render();
+    }
+
+    function endStroke() {
+      state.mouseDown = false;
+    }
+
+    async function loadImageFile(file) {
+      if (!file) return;
+      if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        state.image = image;
+        state.imageUrl = url;
+        state.imageFileName = file.name;
+        if (!el.assetPath.value.trim() || el.assetPath.value.trim() === './map.png') {
+          el.assetPath.value = `./${file.name}`;
+          state.asset = el.assetPath.value;
+        }
+        setStatus(`Immagine caricata: ${file.name} (${image.naturalWidth}×${image.naturalHeight}).`, 'success');
+        render();
+      };
+      image.onerror = () => {
+        setStatus('Impossibile leggere l\'immagine.', 'error');
+      };
+      image.src = url;
+    }
+
+    async function loadJsonFile(file) {
+      if (!file) return;
+      try {
+        const raw = await file.text();
+        const data = JSON.parse(raw);
+        populateFromJson(data);
+        setStatus(`JSON caricato: ${file.name}.`, 'success');
+      } catch (error) {
+        setStatus('JSON non valido: ' + error.message, 'error');
+      }
+    }
+
+    function populateFromJson(data) {
+      state.importedRoot = deepClone(data);
+      state.hasImportedJson = true;
+      state.id = data.id || 'map';
+      state.name = data.name || 'Nuova mappa';
+      state.asset = data.asset || './map.png';
+      state.tileSize = Math.max(1, Number(data.layout?.tileSize) || 64);
+      state.cols = Math.max(1, Number(data.layout?.cols) || 1);
+      state.rows = Math.max(1, Number(data.layout?.rows) || 1);
+
+      const legend = data.collisionMap?.legend || {};
+      const collisionRows = data.collisionMap?.rows || makeBlankGrid(state.cols, state.rows, '.').map(row => row.join(''));
+
+      const charsInRows = new Set(collisionRows.join('').split(''));
+      const passableChar = charsInRows.has('.') ? '.' : Object.keys(legend).find(k => k !== '#') || '.';
+      const blockedChar = charsInRows.has('#') ? '#' : Object.keys(legend).find(k => k !== passableChar) || '#';
+
+      state.passableChar = passableChar;
+      state.blockedChar = blockedChar === passableChar ? '#' : blockedChar;
+      state.passableLabel = legend[state.passableChar] || 'PATH';
+      state.blockedLabel = legend[state.blockedChar] || 'TREE';
+      state.grid = parseRowsToGrid(collisionRows, state.cols, state.rows);
+      const spawn = data.collisionMap?.spawn;
+      state.spawn = spawn && typeof spawn === 'object'
+        ? {
+            x: Number.isInteger(spawn.x) ? spawn.x : null,
+            y: Number.isInteger(spawn.y) ? spawn.y : null,
+            facing: normalizeFacing(spawn.facing)
+          }
+        : { x: null, y: null, facing: 'down' };
+      state.player = {
+        x: state.spawn.x,
+        y: state.spawn.y,
+        facing: normalizeFacing(state.spawn.facing),
+        active: false
+      };
+      state.points = data.points && typeof data.points === 'object'
+        ? data.points
+        : { interactionPoints: [], healTile: null };
+
+      const note = validateActorsAfterGridChange();
+      syncStateToInputs();
+      syncRowsEditor();
+      render();
+      if (note) setStatus(note);
+    }
+
+    function createNewJsonFromCurrentInputs() {
+      try {
+        pushHistory();
+        syncStateFromInputs();
+        state.points = safeParsePointsEditor();
+        state.importedRoot = {};
+        state.hasImportedJson = false;
+
+        const shouldInfer = state.image && (state.cols <= 1 || state.rows <= 1);
+        if (shouldInfer) inferLayoutFromImage();
+
+        state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
+        state.spawn = { x: null, y: null, facing: normalizeFacing(el.spawnFacing.value || 'down') };
+        state.player = { x: null, y: null, facing: state.spawn.facing, active: false };
+        syncRowsEditor();
+        render();
+        setStatus('Nuovo JSON creato in memoria.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function inferLayoutFromImage() {
+      if (!state.image) {
+        throw new Error('Carica prima un\'immagine per ricavare righe e colonne.');
+      }
+      syncStateFromInputs();
+      const cols = Math.max(1, Math.round(state.image.naturalWidth / state.tileSize));
+      const rows = Math.max(1, Math.round(state.image.naturalHeight / state.tileSize));
+      state.cols = cols;
+      state.rows = rows;
+      el.cols.value = cols;
+      el.rows.value = rows;
+      if (!state.grid.length) {
+        state.grid = makeBlankGrid(cols, rows, state.passableChar);
+      } else {
+        state.grid = resizeGridPreserve(state.grid, state.grid[0].length, state.grid.length, cols, rows, state.passableChar);
+      }
+      syncRowsEditor();
+      const note = validateActorsAfterGridChange();
+      render();
+      setStatus(note || `Layout ricavato dall'immagine: ${cols}×${rows}.`, 'success');
+    }
+
+    function applyLayoutChanges() {
+      try {
+        pushHistory();
+        const oldGrid = deepClone(state.grid);
+        const oldCols = state.cols;
+        const oldRows = state.rows;
+        syncStateFromInputs();
+        state.grid = resizeGridPreserve(oldGrid, oldCols, oldRows, state.cols, state.rows, state.passableChar);
+        syncRowsEditor();
+        const note = validateActorsAfterGridChange();
+        render();
+        setStatus(note || 'Layout applicato e collisioni ridimensionate.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function applyRowsFromEditor() {
+      try {
+        pushHistory();
+        syncStateFromInputs();
+        const lines = el.rowsEditor.value.replace(/\r/g, '').split('\n').filter((line, index, arr) => !(index === arr.length - 1 && line === ''));
+        state.grid = parseRowsToGrid(lines, state.cols, state.rows);
+        const note = validateActorsAfterGridChange();
+        render();
+        setStatus(note || 'Righe collisionMap applicate.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function exportJson() {
+      try {
+        const data = buildJson();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${state.id || 'map'}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus('JSON esportato.', 'success');
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    function changeZoom(delta) {
+      state.zoom = Math.max(0.25, Math.min(4, Number((state.zoom + delta).toFixed(2))));
+      render();
+    }
+
+    function setZoom(value) {
+      state.zoom = value;
+      render();
+    }
+
+    el.imageInput.addEventListener('change', event => loadImageFile(event.target.files[0]));
+    el.jsonInput.addEventListener('change', event => loadJsonFile(event.target.files[0]));
+    el.newJsonBtn.addEventListener('click', createNewJsonFromCurrentInputs);
+    el.exportBtn.addEventListener('click', exportJson);
+    el.inferBtn.addEventListener('click', () => {
+      try {
+        pushHistory();
+        inferLayoutFromImage();
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+    el.applyLayoutBtn.addEventListener('click', applyLayoutChanges);
+    el.applyRowsBtn.addEventListener('click', applyRowsFromEditor);
+    el.applySpawnBtn.addEventListener('click', applySpawnFromInputs);
+    el.clearSpawnBtn.addEventListener('click', () => {
+      pushHistory();
+      clearSpawn();
+    });
+    el.simulateBtn.addEventListener('click', toggleSimulation);
+    el.resetPlayerBtn.addEventListener('click', () => {
+      try {
+        resetPlayerToSpawn({ activate: true });
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    });
+
+    el.toolFree.addEventListener('click', () => setTool('free'));
+    el.toolBlocked.addEventListener('click', () => setTool('blocked'));
+    el.toolToggle.addEventListener('click', () => setTool('toggle'));
+    el.toolSpawn.addEventListener('click', () => setTool('spawn'));
+
+    el.zoomOutBtn.addEventListener('click', () => changeZoom(-0.25));
+    el.zoomResetBtn.addEventListener('click', () => setZoom(1));
+    el.zoomInBtn.addEventListener('click', () => changeZoom(0.25));
+    el.undoBtn.addEventListener('click', undo);
+    el.redoBtn.addEventListener('click', redo);
+
+    el.canvas.addEventListener('mousedown', startStroke);
+    el.canvas.addEventListener('mousemove', moveStroke);
+    el.canvas.addEventListener('mouseleave', () => {
+      state.hover = null;
+      el.hoverTile.textContent = '-';
+      render();
+    });
+    window.addEventListener('mouseup', endStroke);
+    el.canvas.addEventListener('contextmenu', event => event.preventDefault());
+
+    document.addEventListener('keydown', event => {
+      const meta = event.ctrlKey || event.metaKey;
+      if (meta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if ((meta && event.key.toLowerCase() === 'y') || (meta && event.shiftKey && event.key.toLowerCase() === 'z')) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      const key = event.key.toLowerCase();
+
+      const movementMap = {
+        w: 'up',
+        arrowup: 'up',
+        s: 'down',
+        arrowdown: 'down',
+        a: 'left',
+        arrowleft: 'left',
+        d: 'right',
+        arrowright: 'right'
+      };
+
+      if (state.player.active && movementMap[key]) {
+        event.preventDefault();
+        movePlayer(movementMap[key]);
+        return;
+      }
+
+      if (key === 'b') setTool('blocked');
+      if (key === 'l') setTool('free');
+      if (key === 't') setTool('toggle');
+      if (key === 'p') setTool('spawn');
+    });
+
+    [
+      el.mapId,
+      el.mapName,
+      el.assetPath,
+      el.tileSize,
+      el.cols,
+      el.rows,
+      el.passableChar,
+      el.blockedChar,
+      el.passableLabel,
+      el.blockedLabel,
+      el.spawnFacing
+    ].forEach(input => {
+      input.addEventListener('change', () => {
+        try {
+          syncStateFromInputs();
+          render();
+        } catch (error) {
+          setStatus(error.message, 'error');
+        }
+      });
+    });
+
+    function boot() {
+      state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
+      syncStateToInputs();
+      syncRowsEditor();
+      updateHistoryButtons();
+      render();
+      setTool('blocked');
+      updateSimulationButton();
+      setStatus('Pronto. Carica immagine e JSON, oppure crea un nuovo JSON da zero.');
+    }
+
+    boot();
+  </script>
+</body>
+</html>

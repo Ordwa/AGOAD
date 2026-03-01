@@ -1,5 +1,6 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG } from "../data/constants.js";
+import { verifyGmEditPassword } from "../utils/security.js";
 
 const SETTINGS_THEME = Object.freeze({
   panelTop: "rgba(30, 48, 76, 0.9)",
@@ -17,7 +18,10 @@ const SETTINGS_THEME = Object.freeze({
   toggleOn: "#6fd17e",
 });
 
-const ROW_KEYS = Object.freeze(["sound", "music", "debug"]);
+const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode"]);
+const SETTINGS_ROW_HEIGHT = 30;
+const SETTINGS_ROW_START_Y = 38;
+const MAX_GM_PASSWORD_LENGTH = 20;
 
 export class SettingsScene extends Scene {
   constructor(game) {
@@ -25,6 +29,7 @@ export class SettingsScene extends Scene {
     this.returnScene = "start";
     this.returnPayload = {};
     this.selectedIndex = 0;
+    this.gmEditStatus = "";
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
 
     this.pointerEventsBound = false;
@@ -39,6 +44,7 @@ export class SettingsScene extends Scene {
     this.returnScene = payload.returnScene ?? "start";
     this.returnPayload = payload.returnPayload ?? {};
     this.selectedIndex = 0;
+    this.gmEditStatus = "";
     this.bindPointerEvents();
   }
 
@@ -183,7 +189,12 @@ export class SettingsScene extends Scene {
       }
 
       this.selectedIndex = rowIndex;
-      if (row.id === "debug") {
+      if (row.id === "gm_edit") {
+        this.openGmEdit();
+        return;
+      }
+
+      if (row.id === "debug_mode") {
         this.game.toggleDebugOverlay();
         return;
       }
@@ -248,7 +259,14 @@ export class SettingsScene extends Scene {
       }
     }
 
-    if (selectedKey === "debug") {
+    if (selectedKey === "gm_edit") {
+      if (input.wasPressed("confirm")) {
+        this.openGmEdit();
+      }
+      return;
+    }
+
+    if (selectedKey === "debug_mode") {
       if (input.wasPressed("left") || input.wasPressed("right") || input.wasPressed("confirm")) {
         this.game.toggleDebugOverlay();
       }
@@ -271,6 +289,7 @@ export class SettingsScene extends Scene {
 
     this.drawPanel(ctx, 6, 32, GAME_CONFIG.width - 12, 142, { selected: true });
     this.drawRows(ctx);
+    this.drawStatus(ctx);
     ctx.restore();
   }
 
@@ -278,15 +297,47 @@ export class SettingsScene extends Scene {
     this.game.changeScene(this.returnScene, this.returnPayload);
   }
 
+  async openGmEdit() {
+    if (typeof window === "undefined" || typeof window.prompt !== "function") {
+      this.gmEditStatus = "GM-EDIT non disponibile qui.";
+      return;
+    }
+
+    const rawPassword = window.prompt("Inserisci password GM-EDIT", "");
+    if (rawPassword === null) {
+      this.gmEditStatus = "";
+      return;
+    }
+
+    const password = String(rawPassword ?? "").slice(0, MAX_GM_PASSWORD_LENGTH).trim();
+    if (password.length === 0) {
+      this.gmEditStatus = "Password richiesta.";
+      return;
+    }
+
+    this.gmEditStatus = "Verifica in corso...";
+    try {
+      const isValid = await verifyGmEditPassword(password);
+      if (!isValid) {
+        this.gmEditStatus = "Password errata.";
+        return;
+      }
+      this.gmEditStatus = "Accesso GM-EDIT autorizzato.";
+    } catch {
+      this.gmEditStatus = "Verifica non disponibile.";
+    }
+  }
+
   drawRows(ctx) {
     const rows = [
       { id: "sound", label: "SOUND", value: this.game.getSoundLevel() },
       { id: "music", label: "MUSIC", value: this.game.getMusicLevel() },
-      { id: "debug", label: "DEBUG", value: this.game.getDebugOverlayEnabled() ? 1 : 0 },
+      { id: "gm_edit", label: "GM-EDIT", valueLabel: "APRI" },
+      { id: "debug_mode", label: "DEBUG MODE", value: this.game.getDebugOverlayEnabled() ? 1 : 0 },
     ];
 
-    const rowHeight = 38;
-    const startY = 44;
+    const rowHeight = SETTINGS_ROW_HEIGHT;
+    const startY = SETTINGS_ROW_START_Y;
     rows.forEach((row, rowIndex) => {
       const y = startY + rowIndex * rowHeight;
       this.drawPanel(ctx, 12, y, GAME_CONFIG.width - 24, rowHeight - 4, {
@@ -299,8 +350,13 @@ export class SettingsScene extends Scene {
       ctx.textAlign = "left";
       ctx.fillText(row.label, 20, y + 7);
 
-      if (row.id === "debug") {
-        this.drawToggle(ctx, row.value > 0, 188, y + 8, 64, 18);
+      if (row.id === "gm_edit") {
+        this.drawActionChip(ctx, row.valueLabel ?? "APRI", 184, y + 4, 68, 18, rowIndex === this.selectedIndex);
+        return;
+      }
+
+      if (row.id === "debug_mode") {
+        this.drawDebugModeSwitch(ctx, row.value > 0, 184, y + 4, 68, 18, rowIndex === this.selectedIndex);
         return;
       }
 
@@ -325,17 +381,49 @@ export class SettingsScene extends Scene {
     ctx.textAlign = "left";
   }
 
-  drawToggle(ctx, enabled, x, y, width, height) {
-    this.drawPanel(ctx, x, y, width, height, { inset: true });
+  drawDebugModeSwitch(ctx, enabled, x, y, width, height, selected = false) {
+    const radius = Math.round(height / 2);
     ctx.fillStyle = enabled ? SETTINGS_THEME.toggleOn : SETTINGS_THEME.toggleOff;
-    ctx.fillRect(x + 3, y + 3, width - 6, height - 6);
-    ctx.fillStyle = enabled ? "#16351e" : "#1d2431";
+    fillRoundedRect(ctx, x, y, width, height, radius);
+    ctx.strokeStyle = selected ? "rgba(188, 217, 255, 0.95)" : "rgba(130, 168, 224, 0.76)";
+    ctx.lineWidth = 2;
+    strokeRoundedRect(ctx, x, y, width, height, radius);
+
+    const knobSize = Math.max(10, Math.round(height * 0.74));
+    const knobMargin = Math.round((height - knobSize) / 2);
+    const knobX = enabled ? x + width - knobSize - knobMargin : x + knobMargin;
+    const knobY = y + knobMargin;
+    ctx.fillStyle = "#f7fbff";
+    fillRoundedRect(ctx, knobX, knobY, knobSize, knobSize, Math.round(knobSize / 2));
+    ctx.strokeStyle = "rgba(31, 51, 76, 0.7)";
+    ctx.lineWidth = 1;
+    strokeRoundedRect(ctx, knobX, knobY, knobSize, knobSize, Math.round(knobSize / 2));
+  }
+
+  drawActionChip(ctx, label, x, y, width, height, selected = false) {
+    this.drawPanel(ctx, x, y, width, height, { inset: true });
+    ctx.fillStyle = selected ? "rgba(31, 69, 110, 0.95)" : "rgba(14, 36, 61, 0.9)";
+    fillRoundedRect(ctx, x + 3, y + 3, width - 6, height - 6, 4);
+    ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(enabled ? "ON" : "OFF", x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
+    ctx.fillText(String(label ?? "APRI"), x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
+  }
+
+  drawStatus(ctx) {
+    const message = String(this.gmEditStatus ?? "").trim();
+    if (!message) {
+      return;
+    }
+
+    ctx.fillStyle = SETTINGS_THEME.textSecondary;
+    ctx.font = "7px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(message, 12, 176);
   }
 
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
@@ -434,16 +522,21 @@ function strokeRoundedRect(ctx, x, y, w, h, radius) {
 }
 
 function getSettingsRowRects() {
-  const rowHeight = 38;
-  const startY = 44;
+  const rowHeight = SETTINGS_ROW_HEIGHT;
+  const startY = SETTINGS_ROW_START_Y;
   const rows = [];
 
   for (let index = 0; index < ROW_KEYS.length; index += 1) {
     const y = startY + rowHeight * index;
+    const rowId = ROW_KEYS[index];
+    const valueRect =
+      rowId === "sound" || rowId === "music"
+        ? { x: 128, y: y + 8, w: 124, h: 16 }
+        : { x: 184, y: y + 4, w: 68, h: 18 };
     rows.push({
-      id: ROW_KEYS[index],
+      id: rowId,
       rowRect: { x: 12, y, w: GAME_CONFIG.width - 24, h: rowHeight - 4 },
-      valueRect: ROW_KEYS[index] === "debug" ? { x: 188, y: y + 8, w: 64, h: 18 } : { x: 128, y: y + 8, w: 124, h: 16 },
+      valueRect,
     });
   }
 

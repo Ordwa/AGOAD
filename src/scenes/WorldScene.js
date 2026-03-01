@@ -89,6 +89,7 @@ export class WorldScene extends Scene {
       dialogIndex: 0,
     }));
     this.interactionPoints = [...(WORLD_POINTS.interactionPoints ?? [])];
+    this.battleZones = normalizeBattleZones(WORLD_POINTS.battleZones ?? []);
 
     this.player = {
       tileX: DEFAULT_SPAWN.x,
@@ -155,7 +156,10 @@ export class WorldScene extends Scene {
     }
 
     if (this.player.move) {
-      this.advancePlayerMove(dt);
+      const battleTriggered = this.advancePlayerMove(dt);
+      if (battleTriggered) {
+        return;
+      }
       // If a move just finished this frame, allow immediate chaining.
       if (this.player.move) {
         return;
@@ -204,6 +208,7 @@ export class WorldScene extends Scene {
     const camera = this.computeCamera(canvasWidth, canvasHeight);
     drawCameraView(ctx, this.mapImage, camera, canvasWidth, canvasHeight);
 
+    this.drawBattleZoneMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawNpcMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawPlayer(ctx, camera.zoom, canvasWidth, canvasHeight);
     drawWorldMessage(ctx, this.worldMessage.text, this.worldMessage.ttl, canvasWidth, canvasHeight);
@@ -279,6 +284,41 @@ export class WorldScene extends Scene {
       ctx.save();
       ctx.globalAlpha = 0.9;
       this.drawResolvedFrame(ctx, npcFrame, drawX, drawY, drawWidth, drawHeight);
+      ctx.restore();
+    });
+  }
+
+  drawBattleZoneMarkers(ctx, camera, canvasWidth, canvasHeight) {
+    if (!Array.isArray(this.battleZones) || this.battleZones.length <= 0) {
+      return;
+    }
+
+    const tileSize = MAP_LAYOUT.tileSize;
+    this.battleZones.forEach((zone) => {
+      const worldX = zone.x * tileSize;
+      const worldY = zone.y * tileSize;
+      const worldW = zone.w * tileSize;
+      const worldH = zone.h * tileSize;
+      const screenX = Math.round((worldX - camera.sourceX) * camera.zoom);
+      const screenY = Math.round((worldY - camera.sourceY) * camera.zoom);
+      const drawW = Math.round(worldW * camera.zoom);
+      const drawH = Math.round(worldH * camera.zoom);
+
+      if (
+        screenX > canvasWidth ||
+        screenY > canvasHeight ||
+        screenX + drawW < 0 ||
+        screenY + drawH < 0
+      ) {
+        return;
+      }
+
+      ctx.save();
+      ctx.fillStyle = "rgba(217, 78, 57, 0.32)";
+      ctx.fillRect(screenX, screenY, drawW, drawH);
+      ctx.strokeStyle = "rgba(255, 208, 122, 0.95)";
+      ctx.lineWidth = Math.max(1, Math.round(camera.zoom * 1.2));
+      ctx.strokeRect(screenX + 0.5, screenY + 0.5, Math.max(0, drawW - 1), Math.max(0, drawH - 1));
       ctx.restore();
     });
   }
@@ -385,7 +425,7 @@ export class WorldScene extends Scene {
 
   advancePlayerMove(dt) {
     if (!this.player.move) {
-      return;
+      return false;
     }
 
     this.player.move.elapsed += dt;
@@ -404,7 +444,7 @@ export class WorldScene extends Scene {
     );
 
     if (progress < 1) {
-      return;
+      return false;
     }
 
     this.player.tileX = this.player.move.targetTileX;
@@ -419,7 +459,7 @@ export class WorldScene extends Scene {
       stateWorld.playerY = this.player.tileY;
       stateWorld.facing = this.player.facing;
     }
-
+    return this.tryEnterBattleZone();
   }
 
   tryInteract() {
@@ -469,6 +509,37 @@ export class WorldScene extends Scene {
 
   getInteractionAtTile(tileX, tileY) {
     return this.interactionPoints.find((point) => point.x === tileX && point.y === tileY) ?? null;
+  }
+
+  getBattleZoneAtTile(tileX, tileY) {
+    return (
+      this.battleZones.find((zone) => this.isTileInsideBattleZone(tileX, tileY, zone)) ?? null
+    );
+  }
+
+  isTileInsideBattleZone(tileX, tileY, zone) {
+    if (!zone || typeof zone !== "object") {
+      return false;
+    }
+
+    return (
+      tileX >= zone.x &&
+      tileX < zone.x + zone.w &&
+      tileY >= zone.y &&
+      tileY < zone.y + zone.h
+    );
+  }
+
+  tryEnterBattleZone() {
+    const zone = this.getBattleZoneAtTile(this.player.tileX, this.player.tileY);
+    if (!zone) {
+      return false;
+    }
+
+    this.game.changeScene("battle", {
+      zoneId: zone.id ?? "",
+    });
+    return true;
   }
 
   showWorldMessage(text, durationSeconds = INTERACTION_MESSAGE_SECONDS) {
@@ -1037,4 +1108,29 @@ function isUiImageSettled(image) {
 
   image.__agoadLoadState = isUiImageUsable(image) ? "ready" : "error";
   return true;
+}
+
+function normalizeBattleZones(rawZones) {
+  if (!Array.isArray(rawZones)) {
+    return [];
+  }
+
+  return rawZones
+    .map((zone, index) => {
+      const x = clampNumber(Math.floor(Number(zone?.x) || 0), 0, MAP_LAYOUT.cols - 1);
+      const y = clampNumber(Math.floor(Number(zone?.y) || 0), 0, MAP_LAYOUT.rows - 1);
+      const maxWidth = MAP_LAYOUT.cols - x;
+      const maxHeight = MAP_LAYOUT.rows - y;
+      const w = clampNumber(Math.floor(Number(zone?.w) || 1), 1, Math.max(1, maxWidth));
+      const h = clampNumber(Math.floor(Number(zone?.h) || 1), 1, Math.max(1, maxHeight));
+      return {
+        id: String(zone?.id ?? `zone_${index + 1}`),
+        x,
+        y,
+        w,
+        h,
+        text: String(zone?.text ?? "").trim(),
+      };
+    })
+    .filter((zone) => zone.w > 0 && zone.h > 0);
 }

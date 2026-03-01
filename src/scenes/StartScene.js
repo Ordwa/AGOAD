@@ -5,9 +5,8 @@ import { verifyGmEditPassword } from "../utils/security.js";
 const MAIN_OPTION_CONTINUE = "CONTINUE";
 const MAIN_OPTION_NEW_GAME = "NEW GAME";
 const MAIN_OPTION_SETTINGS = "SETTINGS";
-const OPTIONS_MENU = ["SOUND", "MUSIC", "GM-EDIT", "ELIMINA PG", "LOGOUT", "INDIETRO"];
+const OPTIONS_MENU = ["SOUND", "MUSIC", "ELIMINA PG", "LOGOUT", "INDIETRO"];
 const GM_EDIT_MENU = [
-  { id: "debug", label: "DEBUG MODE" },
   { id: "edit_classes", label: "EDIT CLASSES" },
   { id: "back", label: "INDIETRO" },
 ];
@@ -82,6 +81,7 @@ export class StartScene extends Scene {
     const allowedRequestedModes = new Set(["auth", "main", "options"]);
     const defaultMode = authenticated ? "main" : "auth";
     this.mode = allowedRequestedModes.has(requestedMode) ? requestedMode : defaultMode;
+    const isExternalReturnMode = this.mode === "options";
     const hasExplicitReturnScene =
       typeof payload.returnScene === "string" && payload.returnScene.trim().length > 0;
     const allowOptionsFromScene = this.mode === "options" && hasExplicitReturnScene;
@@ -89,7 +89,7 @@ export class StartScene extends Scene {
       this.mode = "auth";
     }
     const payloadReturnScene =
-      this.mode === "options" && typeof payload.returnScene === "string" ? payload.returnScene : "";
+      isExternalReturnMode && typeof payload.returnScene === "string" ? payload.returnScene : "";
     const fallbackReturnScene =
       this.mode === "options" && typeof this.game.getPreviousSceneName === "function"
         ? String(this.game.getPreviousSceneName() ?? "")
@@ -101,7 +101,7 @@ export class StartScene extends Scene {
           ? fallbackReturnScene
           : "";
     this.optionsBackTargetPayload =
-      this.mode === "options" && payload.returnPayload && typeof payload.returnPayload === "object"
+      isExternalReturnMode && payload.returnPayload && typeof payload.returnPayload === "object"
         ? { ...payload.returnPayload }
         : null;
     this.mainIndex = 0;
@@ -126,7 +126,11 @@ export class StartScene extends Scene {
     this.gmClassesSelection = { row: 0, classIndex: 0 };
     this.gmClassesRowOffset = 0;
     this.blurGmPasswordInput();
-    this.game.input.setTextCapture(false);
+    const shouldCaptureGmPassword = this.mode === "gm-auth";
+    this.game.input.setTextCapture(shouldCaptureGmPassword);
+    if (shouldCaptureGmPassword) {
+      this.focusGmPasswordInput();
+    }
     this.syncDocumentMode();
     this.bindPointerEvents();
   }
@@ -871,7 +875,7 @@ export class StartScene extends Scene {
 
   activateOptionsOption(index) {
     this.optionsIndex = index;
-    if (this.optionsIndex !== 3) {
+    if (this.optionsIndex !== 2) {
       this.deleteProfileConfirmArmed = false;
     }
 
@@ -886,17 +890,6 @@ export class StartScene extends Scene {
     }
 
     if (this.optionsIndex === 2) {
-      if (this.gmAuthUnlockedSession) {
-        this.mode = "gm-edit";
-        this.gmEditIndex = 0;
-        this.notice = "";
-        return;
-      }
-      this.enterGmAuthMode();
-      return;
-    }
-
-    if (this.optionsIndex === 3) {
       if (!this.deleteProfileConfirmArmed) {
         this.deleteProfileConfirmArmed = true;
         this.notice = "Premi ELIMINA PG di nuovo per confermare.";
@@ -908,7 +901,7 @@ export class StartScene extends Scene {
       return;
     }
 
-    if (this.optionsIndex === 4) {
+    if (this.optionsIndex === 3) {
       this.startLogoutFlow();
       return;
     }
@@ -995,7 +988,7 @@ export class StartScene extends Scene {
     }
 
     this.optionsIndex = tappedIndex;
-    if (tappedIndex !== 3) {
+    if (tappedIndex !== 2) {
       this.deleteProfileConfirmArmed = false;
     }
     if (tappedIndex === 0) {
@@ -1157,7 +1150,7 @@ export class StartScene extends Scene {
     }
 
     if (input.wasPressed("back")) {
-      this.mode = "options";
+      this.handleOptionsBack();
       return;
     }
 
@@ -1186,6 +1179,10 @@ export class StartScene extends Scene {
   }
 
   leaveGmAuthMode(nextMode = "options") {
+    const shouldReturnToScene =
+      nextMode === "options" &&
+      typeof this.optionsBackTargetScene === "string" &&
+      this.optionsBackTargetScene.length > 0;
     this.mode = nextMode;
     this.gmPasswordBuffer = "";
     this.gmAuthStatus = "";
@@ -1195,17 +1192,22 @@ export class StartScene extends Scene {
     }
     this.blurGmPasswordInput();
     this.game.input.setTextCapture(false);
+
+    if (shouldReturnToScene) {
+      const targetScene = this.optionsBackTargetScene;
+      const payload =
+        this.optionsBackTargetPayload && typeof this.optionsBackTargetPayload === "object"
+          ? { ...this.optionsBackTargetPayload }
+          : {};
+      this.optionsBackTargetScene = "";
+      this.optionsBackTargetPayload = null;
+      this.game.changeScene(targetScene, payload);
+    }
   }
 
   handleGmEditSelection() {
     const selected = GM_EDIT_MENU[this.gmEditIndex];
     if (!selected) {
-      return;
-    }
-
-    if (selected.id === "debug") {
-      const enabled = this.game.toggleDebugOverlay();
-      this.notice = `Overlay DEBUG ${enabled ? "attivo" : "disattivo"}.`;
       return;
     }
 
@@ -1215,11 +1217,11 @@ export class StartScene extends Scene {
     }
 
     if (selected.id === "back") {
-      this.mode = "options";
+      this.handleOptionsBack();
       return;
     }
 
-    this.mode = "options";
+    this.handleOptionsBack();
   }
 
   handleGmEditTouchTap(tapPoint) {
@@ -1582,13 +1584,12 @@ export class StartScene extends Scene {
     }
 
     this.drawMainBanner(ctx, layout.bannerRect);
-    this.drawSettingsRowCard(ctx, layout.loginRect, "LOGIN CON GOOGLE", "", true);
+    this.drawAuthActionButton(ctx, layout.loginRect, "LOGIN CON GOOGLE", true);
     if (hasExternalAction && layout.externalActionRect) {
-      this.drawSettingsRowCard(
+      this.drawAuthActionButton(
         ctx,
         layout.externalActionRect,
         truncate(String(this.authRecoveryAction.label || "APRI NEL BROWSER"), 28),
-        "",
         false,
       );
     }
@@ -1728,6 +1729,36 @@ export class StartScene extends Scene {
       visualRect.x + visualRect.w / 2,
       visualRect.y + visualRect.h / 2 + 0.5,
     );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+  }
+
+  drawAuthActionButton(ctx, rect, label, primary = false) {
+    const radius = Math.max(10, Math.round(rect.h * 0.22));
+    const gradient = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
+    if (primary) {
+      gradient.addColorStop(0, "rgba(36, 58, 88, 0.96)");
+      gradient.addColorStop(1, "rgba(12, 24, 42, 0.96)");
+    } else {
+      gradient.addColorStop(0, "rgba(30, 48, 76, 0.94)");
+      gradient.addColorStop(1, "rgba(12, 24, 42, 0.94)");
+    }
+
+    ctx.fillStyle = gradient;
+    fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = primary ? "#d79a4a" : "rgba(158, 199, 245, 0.86)";
+    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
+    strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+
+    ctx.strokeStyle = primary ? "#40230e" : "rgba(35, 58, 88, 0.86)";
+    ctx.lineWidth = 1;
+    strokeRoundedRect(ctx, rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4, Math.max(8, radius - 2));
+
+    ctx.fillStyle = primary ? "#f6ecd2" : "#e3f0ff";
+    ctx.font = `${Math.round(clampNumber(rect.h * 0.34, 9, 30))}px monospace`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 0.5);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
   }
@@ -1972,8 +2003,6 @@ export class StartScene extends Scene {
     const canvasWidth = this.game.canvas.width;
     const canvasHeight = this.game.canvas.height;
     const layout = getGmEditLayout(canvasWidth, canvasHeight);
-    const debugEnabled = this.game.getDebugOverlayEnabled();
-
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -1995,12 +2024,7 @@ export class StartScene extends Scene {
         return;
       }
       const selected = this.gmEditIndex === index;
-      const label = entry.id === "debug" ? "DEBUG MODE" : entry.label;
-      this.drawSettingsRowCard(ctx, rect, label, "", selected);
-
-      if (entry.id === "debug") {
-        this.drawDebugToggleSwitch(ctx, layout.debugToggleRect, debugEnabled, selected);
-      }
+      this.drawSettingsRowCard(ctx, rect, entry.label, "", selected);
     });
 
     if (this.notice.length > 0) {

@@ -22,7 +22,7 @@ const VIEW_PROFILE = "profile";
 const VIEW_INVENTORY = "inventory";
 const VIEW_SKILLS = "skills";
 const PROFILE_TOP_Y = 62;
-const PROFILE_INFO_HEIGHT = 56;
+const PROFILE_INFO_HEIGHT = 64;
 const PROFILE_PROGRESS_HEIGHT = PROFILE_INFO_HEIGHT;
 const INVENTORY_LAYOUT = Object.freeze({
   containerX: 6,
@@ -58,6 +58,7 @@ export class ProfileScene extends Scene {
       [INVENTORY_PANEL_SKILLS]: 0,
     };
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+    this.goldenCoinImage = createUiImage("../assets/UI/UI_golden_coin.png");
     this.playerIdleImage = createUiImage("../assets/entity/character_animation_idle_r.png");
     this.playerIdleFrames = [];
     this.playerIdleFramesReady = false;
@@ -233,7 +234,7 @@ export class ProfileScene extends Scene {
     this.drawPanel(ctx, infoX, infoY, infoW, infoH);
     this.drawPanel(ctx, progressX, progressY, progressW, progressH);
     const infoTitleHeight = 14;
-    const infoStatsHeight = 36;
+    const infoStatsHeight = 44;
     const infoTitleY = infoY + 2;
     const infoStatsY = infoTitleY + infoTitleHeight + 2;
     this.drawPanel(ctx, infoX + 6, infoTitleY, infoW - 12, infoTitleHeight, { inset: true });
@@ -258,7 +259,7 @@ export class ProfileScene extends Scene {
       ctx,
       {
         x: infoX + 10,
-        y: infoStatsY + 2,
+        y: infoStatsY + 3,
         width: infoW - 24,
         label: "HP",
         color: "#5ad07a",
@@ -271,7 +272,7 @@ export class ProfileScene extends Scene {
       ctx,
       {
         x: infoX + 10,
-        y: infoStatsY + 14,
+        y: infoStatsY + 18,
         width: infoW - 24,
         label: "MP",
         color: "#63b9f0",
@@ -282,7 +283,7 @@ export class ProfileScene extends Scene {
 
     this.drawSpeedBar(
       ctx,
-      { x: infoX + 10, y: infoStatsY + 26, width: infoW - 24, label: "SP" },
+      { x: infoX + 10, y: infoStatsY + 33, width: infoW - 24, label: "SP" },
       player.speed ?? 0,
     );
 
@@ -294,8 +295,9 @@ export class ProfileScene extends Scene {
     const navGap = 6;
     const navPad = 6;
     const navButtonWidth = Math.floor((GAME_CONFIG.width - navPad * 2 - navGap * 4) / 5);
+    const coinCounterWidth = navButtonWidth + 28;
     this.drawCoinCounter(ctx, {
-      x: equipX + equipSize - navButtonWidth - 2,
+      x: equipX + equipSize - coinCounterWidth - 2,
       y: equipY + 2,
     });
 
@@ -809,6 +811,8 @@ export class ProfileScene extends Scene {
     const navGap = 6;
     const navPad = 6;
     const navButtonWidth = Math.floor((GAME_CONFIG.width - navPad * 2 - navGap * 4) / 5);
+    const counterWidth = navButtonWidth + 28;
+    const counterHeight = 36;
     const hasCustomPosition =
       position &&
       Number.isFinite(position.x) &&
@@ -819,14 +823,23 @@ export class ProfileScene extends Scene {
     const counterY = hasCustomPosition
       ? Math.round(position.y)
       : Math.max(22, layout.container.y - 18);
-    this.drawPanel(ctx, counterX, counterY, navButtonWidth, 14, { inset: true });
-    drawCoinIcon(ctx, counterX + 8, counterY + 3);
+    this.drawPanel(ctx, counterX, counterY, counterWidth, counterHeight, { inset: true });
+    const iconSize = 32;
+    const centerY = counterY + Math.round(counterHeight * 0.5);
+    drawCoinAsset(
+      ctx,
+      this.goldenCoinImage,
+      counterX + 4,
+      centerY - Math.floor(iconSize * 0.5),
+      iconSize,
+    );
     ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.font = "8px monospace";
+    ctx.font = "10px monospace";
     ctx.textAlign = "right";
-    ctx.textBaseline = "top";
-    ctx.fillText(String(coins), counterX + navButtonWidth - 4, counterY + 3);
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(coins), counterX + counterWidth - 6, centerY);
     ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
   getPlayerSkills() {
@@ -917,15 +930,17 @@ export class ProfileScene extends Scene {
     const safeValue = Math.max(0, Math.min(safeMax, Math.round(Number(value) || 0)));
     const ratio = safeValue / safeMax;
 
-    ctx.font = "7px monospace";
-    ctx.fillStyle = PROFILE_THEME.textSecondary;
-    ctx.fillText(`${config.label}`, config.x, config.y);
-
     const labelWidth = 10;
     const barX = config.x + labelWidth + 2;
     const barY = config.y;
     const barW = Math.max(20, config.width - labelWidth - 2);
-    const barH = 8;
+    const barH = 10;
+    const centerY = barY + Math.floor(barH * 0.5);
+
+    ctx.font = "7px monospace";
+    ctx.fillStyle = PROFILE_THEME.textSecondary;
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${config.label}`, config.x, centerY);
 
     this.drawPanel(ctx, barX, barY, barW, barH, { inset: true });
 
@@ -933,10 +948,10 @@ export class ProfileScene extends Scene {
     ctx.fillRect(barX + 2, barY + 2, Math.max(0, Math.floor((barW - 4) * ratio)), barH - 4);
 
     ctx.fillStyle = "#101010";
-    ctx.font = "6px monospace";
+    ctx.font = "7px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${safeValue}/${safeMax}`, barX + Math.floor(barW * 0.5), barY + Math.floor(barH * 0.5));
+    ctx.fillText(`${safeValue}/${safeMax}`, barX + Math.floor(barW * 0.5), centerY);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
   }
@@ -944,17 +959,19 @@ export class ProfileScene extends Scene {
   drawSpeedBar(ctx, config, speedValue) {
     const safeSpeed = Math.max(0, Math.min(5, Math.floor(Number(speedValue) || 0)));
 
-    ctx.font = "7px monospace";
-    ctx.fillStyle = PROFILE_THEME.textSecondary;
-    ctx.fillText(`${config.label}`, config.x, config.y);
-
     const labelWidth = 10;
     const barX = config.x + labelWidth + 2;
     const barY = config.y;
     const barW = Math.max(20, config.width - labelWidth - 2);
-    const barH = 8;
+    const barH = 10;
+    const centerY = barY + Math.floor(barH * 0.5);
     const totalSquares = 5;
     const gap = 2;
+
+    ctx.font = "7px monospace";
+    ctx.fillStyle = PROFILE_THEME.textSecondary;
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${config.label}`, config.x, centerY);
 
     this.drawPanel(ctx, barX, barY, barW, barH, { inset: true });
 
@@ -971,6 +988,7 @@ export class ProfileScene extends Scene {
     }
 
     ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
   drawProgressRow(ctx, panelX, rowY, panelWidth, label, value) {
@@ -989,13 +1007,22 @@ export class ProfileScene extends Scene {
     ctx.textBaseline = "top";
     ctx.fillText("EQUIPAGGIAMENTO", rect.x + 8, rect.y + 8);
 
-    const slotSize = 20;
-    const slotVerticalGap = 12;
+    const innerPad = 8;
+    const targetSlotSize = 40;
+    const minHorizontalGap = 8;
+    const contentTop = rect.y + 20;
+    const contentBottom = rect.y + rect.h - innerPad;
+    const contentHeight = Math.max(20, contentBottom - contentTop);
+    const maxSlotByWidth = Math.floor((rect.w - innerPad * 2 - minHorizontalGap) / 2);
+    const maxSlotByHeight = Math.floor(contentHeight / 2);
+    const slotSize = Math.max(12, Math.min(targetSlotSize, maxSlotByWidth, maxSlotByHeight));
+    const remainingHeight = Math.max(0, contentHeight - slotSize * 2);
+    const slotVerticalGap = Math.min(12, remainingHeight);
     const slotStackHeight = slotSize * 2 + slotVerticalGap;
-    const topY = rect.y + Math.floor((rect.h - slotStackHeight) * 0.5);
+    const topY = contentTop + Math.floor((contentHeight - slotStackHeight) * 0.5);
     const bottomY = topY + slotSize + slotVerticalGap;
-    const leftX = rect.x + 8;
-    const rightX = rect.x + rect.w - slotSize - 8;
+    const leftX = rect.x + innerPad;
+    const rightX = rect.x + rect.w - slotSize - innerPad;
 
     this.drawPanel(ctx, leftX, topY, slotSize, slotSize, { inset: true });
     this.drawPanel(ctx, rightX, topY, slotSize, slotSize, { inset: true });
@@ -1549,6 +1576,16 @@ function drawCoinIcon(ctx, x, y) {
   ctx.fillRect(x + 1, y + 4, 2, 1);
   ctx.fillRect(x + 5, y + 3, 2, 1);
   ctx.fillRect(x + 9, y + 4, 2, 1);
+}
+
+function drawCoinAsset(ctx, image, x, y, size = 8) {
+  if (isUiImageUsable(image)) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, Math.round(x), Math.round(y), size, size);
+    return;
+  }
+
+  drawCoinIcon(ctx, x, y);
 }
 
 function createUiImage(relativePath) {
