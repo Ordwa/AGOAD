@@ -13,8 +13,13 @@ const CAMERA_VIEW_HEIGHT_RATIO = 0.5;
 const CAMERA_ZOOM_MIN = 1.45;
 const CAMERA_ZOOM_MAX = 3.8;
 const INTERACTION_MESSAGE_SECONDS = 2.4;
-const PLAYER_DRAW_SIZE_TILES = 1;
+const PLAYER_DRAW_SIZE_TILES = 0.5;
 const NPC_DRAW_SIZE_TILES = 1;
+const PLAYER_SPRITE_FRAME_WIDTH = 58;
+const PLAYER_SPRITE_FRAME_HEIGHT = 76;
+const PLAYER_SPRITE_HEIGHT_RATIO = PLAYER_SPRITE_FRAME_HEIGHT / PLAYER_SPRITE_FRAME_WIDTH;
+const PLAYER_IDLE_FRAME_COUNT = 4;
+const PLAYER_IDLE_FPS = 5;
 
 const MOVE_PRIORITY = Object.freeze(["up", "down", "left", "right"]);
 const DIRECTION_STEP = Object.freeze({
@@ -36,9 +41,9 @@ export class WorldScene extends Scene {
 
     this.time = 0;
     this.mapImage = createUiImage("../assets/map_village.png");
-    this.goblinSourceImage = createUiImage("../assets/goblin.png");
-    this.goblinMaskedImage = null;
-    this.goblinMaskReady = false;
+    this.playerSpriteSheetImage = createUiImage("../assets/sprite_sheet.png");
+    this.playerIdleFrames = [];
+    this.playerIdleFramesReady = false;
 
     this.npcs = (WORLD_POINTS.npcs ?? []).map((npc) => ({
       ...npc,
@@ -68,12 +73,12 @@ export class WorldScene extends Scene {
     this.worldMessage.ttl = 0;
     this.turnBufferDirection = "";
     this.syncPlayerFromPersistentState();
-    this.ensureGoblinMask();
+    this.ensurePlayerIdleFrames();
   }
 
   update(dt, input) {
     this.time += dt;
-    this.ensureGoblinMask();
+    this.ensurePlayerIdleFrames();
     this.updateMessageTimer(dt);
 
     if (input.wasPressed("profile")) {
@@ -139,7 +144,7 @@ export class WorldScene extends Scene {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    if (!isUiImageSettled(this.mapImage)) {
+    if (!isUiImageSettled(this.mapImage) || !isUiImageSettled(this.playerSpriteSheetImage)) {
       drawLoading(ctx, canvasWidth, canvasHeight, this.time);
       ctx.restore();
       return;
@@ -178,36 +183,51 @@ export class WorldScene extends Scene {
   }
 
   drawPlayer(ctx, zoom, canvasWidth, canvasHeight) {
-    const playerImage =
-      isUiImageUsable(this.goblinMaskedImage) ? this.goblinMaskedImage : this.goblinSourceImage;
-    if (!isUiImageUsable(playerImage)) {
+    const playerFrame = this.getCurrentPlayerIdleFrame();
+    const canUseSpriteSheet = isUiImageUsable(this.playerSpriteSheetImage);
+    if (!playerFrame && !canUseSpriteSheet) {
       return;
     }
 
-    const drawSizeWorld = MAP_LAYOUT.tileSize * PLAYER_DRAW_SIZE_TILES;
-    const drawSize = drawSizeWorld * zoom;
-    const feetOffset = MAP_LAYOUT.tileSize * 0.16 * zoom;
+    const drawWidth = MAP_LAYOUT.tileSize * PLAYER_DRAW_SIZE_TILES * zoom;
+    const drawHeight = drawWidth * PLAYER_SPRITE_HEIGHT_RATIO;
+    const feetOffset = MAP_LAYOUT.tileSize * 0.1 * zoom;
 
     const screenX = canvasWidth * 0.5;
     const screenY = canvasHeight * 0.5 + feetOffset;
+    const drawX = Math.round(screenX - drawWidth * 0.5);
+    const drawY = Math.round(screenY - drawHeight);
+    const drawWidthRounded = Math.round(drawWidth);
+    const drawHeightRounded = Math.round(drawHeight);
 
     ctx.imageSmoothingEnabled = false;
+    if (playerFrame) {
+      ctx.drawImage(playerFrame, drawX, drawY, drawWidthRounded, drawHeightRounded);
+      return;
+    }
+
     ctx.drawImage(
-      playerImage,
-      Math.round(screenX - drawSize * 0.5),
-      Math.round(screenY - drawSize),
-      Math.round(drawSize),
-      Math.round(drawSize),
+      this.playerSpriteSheetImage,
+      0,
+      0,
+      PLAYER_SPRITE_FRAME_WIDTH,
+      PLAYER_SPRITE_FRAME_HEIGHT,
+      drawX,
+      drawY,
+      drawWidthRounded,
+      drawHeightRounded,
     );
   }
 
   drawNpcMarkers(ctx, camera, canvasWidth, canvasHeight) {
-    const npcImage = isUiImageUsable(this.goblinMaskedImage) ? this.goblinMaskedImage : this.goblinSourceImage;
-    if (!isUiImageUsable(npcImage)) {
+    const npcFrame = this.playerIdleFrames[0] ?? null;
+    const canUseSpriteSheet = isUiImageUsable(this.playerSpriteSheetImage);
+    if (!npcFrame && !canUseSpriteSheet) {
       return;
     }
 
-    const drawSize = Math.round(MAP_LAYOUT.tileSize * NPC_DRAW_SIZE_TILES * camera.zoom);
+    const drawWidth = Math.round(MAP_LAYOUT.tileSize * NPC_DRAW_SIZE_TILES * camera.zoom);
+    const drawHeight = Math.round(drawWidth * PLAYER_SPRITE_HEIGHT_RATIO);
     ctx.imageSmoothingEnabled = false;
 
     this.npcs.forEach((npc) => {
@@ -217,23 +237,34 @@ export class WorldScene extends Scene {
       const screenY = (worldY - camera.sourceY) * camera.zoom + MAP_LAYOUT.tileSize * 0.1 * camera.zoom;
 
       if (
-        screenX < -drawSize ||
-        screenY < -drawSize ||
-        screenX > canvasWidth + drawSize ||
-        screenY > canvasHeight + drawSize
+        screenX < -drawWidth ||
+        screenY < -drawHeight ||
+        screenX > canvasWidth + drawWidth ||
+        screenY > canvasHeight + drawHeight
       ) {
         return;
       }
 
+      const drawX = Math.round(screenX - drawWidth * 0.5);
+      const drawY = Math.round(screenY - drawHeight);
+
       ctx.save();
       ctx.globalAlpha = 0.9;
-      ctx.drawImage(
-        npcImage,
-        Math.round(screenX - drawSize * 0.5),
-        Math.round(screenY - drawSize),
-        drawSize,
-        drawSize,
-      );
+      if (npcFrame) {
+        ctx.drawImage(npcFrame, drawX, drawY, drawWidth, drawHeight);
+      } else {
+        ctx.drawImage(
+          this.playerSpriteSheetImage,
+          0,
+          0,
+          PLAYER_SPRITE_FRAME_WIDTH,
+          PLAYER_SPRITE_FRAME_HEIGHT,
+          drawX,
+          drawY,
+          drawWidth,
+          drawHeight,
+        );
+      }
       ctx.restore();
     });
   }
@@ -442,13 +473,26 @@ export class WorldScene extends Scene {
     }
   }
 
-  ensureGoblinMask() {
-    if (this.goblinMaskReady || !isUiImageUsable(this.goblinSourceImage)) {
+  getCurrentPlayerIdleFrame() {
+    if (this.playerIdleFrames.length <= 0) {
+      return null;
+    }
+
+    const frameIndex = Math.floor(this.time * PLAYER_IDLE_FPS) % this.playerIdleFrames.length;
+    return this.playerIdleFrames[frameIndex] ?? this.playerIdleFrames[0];
+  }
+
+  ensurePlayerIdleFrames() {
+    if (this.playerIdleFramesReady || !isUiImageUsable(this.playerSpriteSheetImage)) {
       return;
     }
 
-    this.goblinMaskedImage = buildMaskedGoblinSprite(this.goblinSourceImage);
-    this.goblinMaskReady = true;
+    this.playerIdleFrames = buildMaskedSpriteFrames(this.playerSpriteSheetImage, {
+      frameWidth: PLAYER_SPRITE_FRAME_WIDTH,
+      frameHeight: PLAYER_SPRITE_FRAME_HEIGHT,
+      frameCount: PLAYER_IDLE_FRAME_COUNT,
+    });
+    this.playerIdleFramesReady = true;
   }
 }
 
@@ -547,93 +591,225 @@ function roundRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
-function buildMaskedGoblinSprite(image) {
+function buildMaskedSpriteFrames(image, { frameWidth, frameHeight, frameCount } = {}) {
   if (typeof document === "undefined") {
-    return image;
+    return [];
   }
 
   const width = image.naturalWidth || image.width;
   const height = image.naturalHeight || image.height;
-  if (width <= 0 || height <= 0) {
-    return image;
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    frameWidth <= 0 ||
+    frameHeight <= 0 ||
+    width < frameWidth ||
+    height < frameHeight
+  ) {
+    return [];
   }
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return image;
+  const columns = Math.floor(width / frameWidth);
+  const rows = Math.floor(height / frameHeight);
+  const maxFrames = columns * rows;
+  const totalFrames = clampNumber(
+    Math.floor(frameCount ?? maxFrames),
+    1,
+    maxFrames,
+  );
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = width;
+  sourceCanvas.height = height;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) {
+    return [];
+  }
+  sourceContext.drawImage(image, 0, 0);
+
+  const frameCanvas = document.createElement("canvas");
+  frameCanvas.width = frameWidth;
+  frameCanvas.height = frameHeight;
+  const frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
+  if (!frameContext) {
+    return [];
   }
 
-  ctx.drawImage(image, 0, 0);
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  const bgColor = sampleBackgroundGray(data, width, height);
+  const frames = [];
+  for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+    const sourceX = (frameIndex % columns) * frameWidth;
+    const sourceY = Math.floor(frameIndex / columns) * frameHeight;
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    const a = data[i + 3];
-    if (a === 0) {
+    frameContext.clearRect(0, 0, frameWidth, frameHeight);
+    frameContext.drawImage(
+      sourceCanvas,
+      sourceX,
+      sourceY,
+      frameWidth,
+      frameHeight,
+      0,
+      0,
+      frameWidth,
+      frameHeight,
+    );
+
+    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
+    maskFrameBackground(imageData.data, frameWidth, frameHeight);
+
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
       continue;
     }
 
-    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
-    if (chroma > 28) {
-      continue;
-    }
-
-    const dist = Math.abs(r - bgColor.r) + Math.abs(g - bgColor.g) + Math.abs(b - bgColor.b);
-    if (dist <= 24) {
-      data[i + 3] = 0;
-      continue;
-    }
-
-    if (dist >= 82) {
-      continue;
-    }
-
-    const alphaFactor = (dist - 24) / (82 - 24);
-    data[i + 3] = Math.round(a * clampNumber(alphaFactor, 0, 1));
+    outputContext.putImageData(imageData, 0, 0);
+    frames.push(outputCanvas);
   }
 
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  return frames;
 }
 
-function sampleBackgroundGray(pixelData, width, height) {
-  const points = [
-    [0, 0],
-    [width - 1, 0],
-    [0, height - 1],
-    [width - 1, height - 1],
-    [Math.floor(width * 0.5), 0],
-    [Math.floor(width * 0.5), height - 1],
-    [0, Math.floor(height * 0.5)],
-    [width - 1, Math.floor(height * 0.5)],
-  ];
+function maskFrameBackground(pixelData, width, height) {
+  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
+  if (backgroundSamples.length <= 0) {
+    return;
+  }
 
-  let totalR = 0;
-  let totalG = 0;
-  let totalB = 0;
+  const backgroundMinDistance = 44;
+  const softenMinDistance = 26;
+  const softenMaxDistance = 44;
 
-  points.forEach(([x, y]) => {
+  const totalPixels = width * height;
+  const queue = new Uint32Array(totalPixels);
+  const visited = new Uint8Array(totalPixels);
+  let queueHead = 0;
+  let queueTail = 0;
+
+  const tryQueuePixel = (x, y) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return;
+    }
+
+    const pixelIndex = y * width + x;
+    if (visited[pixelIndex]) {
+      return;
+    }
+
+    const dataOffset = pixelIndex * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      visited[pixelIndex] = 1;
+      return;
+    }
+
+    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
+    if (minDistance > backgroundMinDistance) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue[queueTail] = pixelIndex;
+    queueTail += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    tryQueuePixel(x, 0);
+    tryQueuePixel(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    tryQueuePixel(0, y);
+    tryQueuePixel(width - 1, y);
+  }
+
+  while (queueHead < queueTail) {
+    const pixelIndex = queue[queueHead];
+    queueHead += 1;
+    const x = pixelIndex % width;
+    const y = (pixelIndex - x) / width;
+    const dataOffset = pixelIndex * 4;
+    pixelData[dataOffset + 3] = 0;
+
+    tryQueuePixel(x + 1, y);
+    tryQueuePixel(x - 1, y);
+    tryQueuePixel(x, y + 1);
+    tryQueuePixel(x, y - 1);
+  }
+
+  for (let dataOffset = 0; dataOffset < pixelData.length; dataOffset += 4) {
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      continue;
+    }
+
+    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
+    if (minDistance <= softenMinDistance) {
+      pixelData[dataOffset + 3] = 0;
+      continue;
+    }
+
+    if (minDistance >= softenMaxDistance) {
+      continue;
+    }
+
+    const alphaFactor = (minDistance - softenMinDistance) / (softenMaxDistance - softenMinDistance);
+    pixelData[dataOffset + 3] = Math.round(alpha * clampNumber(alphaFactor, 0, 1));
+  }
+}
+
+function collectBorderColorSamples(pixelData, width, height) {
+  const samples = [];
+  const seen = new Set();
+
+  const addSampleAt = (x, y) => {
     const safeX = clampNumber(Math.floor(x), 0, width - 1);
     const safeY = clampNumber(Math.floor(y), 0, height - 1);
-    const offset = (safeY * width + safeX) * 4;
-    totalR += pixelData[offset];
-    totalG += pixelData[offset + 1];
-    totalB += pixelData[offset + 2];
-  });
+    const dataOffset = (safeY * width + safeX) * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      return;
+    }
 
-  const count = points.length || 1;
-  return {
-    r: Math.round(totalR / count),
-    g: Math.round(totalG / count),
-    b: Math.round(totalB / count),
+    const r = pixelData[dataOffset];
+    const g = pixelData[dataOffset + 1];
+    const b = pixelData[dataOffset + 2];
+    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+
+    seen.add(dedupeKey);
+    samples.push({ r, g, b });
   };
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0);
+    addSampleAt(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y);
+    addSampleAt(width - 1, y);
+  }
+
+  return samples;
+}
+
+function getMinColorDistance(pixelData, dataOffset, colorSamples) {
+  const r = pixelData[dataOffset];
+  const g = pixelData[dataOffset + 1];
+  const b = pixelData[dataOffset + 2];
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < colorSamples.length; index += 1) {
+    const sample = colorSamples[index];
+    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
+    if (distance < minDistance) {
+      minDistance = distance;
+    }
+  }
+
+  return minDistance;
 }
 
 function drawLoading(ctx, width, height, time) {

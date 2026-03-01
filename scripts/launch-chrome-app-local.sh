@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-URL="${1:-https://ordwa.github.io/AGOAD}"
+URL="${1:-http://localhost:8080}"
 WIDTH="${AGOAD_WINDOW_WIDTH:-390}"
 HEIGHT="${AGOAD_WINDOW_HEIGHT:-844}"
 POS_X="${AGOAD_WINDOW_X:-80}"
