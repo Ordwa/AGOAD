@@ -87,7 +87,7 @@
 
 .game-hud__topbar {
   display: grid;
-  grid-template-columns: repeat(var(--hud-visible-tabs, 4), minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--hud-menu-gap);
   width: 100%;
   height: auto;
@@ -95,7 +95,8 @@
 }
 
 .game-hud__top-button.is-hidden-by-layout {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .game-hud__top-button {
@@ -160,6 +161,12 @@
 
 .game-hud__tab-glyph--placeholder {
   color: #f8d08a;
+}
+
+.game-hud__tab-glyph--close {
+  font-size: clamp(1.08rem, 3vw, 1.42rem);
+  letter-spacing: 0.02em;
+  color: #ffe2a8;
 }
 
 .game-hud__top-label {

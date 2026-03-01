@@ -31,6 +31,14 @@ export class ProfileScene extends Scene {
     this.inventoryPanel = INVENTORY_PANEL_ITEMS;
     this.inventoryNotice = "";
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+    this.playerIdleImage = createUiImage("../assets/entity/character_animation_idle_r.png");
+
+    this.pointerEventsBound = false;
+    this.activePointerId = null;
+    this.pointerStart = null;
+    this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onPointerCancel = this.onPointerCancel.bind(this);
   }
 
   onEnter(payload = {}) {
@@ -42,6 +50,13 @@ export class ProfileScene extends Scene {
     this.skillIndex = 0;
     this.inventoryPanel = INVENTORY_PANEL_ITEMS;
     this.inventoryNotice = "";
+    this.bindPointerEvents();
+  }
+
+  onExit() {
+    this.unbindPointerEvents();
+    this.activePointerId = null;
+    this.pointerStart = null;
   }
 
   update(dt, input) {
@@ -131,31 +146,47 @@ export class ProfileScene extends Scene {
     const battlesWon = progress.battlesWon ?? 0;
     const playTime = formatPlayTime(progress.playTimeSeconds ?? 0);
 
-    this.drawPanel(ctx, 6, 30, 90, 84);
-    this.drawPanel(ctx, 100, 30, GAME_CONFIG.width - 106, 84);
-    this.drawPanel(ctx, 6, 118, GAME_CONFIG.width - 12, 56);
+    const infoX = 8;
+    const infoY = 32;
+    const infoW = 126;
+    const infoH = 74;
+    const progressX = 136;
+    const progressY = 32;
+    const progressW = GAME_CONFIG.width - progressX - 8;
+    const progressH = 74;
+    const equipX = 8;
+    const equipY = 110;
+    const equipW = GAME_CONFIG.width - 16;
+    const equipH = 64;
+
+    this.drawPanel(ctx, infoX, infoY, infoW, infoH);
+    this.drawPanel(ctx, progressX, progressY, progressW, progressH);
+    this.drawPanel(ctx, equipX, equipY, equipW, equipH);
+
+    this.drawPanel(ctx, infoX + 6, infoY + 6, infoW - 12, 24, { inset: true });
+    this.drawPanel(ctx, infoX + 6, infoY + 34, infoW - 12, 30, { inset: true });
 
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
 
-    ctx.fillStyle = PROFILE_THEME.textSecondary;
-    ctx.fillText(player.name.toUpperCase(), 14, 34);
-
-    this.drawPanel(ctx, 16, 44, 70, 60, { inset: true });
-
-    const bob = Math.sin(this.time * 4) * 1;
-    this.drawLargePlayerSprite(ctx, 35, 56 + bob);
-
     ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.fillText(String(player.pgTitle ?? "Goblin").toUpperCase(), 108, 40);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      String(player.pgTitle ?? "Goblin").toUpperCase(),
+      infoX + Math.round(infoW * 0.5),
+      infoY + 18,
+    );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
     this.drawStatBar(
       ctx,
       {
-        x: 108,
-        y: 56,
-        width: 126,
+        x: infoX + 12,
+        y: infoY + 38,
+        width: infoW - 18,
         label: "HP",
         color: "#5ad07a",
       },
@@ -166,9 +197,9 @@ export class ProfileScene extends Scene {
     this.drawStatBar(
       ctx,
       {
-        x: 108,
-        y: 80,
-        width: 126,
+        x: infoX + 12,
+        y: infoY + 50,
+        width: infoW - 18,
         label: "MP",
         color: "#63b9f0",
       },
@@ -176,13 +207,19 @@ export class ProfileScene extends Scene {
       player.maxMana,
     );
 
-    this.drawSpeedBar(ctx, { x: 108, y: 104, width: 126, label: "SP" }, player.speed ?? 0);
+    this.drawSpeedBar(
+      ctx,
+      { x: infoX + 12, y: infoY + 62, width: infoW - 18, label: "SP" },
+      player.speed ?? 0,
+    );
 
     ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.fillText("PROGRESSO", 14, 122);
-    ctx.fillText(`Mostri incontrati: ${encounterCount}`, 14, 136);
-    ctx.fillText(`Mostri sconfitti: ${battlesWon}`, 14, 148);
-    ctx.fillText(`Tempo di vita: ${playTime}`, 142, 136);
+    ctx.fillText("PROGRESSO", progressX + 10, progressY + 8);
+    ctx.fillText(`Mostri incontrati: ${encounterCount}`, progressX + 10, progressY + 24);
+    ctx.fillText(`Mostri sconfitti: ${battlesWon}`, progressX + 10, progressY + 36);
+    ctx.fillText(`Tempo di vita: ${playTime}`, progressX + 10, progressY + 48);
+
+    this.drawEquipmentSection(ctx, { x: equipX, y: equipY, w: equipW, h: equipH });
   }
 
   drawInventoryView(ctx) {
@@ -200,19 +237,19 @@ export class ProfileScene extends Scene {
     }
 
     if (this.inventoryNotice.length > 0) {
-      this.drawPanel(ctx, 10, 157, GAME_CONFIG.width - 20, 14, { inset: true });
+      this.drawPanel(ctx, 10, 157, GAME_CONFIG.width - 20, 16, { inset: true });
       ctx.fillStyle = PROFILE_THEME.notice;
-      ctx.fillText(truncate(this.inventoryNotice, 40), 14, 160);
+      ctx.fillText(truncate(this.inventoryNotice, 40), 14, 161);
     }
   }
 
   updateInventoryInput(input) {
     if (input.wasPressed("left") || input.wasPressed("right")) {
-      this.inventoryPanel =
+      this.switchInventoryPanel(
         this.inventoryPanel === INVENTORY_PANEL_ITEMS
           ? INVENTORY_PANEL_SKILLS
-          : INVENTORY_PANEL_ITEMS;
-      this.inventoryNotice = "";
+          : INVENTORY_PANEL_ITEMS,
+      );
       return true;
     }
 
@@ -241,7 +278,12 @@ export class ProfileScene extends Scene {
       }
 
       if (input.wasPressed("confirm")) {
-        this.showInventoryNotice("Le abilita' si usano in battaglia.");
+        const selectedSkill = skills[this.skillIndex];
+        if (selectedSkill) {
+          this.showInventoryNotice(
+            `${selectedSkill.label} | MP ${selectedSkill.manaCost ?? 0}`,
+          );
+        }
         return true;
       }
       return false;
@@ -278,19 +320,141 @@ export class ProfileScene extends Scene {
     return false;
   }
 
-  drawInventoryPanelTabs(ctx) {
-    const tabsY = 50;
-    const tabsHeight = 20;
-    const tabsGap = 6;
-    const totalWidth = GAME_CONFIG.width - 24;
-    const tabWidth = Math.floor((totalWidth - tabsGap) / 2);
-    const leftTabX = 12;
-    const rightTabX = leftTabX + tabWidth + tabsGap;
+  switchInventoryPanel(nextPanel) {
+    const panel = nextPanel === INVENTORY_PANEL_SKILLS ? INVENTORY_PANEL_SKILLS : INVENTORY_PANEL_ITEMS;
+    if (this.inventoryPanel === panel) {
+      return;
+    }
+    this.inventoryPanel = panel;
+    this.inventoryNotice = "";
+  }
 
-    this.drawPanel(ctx, leftTabX, tabsY, tabWidth, tabsHeight, {
+  bindPointerEvents() {
+    if (this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = true;
+  }
+
+  unbindPointerEvents() {
+    if (!this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.removeEventListener("pointerdown", this.onPointerDown);
+    canvas.removeEventListener("pointerup", this.onPointerUp);
+    canvas.removeEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = false;
+  }
+
+  onPointerDown(event) {
+    if (this.view !== "inventory") {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    this.activePointerId = event.pointerId;
+    this.pointerStart = { x: event.clientX, y: event.clientY };
+    this.game.canvas.setPointerCapture?.(event.pointerId);
+  }
+
+  onPointerUp(event) {
+    if (this.activePointerId !== event.pointerId || !this.pointerStart) {
+      return;
+    }
+
+    const deltaX = event.clientX - this.pointerStart.x;
+    const deltaY = event.clientY - this.pointerStart.y;
+    const moved = Math.hypot(deltaX, deltaY) > 10;
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+
+    if (moved || this.view !== "inventory") {
+      return;
+    }
+
+    const point = this.resolveScenePointFromPointer(event);
+    if (!point) {
+      return;
+    }
+
+    this.handleInventoryTap(point);
+  }
+
+  onPointerCancel(event) {
+    if (this.activePointerId !== event.pointerId) {
+      return;
+    }
+
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+  }
+
+  handleInventoryTap(point) {
+    const tabRects = getInventoryTabRects();
+    if (pointInRect(point, tabRects.items)) {
+      this.switchInventoryPanel(INVENTORY_PANEL_ITEMS);
+      return;
+    }
+
+    if (pointInRect(point, tabRects.skills)) {
+      this.switchInventoryPanel(INVENTORY_PANEL_SKILLS);
+    }
+  }
+
+  resolveScenePointFromPointer(event) {
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const scale = Math.max(0.01, Math.min(canvas.width / GAME_CONFIG.width, canvas.height / GAME_CONFIG.height));
+    const offsetX = (canvas.width - GAME_CONFIG.width * scale) * 0.5;
+    const offsetY = (canvas.height - GAME_CONFIG.height * scale) * 0.5;
+    const sceneX = (canvasX - offsetX) / scale;
+    const sceneY = (canvasY - offsetY) / scale;
+    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > GAME_CONFIG.height) {
+      return null;
+    }
+
+    return { x: sceneX, y: sceneY };
+  }
+
+  drawInventoryPanelTabs(ctx) {
+    const tabRects = getInventoryTabRects();
+    const leftTabRect = tabRects.items;
+    const rightTabRect = tabRects.skills;
+
+    this.drawPanel(ctx, leftTabRect.x, leftTabRect.y, leftTabRect.w, leftTabRect.h, {
       selected: this.inventoryPanel === INVENTORY_PANEL_ITEMS,
     });
-    this.drawPanel(ctx, rightTabX, tabsY, tabWidth, tabsHeight, {
+    this.drawPanel(ctx, rightTabRect.x, rightTabRect.y, rightTabRect.w, rightTabRect.h, {
       selected: this.inventoryPanel === INVENTORY_PANEL_SKILLS,
     });
 
@@ -301,7 +465,11 @@ export class ProfileScene extends Scene {
       this.inventoryPanel === INVENTORY_PANEL_ITEMS
         ? PROFILE_THEME.textPrimary
         : PROFILE_THEME.textSecondary;
-    ctx.fillText("OGGETTI", leftTabX + Math.round(tabWidth * 0.5), tabsY + Math.round(tabsHeight * 0.5) + 1);
+    ctx.fillText(
+      "OGGETTI",
+      leftTabRect.x + Math.round(leftTabRect.w * 0.5),
+      leftTabRect.y + Math.round(leftTabRect.h * 0.5) + 1,
+    );
 
     ctx.fillStyle =
       this.inventoryPanel === INVENTORY_PANEL_SKILLS
@@ -309,8 +477,8 @@ export class ProfileScene extends Scene {
         : PROFILE_THEME.textSecondary;
     ctx.fillText(
       "ABILITA'",
-      rightTabX + Math.round(tabWidth * 0.5),
-      tabsY + Math.round(tabsHeight * 0.5) + 1,
+      rightTabRect.x + Math.round(rightTabRect.w * 0.5),
+      rightTabRect.y + Math.round(rightTabRect.h * 0.5) + 1,
     );
 
     ctx.textAlign = "left";
@@ -322,7 +490,7 @@ export class ProfileScene extends Scene {
 
     if (inventoryItems.length === 0) {
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText("(vuoto)", 14, 82);
+      ctx.fillText("(vuoto)", 14, 86);
       return;
     }
 
@@ -330,37 +498,40 @@ export class ProfileScene extends Scene {
       this.inventoryIndex = inventoryItems.length - 1;
     }
 
-    const maxVisible = 4;
+    const maxVisible = 2;
     const windowStart = clampIndexWindow(this.inventoryIndex, inventoryItems.length, maxVisible);
     const visibleItems = inventoryItems.slice(windowStart, windowStart + maxVisible);
-    const rowStartY = 74;
-    const rowHeight = 20;
+    const rowStartY = 76;
+    const rowHeight = 40;
 
     visibleItems.forEach((item, visibleIndex) => {
       const itemIndex = windowStart + visibleIndex;
       const rowY = rowStartY + visibleIndex * rowHeight;
       const isSelected = itemIndex === this.inventoryIndex;
-      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 2, { selected: isSelected, inset: true });
+      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 4, {
+        selected: isSelected,
+        inset: true,
+      });
 
       if (isSelected) {
-        this.drawCursor(ctx, 14, rowY + 7);
+        this.drawCursor(ctx, 14, rowY + 15);
       }
 
-      const desc = truncate(`${item.description}`, 31);
+      const desc = truncate(`${item.description}`, 30);
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText(truncate(item.label, 12), 22, rowY + 3);
+      ctx.fillText(truncate(item.label, 14), 22, rowY + 7);
       ctx.textAlign = "right";
-      ctx.fillText(`x${String(item.quantity)}`, GAME_CONFIG.width - 16, rowY + 3);
+      ctx.fillText(`x${String(item.quantity)}`, GAME_CONFIG.width - 16, rowY + 7);
       ctx.textAlign = "left";
       ctx.fillStyle = PROFILE_THEME.textSecondary;
-      ctx.fillText(desc, 22, rowY + 11);
+      ctx.fillText(desc, 22, rowY + 23);
     });
   }
 
   drawInventorySkillsPanel(ctx) {
     const skills = this.getPlayerSkills();
     if (skills.length <= 0) {
-      this.drawPanel(ctx, 10, 74, GAME_CONFIG.width - 20, 86, { inset: true });
+      this.drawPanel(ctx, 10, 76, GAME_CONFIG.width - 20, 84, { inset: true });
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = PROFILE_THEME.textPrimary;
@@ -374,44 +545,50 @@ export class ProfileScene extends Scene {
       this.skillIndex = skills.length - 1;
     }
 
-    const maxVisible = 4;
+    const maxVisible = 2;
     const windowStart = clampIndexWindow(this.skillIndex, skills.length, maxVisible);
     const visibleSkills = skills.slice(windowStart, windowStart + maxVisible);
-    const rowStartY = 74;
-    const rowHeight = 20;
+    const rowStartY = 76;
+    const rowHeight = 40;
 
     visibleSkills.forEach((skill, visibleIndex) => {
       const skillIndex = windowStart + visibleIndex;
       const rowY = rowStartY + visibleIndex * rowHeight;
       const isSelected = skillIndex === this.skillIndex;
-      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 2, { selected: isSelected, inset: true });
+      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 4, {
+        selected: isSelected,
+        inset: true,
+      });
 
       if (isSelected) {
-        this.drawCursor(ctx, 14, rowY + 7);
+        this.drawCursor(ctx, 14, rowY + 15);
       }
 
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText(truncate(skill.label, 17), 22, rowY + 3);
+      ctx.fillText(truncate(skill.label, 17), 22, rowY + 7);
       ctx.textAlign = "right";
-      ctx.fillText(`MP ${skill.manaCost ?? 0}`, GAME_CONFIG.width - 16, rowY + 3);
+      ctx.fillText(`MP ${skill.manaCost ?? 0}`, GAME_CONFIG.width - 16, rowY + 7);
       ctx.textAlign = "left";
       ctx.fillStyle = PROFILE_THEME.textSecondary;
-      ctx.fillText(truncate(`${skill.description ?? ""}`, 31), 22, rowY + 11);
+      ctx.fillText(truncate(`${skill.description ?? ""}`, 30), 22, rowY + 23);
     });
-
-    ctx.fillStyle = PROFILE_THEME.textSecondary;
-    ctx.fillText("In battaglia: menu SKILLS", 14, 157);
   }
 
   drawCoinCounter(ctx) {
     const coins = Math.max(0, Math.floor(Number(this.game.state.progress?.coins) || 0));
-    this.drawPanel(ctx, 6, 30, GAME_CONFIG.width - 12, 14, { inset: true });
-    drawCoinIcon(ctx, 14, 33);
+    const navGap = 6;
+    const navPad = 6;
+    const navButtonWidth = Math.floor((GAME_CONFIG.width - navPad * 2 - navGap * 4) / 5);
+    const counterX = GAME_CONFIG.width - navPad - navButtonWidth;
+    const counterY = 30;
+    this.drawPanel(ctx, counterX, counterY, navButtonWidth, 14, { inset: true });
+    drawCoinIcon(ctx, counterX + 4, counterY + 3);
     ctx.fillStyle = PROFILE_THEME.textPrimary;
     ctx.font = "8px monospace";
-    ctx.textAlign = "left";
+    ctx.textAlign = "right";
     ctx.textBaseline = "top";
-    ctx.fillText(`MONETE ${coins}`, 30, 33);
+    ctx.fillText(String(coins), counterX + navButtonWidth - 4, counterY + 3);
+    ctx.textAlign = "left";
   }
 
   getPlayerSkills() {
@@ -550,6 +727,59 @@ export class ProfileScene extends Scene {
     ctx.fillText(`${safeSpeed}/5`, barX + barW + 4, config.y);
   }
 
+  drawEquipmentSection(ctx, rect) {
+    ctx.fillStyle = PROFILE_THEME.textPrimary;
+    ctx.font = "8px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("EQUIPAGGIAMENTO", rect.x + 8, rect.y + 8);
+
+    const boxW = 40;
+    const boxH = 20;
+    const topY = rect.y + 20;
+    const bottomY = rect.y + rect.h - boxH - 6;
+    const leftX = rect.x + 8;
+    const rightX = rect.x + rect.w - boxW - 8;
+
+    this.drawPanel(ctx, leftX, topY, boxW, boxH, { inset: true });
+    this.drawPanel(ctx, rightX, topY, boxW, boxH, { inset: true });
+    this.drawPanel(ctx, leftX, bottomY, boxW, boxH, { inset: true });
+    this.drawPanel(ctx, rightX, bottomY, boxW, boxH, { inset: true });
+
+    this.drawPlayerIdleSprite(ctx, {
+      x: rect.x + Math.round(rect.w * 0.5),
+      y: rect.y + Math.round(rect.h * 0.66),
+      maxHeight: rect.h - 24,
+    });
+  }
+
+  drawPlayerIdleSprite(ctx, { x, y, maxHeight = 34 } = {}) {
+    const image = this.playerIdleImage;
+    if (!image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+      return;
+    }
+
+    const frameCount = 4;
+    const sourceWidth = Math.max(1, Math.floor(image.naturalWidth / frameCount));
+    const sourceHeight = Math.max(1, image.naturalHeight);
+    const drawHeight = Math.max(18, Math.floor(maxHeight));
+    const drawWidth = Math.max(12, Math.floor((drawHeight * sourceWidth) / sourceHeight));
+    const drawX = Math.round(x - drawWidth * 0.5);
+    const drawY = Math.round(y - drawHeight * 0.5);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      image,
+      0,
+      0,
+      sourceWidth,
+      sourceHeight,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight,
+    );
+  }
+
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
     const radius = inset ? 4 : 6;
     const top = selected ? PROFILE_THEME.panelSelectedTop : PROFILE_THEME.panelTop;
@@ -625,6 +855,43 @@ function clampIndexWindow(selectedIndex, totalItems, maxVisible) {
   const maxStart = Math.max(0, safeTotal - safeVisible);
   const centered = safeIndex - Math.floor(safeVisible / 2);
   return Math.max(0, Math.min(centered, maxStart));
+}
+
+function getInventoryTabRects() {
+  const tabsX = 12;
+  const tabsY = 50;
+  const tabsGap = 2;
+  const tabsHeight = 20;
+  const tabsTotalWidth = GAME_CONFIG.width - tabsX * 2;
+  const tabWidth = Math.floor((tabsTotalWidth - tabsGap) / 2);
+
+  return {
+    items: {
+      x: tabsX,
+      y: tabsY,
+      w: tabWidth,
+      h: tabsHeight,
+    },
+    skills: {
+      x: tabsX + tabWidth + tabsGap,
+      y: tabsY,
+      w: tabWidth,
+      h: tabsHeight,
+    },
+  };
+}
+
+function pointInRect(point, rect) {
+  if (!point || !rect) {
+    return false;
+  }
+
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
 }
 
 function drawCoinIcon(ctx, x, y) {

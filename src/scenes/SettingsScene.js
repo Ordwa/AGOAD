@@ -34,6 +34,30 @@ export class SettingsScene extends Scene {
     this.selectedIndex = 0;
   }
 
+  getNavbarLayout() {
+    if (this.returnScene === "start") {
+      return {
+        visible: true,
+        topbarVisible: true,
+        controlsVisible: false,
+        visibleTabIds: ["slot_b"],
+        activeTabId: "slot_b",
+      };
+    }
+
+    return {
+      visible: true,
+      topbarVisible: true,
+      controlsVisible: false,
+      visibleTabIds: ["settings", "profile", "bag", "slot_b"],
+      activeTabId: "settings",
+    };
+  }
+
+  closeFromNavbar() {
+    this.closeScene();
+  }
+
   update(_dt, input) {
     if (input.wasPressed("back")) {
       this.closeScene();

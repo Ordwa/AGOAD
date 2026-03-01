@@ -546,16 +546,9 @@ export class ConsoleShellHud {
   }
 
   syncTopTabs() {
-    const visibleTabs = [];
-
     this.tabButtonById.forEach((button, tabId) => {
       const isTabVisible = this.visibleTabIds.has(tabId);
-      button.hidden = !isTabVisible;
       button.classList.toggle("is-hidden-by-layout", !isTabVisible);
-      if (isTabVisible) {
-        visibleTabs.push(tabId);
-      }
-
       const selected = tabId === this.activeTabId;
       const canSelect = isTabVisible && selected;
       button.classList.toggle("is-selected", canSelect);
@@ -563,8 +556,9 @@ export class ConsoleShellHud {
       button.dataset.selected = canSelect ? "true" : "false";
     });
 
-    const visibleTabsCount = Math.max(1, visibleTabs.length);
-    this.root.style.setProperty("--hud-visible-tabs", String(visibleTabsCount));
+    const visibleTabs = this.tabs
+      .map((tab) => String(tab?.id ?? "").trim())
+      .filter((tabId) => tabId.length > 0 && this.visibleTabIds.has(tabId));
 
     if (!this.visibleTabIds.has(this.activeTabId)) {
       const fallbackTabId = visibleTabs[0] ?? "";
@@ -574,7 +568,7 @@ export class ConsoleShellHud {
     }
 
     this.tabButtonById.forEach((button, tabId) => {
-      const selected = tabId === this.activeTabId && !button.hidden;
+      const selected = tabId === this.activeTabId && this.visibleTabIds.has(tabId);
       button.classList.toggle("is-selected", selected);
       button.setAttribute("aria-pressed", String(selected));
       button.dataset.selected = selected ? "true" : "false";

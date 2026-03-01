@@ -37,13 +37,24 @@ export const HUD_TOP_TABS = Object.freeze([
     tutorialText: "Controlla oggetti, consumabili e materiali nel tuo zaino.",
   },
   {
+    id: "slot_a",
+    label: "Slot A",
+    ariaLabel: "Slot libero",
+    icon: {
+      type: "glyph",
+      glyph: "A",
+      style: "placeholder",
+    },
+    tutorialText: "Slot UI libero.",
+  },
+  {
     id: "slot_b",
     label: "Chiudi",
     ariaLabel: "Chiudi menu",
     icon: {
       type: "glyph",
       glyph: "X",
-      style: "placeholder",
+      style: "close",
     },
     tutorialText: "Torna alla schermata precedente.",
   },

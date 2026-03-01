@@ -6,42 +6,29 @@ const NOOP = () => {};
 const DEFAULT_TAB_ACTIONS = Object.freeze({
   settings: ({ game }) => {
     const originScene = game.currentSceneName;
-    const returnScene =
-      typeof originScene === "string" && originScene.length > 0 && originScene !== "settings"
-        ? originScene
-        : "start";
+    const returnScene = originScene === "start" ? "start" : "world";
     game.changeScene("settings", {
       returnScene,
     });
   },
   profile: ({ game }) => {
-    const originScene = game.currentSceneName;
-    const returnScene =
-      typeof originScene === "string" && originScene.length > 0 && originScene !== "profile"
-        ? originScene
-        : "world";
     game.changeScene("profile", {
-      returnScene,
+      returnScene: "world",
     });
   },
   bag: ({ game }) => {
-    const originScene = game.currentSceneName;
-    const returnScene =
-      typeof originScene === "string" && originScene.length > 0 && originScene !== "inventory"
-        ? originScene
-        : "world";
     game.changeScene("inventory", {
-      returnScene,
+      returnScene: "world",
     });
   },
-  slot_b: ({ game, input }) => {
-    if (
-      game.currentSceneName === "profile" ||
-      game.currentSceneName === "inventory" ||
-      game.currentSceneName === "settings"
-    ) {
-      input.tapAction("back");
+  slot_b: ({ game }) => {
+    const activeScene = game.currentScene;
+    if (activeScene && typeof activeScene.closeFromNavbar === "function") {
+      activeScene.closeFromNavbar();
+      return;
     }
+
+    game.changeScene("world");
   },
 });
 
@@ -70,7 +57,7 @@ export function createConsoleShellBridge({
   const heldDirections = new Set();
 
   const isHudEnabledForScene = (sceneName) => {
-    const layout = resolveNavbarLayout(sceneName);
+    const layout = resolveSceneNavbarLayout(sceneName, game);
     return layout.visible === true && isHudVisibleInScene(sceneName);
   };
 
@@ -145,7 +132,7 @@ export function createConsoleShellBridge({
     }
 
     lastSceneName = sceneName;
-    const navbarLayout = resolveNavbarLayout(sceneName);
+    const navbarLayout = resolveSceneNavbarLayout(sceneName, game);
     const visible = navbarLayout.visible === true && isHudVisibleInScene(sceneName);
     activeConsoleShell.setVisible(visible);
 
@@ -178,6 +165,22 @@ export function createHudBridge(options = {}) {
 
 function defaultSceneVisibility(sceneName) {
   return sceneName !== "start" && sceneName !== "setup" && sceneName !== "battle";
+}
+
+function resolveSceneNavbarLayout(sceneName, game) {
+  const baseLayout = resolveNavbarLayout(sceneName);
+  const activeScene = game?.currentScene;
+  if (activeScene && typeof activeScene.getNavbarLayout === "function") {
+    const sceneLayout = activeScene.getNavbarLayout();
+    if (sceneLayout && typeof sceneLayout === "object") {
+      return {
+        ...baseLayout,
+        ...sceneLayout,
+      };
+    }
+  }
+
+  return baseLayout;
 }
 
 function resolveSceneTutorial(sceneName) {
