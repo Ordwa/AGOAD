@@ -8,13 +8,13 @@ import {
   isWalkableTile,
 } from "../data/map.js";
 
-const MOVE_DURATION_SECONDS = 0.14;
-const CAMERA_VIEW_HEIGHT_RATIO = 0.92;
+const MOVE_DURATION_SECONDS = 0.35;
+const CAMERA_VIEW_HEIGHT_RATIO = 0.5;
 const CAMERA_ZOOM_MIN = 1.45;
 const CAMERA_ZOOM_MAX = 3.8;
 const INTERACTION_MESSAGE_SECONDS = 2.4;
-const PLAYER_DRAW_SIZE_TILES = 1.2;
-const NPC_DRAW_SIZE_TILES = 1.05;
+const PLAYER_DRAW_SIZE_TILES = 1;
+const NPC_DRAW_SIZE_TILES = 1;
 
 const MOVE_PRIORITY = Object.freeze(["up", "down", "left", "right"]);
 const DIRECTION_STEP = Object.freeze({
@@ -54,6 +54,7 @@ export class WorldScene extends Scene {
       facing: normalizeFacing(DEFAULT_SPAWN.facing),
       move: null,
     };
+    this.turnBufferDirection = "";
 
     this.worldMessage = {
       text: "",
@@ -65,6 +66,7 @@ export class WorldScene extends Scene {
     this.time = 0;
     this.worldMessage.text = "";
     this.worldMessage.ttl = 0;
+    this.turnBufferDirection = "";
     this.syncPlayerFromPersistentState();
     this.ensureGoblinMask();
   }
@@ -101,17 +103,33 @@ export class WorldScene extends Scene {
       return;
     }
 
+    const pressedDirection = resolvePressedDirection(input);
+    if (pressedDirection) {
+      this.turnBufferDirection = pressedDirection;
+    }
+
     if (this.player.move) {
       this.advancePlayerMove(dt);
+      // If a move just finished this frame, allow immediate chaining.
+      if (this.player.move) {
+        return;
+      }
+    }
+
+    if (this.turnBufferDirection) {
+      const bufferedDirection = this.turnBufferDirection;
+      this.turnBufferDirection = "";
+      if (this.tryStartPlayerMove(bufferedDirection, input.isPressed(bufferedDirection))) {
+        return;
+      }
+    }
+
+    const heldDirection = resolveHeldDirection(input);
+    if (!heldDirection) {
       return;
     }
 
-    const direction = resolveMoveDirection(input);
-    if (!direction) {
-      return;
-    }
-
-    this.tryStartPlayerMove(direction);
+    this.tryStartPlayerMove(heldDirection, true);
   }
 
   render(ctx) {
@@ -265,7 +283,7 @@ export class WorldScene extends Scene {
     return { x: DEFAULT_SPAWN.x, y: DEFAULT_SPAWN.y };
   }
 
-  tryStartPlayerMove(direction) {
+  tryStartPlayerMove(direction, continuous = false) {
     const step = DIRECTION_STEP[direction];
     if (!step) {
       return false;
@@ -287,6 +305,7 @@ export class WorldScene extends Scene {
     this.player.move = {
       elapsed: 0,
       duration: MOVE_DURATION_SECONDS,
+      continuous,
       targetTileX: nextTileX,
       targetTileY: nextTileY,
       startWorldX: this.player.worldX,
@@ -314,9 +333,18 @@ export class WorldScene extends Scene {
 
     this.player.move.elapsed += dt;
     const progress = clampNumber(this.player.move.elapsed / this.player.move.duration, 0, 1);
+    const interpolationProgress = this.player.move.continuous ? progress : easeInOutCubic(progress);
 
-    this.player.worldX = lerp(this.player.move.startWorldX, this.player.move.targetWorldX, progress);
-    this.player.worldY = lerp(this.player.move.startWorldY, this.player.move.targetWorldY, progress);
+    this.player.worldX = lerp(
+      this.player.move.startWorldX,
+      this.player.move.targetWorldX,
+      interpolationProgress,
+    );
+    this.player.worldY = lerp(
+      this.player.move.startWorldY,
+      this.player.move.targetWorldY,
+      interpolationProgress,
+    );
 
     if (progress < 1) {
       return;
@@ -424,13 +452,16 @@ export class WorldScene extends Scene {
   }
 }
 
-function resolveMoveDirection(input) {
+function resolvePressedDirection(input) {
   for (const direction of MOVE_PRIORITY) {
     if (input.wasPressed(direction)) {
       return direction;
     }
   }
+  return "";
+}
 
+function resolveHeldDirection(input) {
   for (const direction of MOVE_PRIORITY) {
     if (input.isPressed(direction)) {
       return direction;
@@ -654,6 +685,14 @@ function clampNumber(value, min, max) {
 
 function lerp(start, end, t) {
   return start + (end - start) * t;
+}
+
+function easeInOutCubic(value) {
+  const t = clampNumber(value, 0, 1);
+  if (t < 0.5) {
+    return 4 * t * t * t;
+  }
+  return 1 - Math.pow(-2 * t + 2, 3) * 0.5;
 }
 
 function createUiImage(relativePath) {
