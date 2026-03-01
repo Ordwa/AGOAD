@@ -1,5 +1,7 @@
 import { Scene } from "../core/Scene.js";
+import { WORLD_NPCS, WORLD_PLAYER } from "../data/npcs.js";
 import {
+  WORLD_MAP_ASSET_PATH,
   MAP_LAYOUT,
   WORLD_MAP,
   WORLD_POINTS,
@@ -15,11 +17,32 @@ const CAMERA_ZOOM_MAX = 3.8;
 const INTERACTION_MESSAGE_SECONDS = 2.4;
 const PLAYER_DRAW_SIZE_TILES = 0.5;
 const NPC_DRAW_SIZE_TILES = 1;
-const PLAYER_SPRITE_FRAME_WIDTH = 58;
-const PLAYER_SPRITE_FRAME_HEIGHT = 76;
-const PLAYER_SPRITE_HEIGHT_RATIO = PLAYER_SPRITE_FRAME_HEIGHT / PLAYER_SPRITE_FRAME_WIDTH;
-const PLAYER_IDLE_FRAME_COUNT = 4;
-const PLAYER_IDLE_FPS = 5;
+const PLAYER_ANIMATION_IDLE_LEFT = "idleLeft";
+const PLAYER_ANIMATION_IDLE_RIGHT = "idleRight";
+const PLAYER_ANIMATION_WALK_LEFT = "walkLeft";
+const PLAYER_ANIMATION_WALK_RIGHT = "walkRight";
+const PLAYER_ANIMATIONS = Object.freeze({
+  [PLAYER_ANIMATION_IDLE_LEFT]: Object.freeze({
+    path: "../assets/entity/character_animation_idle_l.png",
+    frameCount: 4,
+    fps: 5,
+  }),
+  [PLAYER_ANIMATION_IDLE_RIGHT]: Object.freeze({
+    path: "../assets/entity/character_animation_idle_r.png",
+    frameCount: 4,
+    fps: 5,
+  }),
+  [PLAYER_ANIMATION_WALK_LEFT]: Object.freeze({
+    path: "../assets/entity/character_animation_l.png",
+    frameCount: 4,
+    fps: 8,
+  }),
+  [PLAYER_ANIMATION_WALK_RIGHT]: Object.freeze({
+    path: "../assets/entity/character_animation_r.png",
+    frameCount: 4,
+    fps: 8,
+  }),
+});
 
 const MOVE_PRIORITY = Object.freeze(["up", "down", "left", "right"]);
 const DIRECTION_STEP = Object.freeze({
@@ -30,9 +53,9 @@ const DIRECTION_STEP = Object.freeze({
 });
 
 const DEFAULT_SPAWN = Object.freeze({
-  x: WORLD_POINTS.playerSpawn?.x ?? 8,
-  y: WORLD_POINTS.playerSpawn?.y ?? 8,
-  facing: WORLD_POINTS.playerSpawn?.facing ?? "down",
+  x: WORLD_PLAYER.spawn?.x ?? 8,
+  y: WORLD_PLAYER.spawn?.y ?? 8,
+  facing: WORLD_PLAYER.spawn?.facing ?? "down",
 });
 
 export class WorldScene extends Scene {
@@ -40,12 +63,27 @@ export class WorldScene extends Scene {
     super(game);
 
     this.time = 0;
-    this.mapImage = createUiImage("../assets/map_village.png");
-    this.playerSpriteSheetImage = createUiImage("../assets/sprite_sheet.png");
-    this.playerIdleFrames = [];
-    this.playerIdleFramesReady = false;
+    this.mapImage = createUiImage(WORLD_MAP_ASSET_PATH);
+    this.playerAnimationImages = Object.freeze({
+      [PLAYER_ANIMATION_IDLE_LEFT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_LEFT].path),
+      [PLAYER_ANIMATION_IDLE_RIGHT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].path),
+      [PLAYER_ANIMATION_WALK_LEFT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_WALK_LEFT].path),
+      [PLAYER_ANIMATION_WALK_RIGHT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_WALK_RIGHT].path),
+    });
+    this.playerAnimationFrames = {
+      [PLAYER_ANIMATION_IDLE_LEFT]: [],
+      [PLAYER_ANIMATION_IDLE_RIGHT]: [],
+      [PLAYER_ANIMATION_WALK_LEFT]: [],
+      [PLAYER_ANIMATION_WALK_RIGHT]: [],
+    };
+    this.playerAnimationFramesReady = {
+      [PLAYER_ANIMATION_IDLE_LEFT]: false,
+      [PLAYER_ANIMATION_IDLE_RIGHT]: false,
+      [PLAYER_ANIMATION_WALK_LEFT]: false,
+      [PLAYER_ANIMATION_WALK_RIGHT]: false,
+    };
 
-    this.npcs = (WORLD_POINTS.npcs ?? []).map((npc) => ({
+    this.npcs = (WORLD_NPCS ?? []).map((npc) => ({
       ...npc,
       dialogIndex: 0,
     }));
@@ -57,6 +95,8 @@ export class WorldScene extends Scene {
       worldX: tileToWorldX(DEFAULT_SPAWN.x),
       worldY: tileToWorldY(DEFAULT_SPAWN.y),
       facing: normalizeFacing(DEFAULT_SPAWN.facing),
+      lastHorizontalDirection:
+        normalizeFacing(DEFAULT_SPAWN.facing) === "left" ? "left" : "right",
       move: null,
     };
     this.turnBufferDirection = "";
@@ -73,12 +113,12 @@ export class WorldScene extends Scene {
     this.worldMessage.ttl = 0;
     this.turnBufferDirection = "";
     this.syncPlayerFromPersistentState();
-    this.ensurePlayerIdleFrames();
+    this.ensurePlayerAnimationFrames();
   }
 
   update(dt, input) {
     this.time += dt;
-    this.ensurePlayerIdleFrames();
+    this.ensurePlayerAnimationFrames();
     this.updateMessageTimer(dt);
 
     if (input.wasPressed("profile")) {
@@ -144,7 +184,10 @@ export class WorldScene extends Scene {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    if (!isUiImageSettled(this.mapImage) || !isUiImageSettled(this.playerSpriteSheetImage)) {
+    const arePlayerAnimationsSettled = Object.values(this.playerAnimationImages).every((image) =>
+      isUiImageSettled(image),
+    );
+    if (!isUiImageSettled(this.mapImage) || !arePlayerAnimationsSettled) {
       drawLoading(ctx, canvasWidth, canvasHeight, this.time);
       ctx.restore();
       return;
@@ -183,14 +226,14 @@ export class WorldScene extends Scene {
   }
 
   drawPlayer(ctx, zoom, canvasWidth, canvasHeight) {
-    const playerFrame = this.getCurrentPlayerIdleFrame();
-    const canUseSpriteSheet = isUiImageUsable(this.playerSpriteSheetImage);
-    if (!playerFrame && !canUseSpriteSheet) {
+    const animationKey = this.getCurrentPlayerAnimationKey();
+    const frame = this.resolveAnimationFrame(animationKey);
+    if (!frame) {
       return;
     }
 
     const drawWidth = MAP_LAYOUT.tileSize * PLAYER_DRAW_SIZE_TILES * zoom;
-    const drawHeight = drawWidth * PLAYER_SPRITE_HEIGHT_RATIO;
+    const drawHeight = drawWidth * (frame.sourceHeight / Math.max(1, frame.sourceWidth));
     const feetOffset = MAP_LAYOUT.tileSize * 0.1 * zoom;
 
     const screenX = canvasWidth * 0.5;
@@ -201,33 +244,17 @@ export class WorldScene extends Scene {
     const drawHeightRounded = Math.round(drawHeight);
 
     ctx.imageSmoothingEnabled = false;
-    if (playerFrame) {
-      ctx.drawImage(playerFrame, drawX, drawY, drawWidthRounded, drawHeightRounded);
-      return;
-    }
-
-    ctx.drawImage(
-      this.playerSpriteSheetImage,
-      0,
-      0,
-      PLAYER_SPRITE_FRAME_WIDTH,
-      PLAYER_SPRITE_FRAME_HEIGHT,
-      drawX,
-      drawY,
-      drawWidthRounded,
-      drawHeightRounded,
-    );
+    this.drawResolvedFrame(ctx, frame, drawX, drawY, drawWidthRounded, drawHeightRounded);
   }
 
   drawNpcMarkers(ctx, camera, canvasWidth, canvasHeight) {
-    const npcFrame = this.playerIdleFrames[0] ?? null;
-    const canUseSpriteSheet = isUiImageUsable(this.playerSpriteSheetImage);
-    if (!npcFrame && !canUseSpriteSheet) {
+    const npcFrame = this.resolveAnimationFrame(PLAYER_ANIMATION_IDLE_RIGHT, 0);
+    if (!npcFrame) {
       return;
     }
 
     const drawWidth = Math.round(MAP_LAYOUT.tileSize * NPC_DRAW_SIZE_TILES * camera.zoom);
-    const drawHeight = Math.round(drawWidth * PLAYER_SPRITE_HEIGHT_RATIO);
+    const drawHeight = Math.round(drawWidth * (npcFrame.sourceHeight / Math.max(1, npcFrame.sourceWidth)));
     ctx.imageSmoothingEnabled = false;
 
     this.npcs.forEach((npc) => {
@@ -250,21 +277,7 @@ export class WorldScene extends Scene {
 
       ctx.save();
       ctx.globalAlpha = 0.9;
-      if (npcFrame) {
-        ctx.drawImage(npcFrame, drawX, drawY, drawWidth, drawHeight);
-      } else {
-        ctx.drawImage(
-          this.playerSpriteSheetImage,
-          0,
-          0,
-          PLAYER_SPRITE_FRAME_WIDTH,
-          PLAYER_SPRITE_FRAME_HEIGHT,
-          drawX,
-          drawY,
-          drawWidth,
-          drawHeight,
-        );
-      }
+      this.drawResolvedFrame(ctx, npcFrame, drawX, drawY, drawWidth, drawHeight);
       ctx.restore();
     });
   }
@@ -280,6 +293,14 @@ export class WorldScene extends Scene {
     this.player.worldX = tileToWorldX(safeSpawn.x);
     this.player.worldY = tileToWorldY(safeSpawn.y);
     this.player.facing = normalizeFacing(stateWorld.facing ?? DEFAULT_SPAWN.facing);
+    if (this.player.facing === "left") {
+      this.player.lastHorizontalDirection = "left";
+    } else if (this.player.facing === "right") {
+      this.player.lastHorizontalDirection = "right";
+    } else {
+      this.player.lastHorizontalDirection =
+        this.player.lastHorizontalDirection === "left" ? "left" : "right";
+    }
     this.player.move = null;
 
     if (stateWorld && typeof stateWorld === "object") {
@@ -331,6 +352,10 @@ export class WorldScene extends Scene {
 
     if (!this.isWalkableAndFree(nextTileX, nextTileY)) {
       return false;
+    }
+
+    if (direction === "left" || direction === "right") {
+      this.player.lastHorizontalDirection = direction;
     }
 
     this.player.move = {
@@ -473,27 +498,125 @@ export class WorldScene extends Scene {
     }
   }
 
-  getCurrentPlayerIdleFrame() {
-    if (this.playerIdleFrames.length <= 0) {
+  getCurrentPlayerAnimationKey() {
+    const horizontalDirection = this.player.lastHorizontalDirection === "left" ? "left" : "right";
+    if (this.player.move) {
+      return horizontalDirection === "left" ? PLAYER_ANIMATION_WALK_LEFT : PLAYER_ANIMATION_WALK_RIGHT;
+    }
+
+    return horizontalDirection === "left" ? PLAYER_ANIMATION_IDLE_LEFT : PLAYER_ANIMATION_IDLE_RIGHT;
+  }
+
+  resolveAnimationFrame(animationKey, fixedFrameIndex = null) {
+    const selectedKey = Object.prototype.hasOwnProperty.call(PLAYER_ANIMATIONS, animationKey)
+      ? animationKey
+      : this.getCurrentPlayerAnimationKey();
+    const config = PLAYER_ANIMATIONS[selectedKey];
+    const frames = this.playerAnimationFrames[selectedKey] ?? [];
+
+    if (frames.length > 0) {
+      const rawFrameIndex =
+        fixedFrameIndex ??
+        Math.floor(
+          this.time * (Number(config.fps) || PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].fps),
+        );
+      const normalizedFrameIndex = normalizeFrameIndex(rawFrameIndex, frames.length);
+      const frame = frames[normalizedFrameIndex] ?? frames[0];
+      const sourceWidth = frame?.width || frame?.naturalWidth || 1;
+      const sourceHeight = frame?.height || frame?.naturalHeight || 1;
+      return {
+        image: frame,
+        isSpriteSheet: false,
+        sourceX: 0,
+        sourceY: 0,
+        sourceWidth,
+        sourceHeight,
+      };
+    }
+
+    const sourceImage = this.playerAnimationImages[selectedKey];
+    if (!isUiImageUsable(sourceImage)) {
+      const fallbackIdleKey =
+        this.player.lastHorizontalDirection === "left"
+          ? PLAYER_ANIMATION_IDLE_LEFT
+          : PLAYER_ANIMATION_IDLE_RIGHT;
+      if (selectedKey !== fallbackIdleKey) {
+        return this.resolveAnimationFrame(fallbackIdleKey, fixedFrameIndex);
+      }
       return null;
     }
 
-    const frameIndex = Math.floor(this.time * PLAYER_IDLE_FPS) % this.playerIdleFrames.length;
-    return this.playerIdleFrames[frameIndex] ?? this.playerIdleFrames[0];
+    const frameCount = Math.max(1, Math.floor(Number(config.frameCount) || 1));
+    const sourceWidth = Math.max(1, Math.floor((sourceImage.naturalWidth || sourceImage.width) / frameCount));
+    const sourceHeight = Math.max(1, sourceImage.naturalHeight || sourceImage.height);
+    const rawFrameIndex =
+      fixedFrameIndex ??
+      Math.floor(
+        this.time * (Number(config.fps) || PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].fps),
+      );
+    const normalizedFrameIndex = normalizeFrameIndex(rawFrameIndex, frameCount);
+    return {
+      image: sourceImage,
+      isSpriteSheet: true,
+      sourceX: normalizedFrameIndex * sourceWidth,
+      sourceY: 0,
+      sourceWidth,
+      sourceHeight,
+    };
   }
 
-  ensurePlayerIdleFrames() {
-    if (this.playerIdleFramesReady || !isUiImageUsable(this.playerSpriteSheetImage)) {
+  drawResolvedFrame(ctx, frame, drawX, drawY, drawWidth, drawHeight) {
+    if (!frame || !frame.image) {
       return;
     }
 
-    this.playerIdleFrames = buildMaskedSpriteFrames(this.playerSpriteSheetImage, {
-      frameWidth: PLAYER_SPRITE_FRAME_WIDTH,
-      frameHeight: PLAYER_SPRITE_FRAME_HEIGHT,
-      frameCount: PLAYER_IDLE_FRAME_COUNT,
-    });
-    this.playerIdleFramesReady = true;
+    if (!frame.isSpriteSheet) {
+      ctx.drawImage(frame.image, drawX, drawY, drawWidth, drawHeight);
+      return;
+    }
+
+    ctx.drawImage(
+      frame.image,
+      frame.sourceX,
+      frame.sourceY,
+      frame.sourceWidth,
+      frame.sourceHeight,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight,
+    );
   }
+
+  ensurePlayerAnimationFrames() {
+    Object.keys(PLAYER_ANIMATIONS).forEach((animationKey) => {
+      if (this.playerAnimationFramesReady[animationKey]) {
+        return;
+      }
+
+      const image = this.playerAnimationImages[animationKey];
+      if (!isUiImageUsable(image)) {
+        return;
+      }
+
+      const config = PLAYER_ANIMATIONS[animationKey];
+      const frameCount = Math.max(1, Math.floor(Number(config.frameCount) || 1));
+      const frameWidth = Math.max(1, Math.floor((image.naturalWidth || image.width) / frameCount));
+      const frameHeight = Math.max(1, image.naturalHeight || image.height);
+      this.playerAnimationFrames[animationKey] = buildMaskedSpriteFrames(image, {
+        frameWidth,
+        frameHeight,
+        frameCount,
+      });
+      this.playerAnimationFramesReady[animationKey] = true;
+    });
+  }
+}
+
+function normalizeFrameIndex(frameIndex, frameCount) {
+  const safeCount = Math.max(1, Math.floor(frameCount) || 1);
+  const rawIndex = Math.floor(frameIndex);
+  return ((rawIndex % safeCount) + safeCount) % safeCount;
 }
 
 function resolvePressedDirection(input) {
@@ -677,9 +800,7 @@ function maskFrameBackground(pixelData, width, height) {
     return;
   }
 
-  const backgroundMinDistance = 44;
-  const softenMinDistance = 26;
-  const softenMaxDistance = 44;
+  const backgroundMinDistance = 20;
 
   const totalPixels = width * height;
   const queue = new Uint32Array(totalPixels);
@@ -736,33 +857,13 @@ function maskFrameBackground(pixelData, width, height) {
     tryQueuePixel(x, y + 1);
     tryQueuePixel(x, y - 1);
   }
-
-  for (let dataOffset = 0; dataOffset < pixelData.length; dataOffset += 4) {
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      continue;
-    }
-
-    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
-    if (minDistance <= softenMinDistance) {
-      pixelData[dataOffset + 3] = 0;
-      continue;
-    }
-
-    if (minDistance >= softenMaxDistance) {
-      continue;
-    }
-
-    const alphaFactor = (minDistance - softenMinDistance) / (softenMaxDistance - softenMinDistance);
-    pixelData[dataOffset + 3] = Math.round(alpha * clampNumber(alphaFactor, 0, 1));
-  }
 }
 
 function collectBorderColorSamples(pixelData, width, height) {
   const samples = [];
   const seen = new Set();
 
-  const addSampleAt = (x, y) => {
+  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
     const safeX = clampNumber(Math.floor(x), 0, width - 1);
     const safeY = clampNumber(Math.floor(y), 0, height - 1);
     const dataOffset = (safeY * width + safeX) * 4;
@@ -774,6 +875,16 @@ function collectBorderColorSamples(pixelData, width, height) {
     const r = pixelData[dataOffset];
     const g = pixelData[dataOffset + 1];
     const b = pixelData[dataOffset + 2];
+    if (preferBackground) {
+      // Keep only bright blue-ish tones from the border to avoid sampling the sprite outline.
+      if (b < g + 8 || b < r + 12) {
+        return;
+      }
+      const brightness = (r + g + b) / 3;
+      if (brightness < 96) {
+        return;
+      }
+    }
     const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
     if (seen.has(dedupeKey)) {
       return;
@@ -784,12 +895,25 @@ function collectBorderColorSamples(pixelData, width, height) {
   };
 
   for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0);
-    addSampleAt(x, height - 1);
+    addSampleAt(x, 0, { preferBackground: true });
+    addSampleAt(x, height - 1, { preferBackground: true });
   }
   for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y);
-    addSampleAt(width - 1, y);
+    addSampleAt(0, y, { preferBackground: true });
+    addSampleAt(width - 1, y, { preferBackground: true });
+  }
+
+  if (samples.length > 0) {
+    return samples;
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0, { preferBackground: false });
+    addSampleAt(x, height - 1, { preferBackground: false });
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y, { preferBackground: false });
+    addSampleAt(width - 1, y, { preferBackground: false });
   }
 
   return samples;

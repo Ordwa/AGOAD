@@ -10,7 +10,7 @@ export class ProfileScene extends Scene {
     this.time = 0;
     this.inventoryIndex = 0;
     this.inventoryNotice = "";
-    this.uiBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
+    this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
   }
 
   onEnter(payload = {}) {

@@ -1,0 +1,9 @@
+{
+  "defaultMapId": "village",
+  "maps": [
+    {
+      "id": "village",
+      "definition": "./village/map.json"
+    }
+  ]
+}

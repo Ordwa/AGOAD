@@ -1,4 +1,4 @@
-const assetUrl = (fileName) => new URL(`../../assets/${fileName}`, import.meta.url).href;
+const assetUrl = (relativePath) => new URL(`../../assets/${relativePath}`, import.meta.url).href;
 
 export const HUD_DEFAULT_ACTIVE_TAB = "profile";
 
@@ -9,7 +9,7 @@ export const HUD_TOP_TABS = Object.freeze([
     ariaLabel: "Apri impostazioni",
     icon: {
       type: "image",
-      src: assetUrl("UI_button_settings.png"),
+      src: assetUrl("UI/UI_button_settings.png"),
       alt: "",
     },
     tutorialText: "Regola audio, preferenze e opzioni avanzate.",
@@ -20,7 +20,7 @@ export const HUD_TOP_TABS = Object.freeze([
     ariaLabel: "Apri profilo personaggio",
     icon: {
       type: "image",
-      src: assetUrl("UI_button_pg.png"),
+      src: assetUrl("UI/UI_button_pg.png"),
       alt: "",
     },
     tutorialText: "Apri la scheda personaggio per statistiche e equipaggiamento.",
@@ -31,7 +31,7 @@ export const HUD_TOP_TABS = Object.freeze([
     ariaLabel: "Apri zaino",
     icon: {
       type: "image",
-      src: assetUrl("UI_button_bag.png"),
+      src: assetUrl("UI/UI_button_bag.png"),
       alt: "",
     },
     tutorialText: "Controlla oggetti, consumabili e materiali nel tuo zaino.",
@@ -64,25 +64,25 @@ export const HUD_DPAD_BUTTONS = Object.freeze([
   {
     direction: "up",
     ariaLabel: "Muovi su",
-    iconSrc: assetUrl("UI_dpad_up.png"),
+    iconSrc: assetUrl("UI/UI_dpad_up.png"),
     slot: "up",
   },
   {
     direction: "left",
     ariaLabel: "Muovi a sinistra",
-    iconSrc: assetUrl("UI_dpad_left.png"),
+    iconSrc: assetUrl("UI/UI_dpad_left.png"),
     slot: "left",
   },
   {
     direction: "right",
     ariaLabel: "Muovi a destra",
-    iconSrc: assetUrl("UI_dpad_right.png"),
+    iconSrc: assetUrl("UI/UI_dpad_right.png"),
     slot: "right",
   },
   {
     direction: "down",
     ariaLabel: "Muovi giu",
-    iconSrc: assetUrl("UI_dpad_down.png"),
+    iconSrc: assetUrl("UI/UI_dpad_down.png"),
     slot: "down",
   },
 ]);
@@ -90,7 +90,7 @@ export const HUD_DPAD_BUTTONS = Object.freeze([
 export const HUD_ACTION_BUTTON = Object.freeze({
   action: "confirm",
   ariaLabel: "Azione principale",
-  iconSrc: assetUrl("UI_button_action.png"),
+  iconSrc: assetUrl("UI/UI_button_action.png"),
 });
 
 export const HUD_DEFAULT_TUTORIAL = "";

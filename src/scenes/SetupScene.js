@@ -12,8 +12,8 @@ export class SetupScene extends Scene {
     this.classIndex = 0;
     this.infoText = "";
     this.timer = 0;
-    this.uiBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
-    this.titleBannerImage = createUiImage("../assets/UI_title_banner.png");
+    this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+    this.titleBannerImage = createUiImage("../assets/UI/UI_title_banner.png");
   }
 
   onEnter() {

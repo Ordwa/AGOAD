@@ -1,0 +1,62 @@
+{
+  "id": "village",
+  "name": "Villaggio",
+  "asset": "./map.png",
+  "layout": {
+    "cols": 24,
+    "rows": 16,
+    "tileSize": 64
+  },
+  "collisionMap": {
+    "legend": {
+      ".": "PATH",
+      "#": "TREE"
+    },
+    "rows": [
+      "########################",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "#......................#",
+      "########################"
+    ]
+  },
+  "points": {
+    "interactionPoints": [
+      {
+        "id": "fountain",
+        "x": 8,
+        "y": 6,
+        "text": "Fontana antica: l'acqua e' fredda e pulita."
+      },
+      {
+        "id": "bonfire",
+        "x": 4,
+        "y": 11,
+        "text": "Falo del clan: senti odore di legna e spezie."
+      },
+      {
+        "id": "totem",
+        "x": 20,
+        "y": 4,
+        "text": "Totem teschio: un simbolo di protezione tribale."
+      }
+    ],
+    "healTile": {
+      "x": 8,
+      "y": 6,
+      "label": "Fontana",
+      "text": "Ti riposi un momento."
+    }
+  }
+}

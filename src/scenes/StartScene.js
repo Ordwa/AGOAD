@@ -61,11 +61,11 @@ export class StartScene extends Scene {
     this.gmClassesEditor = null;
     this.gmClassesSelection = { row: 0, classIndex: 0 };
     this.gmClassesRowOffset = 0;
-    this.homeBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
-    this.homeContinueButtonImage = createUiImage("../assets/UI_button_continue.png");
-    this.homeNewGameButtonImage = createUiImage("../assets/UI_button_new_game.png");
-    this.homeSettingsButtonImage = createUiImage("../assets/UI_button_settings.png");
-    this.homeTitleBannerImage = createUiImage("../assets/UI_title_banner.png");
+    this.homeBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+    this.homeContinueButtonImage = createUiImage("../assets/UI/UI_button_continue.png");
+    this.homeNewGameButtonImage = createUiImage("../assets/UI/UI_button_new_game.png");
+    this.homeSettingsButtonImage = createUiImage("../assets/UI/UI_button_settings.png");
+    this.homeTitleBannerImage = createUiImage("../assets/UI/UI_title_banner.png");
     this.gmPasswordInputElement = null;
     this.handleGmPasswordDomInput = this.handleGmPasswordDomInput.bind(this);
     this.handleGmPasswordDomKeyDown = this.handleGmPasswordDomKeyDown.bind(this);

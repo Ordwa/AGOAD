@@ -18,7 +18,7 @@ body {
   color: var(--text);
   background:
     linear-gradient(180deg, #1a2f43 0%, #325770 36%, #9a6c3f 68%, #3d2b1f 100%),
-    url("./src/assets/UI_startscene_background.png") center / cover no-repeat;
+    url("./src/assets/UI/UI_background.png") center / cover no-repeat;
   overflow: hidden;
   position: relative;
 }

@@ -58,7 +58,7 @@ export class BattleScene extends Scene {
     this.enemySkipTurns = 0;
 
     this.floatTimer = 0;
-    this.uiBackgroundImage = createUiImage("../assets/UI_startscene_background.png");
+    this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
   }
 
   onEnter(payload = {}) {

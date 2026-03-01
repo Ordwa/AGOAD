@@ -152,6 +152,41 @@ Nota: se il browser tiene cache vecchia, fai una ricarica forzata o riapri dalla
 - `src/data`: costanti e dati di gioco
 - `src/scenes`: `SetupScene`, `WorldScene`, `BattleScene`, `ProfileScene`
 
+## Mappe JSON (Collision Map)
+
+Ogni mappa vive in una cartella dedicata sotto `src/maps/<mapId>/`:
+
+- `map.png`: asset visivo
+- `map.json`: layout + collision map + punti mappa
+
+Registry mappe:
+
+- `src/maps/maps.json`
+
+Formato collisione in `map.json`:
+
+- `collisionMap.rows`: array di stringhe (una per riga)
+- `collisionMap.legend`: simbolo -> tipo tile
+
+Esempio legenda:
+
+- `.` = `PATH` (camminabile)
+- `#` = `TREE` (bloccato)
+- `g` = `TALL_GRASS`
+- `~` = `WATER`
+
+Scaffold rapido nuova mappa:
+
+```bash
+node scripts/create-map-template.mjs forest --cols 24 --rows 16 --tile-size 64
+```
+
+Poi:
+
+1. Copia il png in `src/maps/forest/map.png`
+2. Disegna la collision map in `src/maps/forest/map.json` modificando `collisionMap.rows`
+3. Prova subito con `http://localhost:8080/?map=forest`
+
 ## Nota stile
 
 Palette e resa pixel sono ispirate ai classici RPG GBA, senza usare asset originali proprietari.
