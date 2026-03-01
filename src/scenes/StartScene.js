@@ -2289,8 +2289,6 @@ export class StartScene extends Scene {
   }
 
   drawPanel(ctx, x, y, w, h, fillColor = PALETTE.uiPanel) {
-    ctx.fillStyle = PALETTE.shadow;
-    ctx.fillRect(x + 2, y + 2, w, h);
     ctx.fillStyle = fillColor;
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = PALETTE.uiBorder;

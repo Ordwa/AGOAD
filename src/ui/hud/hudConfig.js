@@ -38,14 +38,14 @@ export const HUD_TOP_TABS = Object.freeze([
   },
   {
     id: "slot_a",
-    label: "Slot A",
-    ariaLabel: "Slot libero",
+    label: "ABILITA",
+    ariaLabel: "Apri abilita",
     icon: {
       type: "glyph",
       glyph: "A",
       style: "placeholder",
     },
-    tutorialText: "Slot UI libero.",
+    tutorialText: "Apri rapidamente la scheda abilita.",
   },
   {
     id: "slot_b",
@@ -103,4 +103,5 @@ export const HUD_SCENE_TUTORIALS = Object.freeze({
   battle: "Scegli ATTACK, BAG o SKILLS in base alla situazione del turno.",
   profile: "Gestisci statistiche, inventario e progressione personaggio.",
   inventory: "Controlla oggetti, consumabili e materiali disponibili.",
+  skills: "Consulta abilita', costi MP e descrizioni delle tecniche apprese.",
 });

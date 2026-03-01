@@ -21,6 +21,11 @@ const DEFAULT_TAB_ACTIONS = Object.freeze({
       returnScene: "world",
     });
   },
+  slot_a: ({ game }) => {
+    game.changeScene("skills", {
+      returnScene: "world",
+    });
+  },
   slot_b: ({ game }) => {
     const activeScene = game.currentScene;
     if (activeScene && typeof activeScene.closeFromNavbar === "function") {

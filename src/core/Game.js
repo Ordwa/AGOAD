@@ -28,12 +28,13 @@ const GOBLIN_PLAYER_BASE = Object.freeze({
   attackMin: 3,
   attackMax: 5,
 });
+const UNKNOWN_TOOL_DESCRIPTION = "Non conosci l'utilita' di questo arnese";
 
 const DEFAULT_PLAYER_SKILLS = Object.freeze([
   Object.freeze({
     id: "shield_bash",
     label: "Shield Bash",
-    description: "Stordisce il nemico e infligge danno.",
+    description: "Stordisce il nemico e infligge danno",
     manaCost: 10,
     usableInBattle: true,
     priority: false,
@@ -42,7 +43,7 @@ const DEFAULT_PLAYER_SKILLS = Object.freeze([
   Object.freeze({
     id: "arcane_heal",
     label: "Cura Arcana",
-    description: "Ripristina HP durante il combattimento.",
+    description: "Ripristina HP durante il combattimento",
     manaCost: 10,
     usableInBattle: true,
     priority: false,
@@ -51,11 +52,101 @@ const DEFAULT_PLAYER_SKILLS = Object.freeze([
   Object.freeze({
     id: "shadow_escape",
     label: "Fuga Garantita",
-    description: "Permette una fuga certa dal combattimento.",
+    description: "Permette una fuga certa dal combattimento",
     manaCost: 10,
     usableInBattle: true,
     priority: true,
     effect: "escape",
+  }),
+  Object.freeze({
+    id: "rune_focus",
+    label: "Rune Focus",
+    description: "Schema runico da studiare",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "mind_link",
+    label: "Mind Link",
+    description: "Connessione mentale incompleta",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "stone_ward",
+    label: "Stone Ward",
+    description: "Tecnica passiva senza effetto pratico",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "ember_mark",
+    label: "Ember Mark",
+    description: "Marchio sperimentale non attivo",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "lunar_step",
+    label: "Lunar Step",
+    description: "Movimento rituale ancora instabile",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "tide_echo",
+    label: "Tide Echo",
+    description: "Eco elementale non canalizzata",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "iron_vow",
+    label: "Iron Vow",
+    description: "Giuramento antico senza riscontro",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "mist_call",
+    label: "Mist Call",
+    description: "Richiamo incompleto della nebbia",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "thorn_thread",
+    label: "Thorn Thread",
+    description: "Traccia druidica ancora da comprendere",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
+  }),
+  Object.freeze({
+    id: "void_whisper",
+    label: "Void Whisper",
+    description: "Sussurro arcano senza effetto",
+    manaCost: 0,
+    usableInBattle: false,
+    priority: false,
+    effect: "",
   }),
 ]);
 
@@ -111,7 +202,84 @@ function createDefaultInventory() {
     amulet: {
       id: "amulet",
       label: "Amulet",
-      description: "Nessun effetto per ora.",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    stone: {
+      id: "stone",
+      label: "Sasso",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    rustyKey: {
+      id: "rusty_key",
+      label: "Chiave Arrugginita",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    boneCharm: {
+      id: "bone_charm",
+      label: "Ciondolo d'Osso",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    tornMap: {
+      id: "torn_map",
+      label: "Mappa Strappata",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    crackedOrb: {
+      id: "cracked_orb",
+      label: "Sfera Crepata",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    oldCoin: {
+      id: "old_coin",
+      label: "Moneta Antica",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    emptyFlask: {
+      id: "empty_flask",
+      label: "Fiasca Vuota",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    waxSeal: {
+      id: "wax_seal",
+      label: "Sigillo di Cera",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    copperNail: {
+      id: "copper_nail",
+      label: "Chiodo di Rame",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    featherToken: {
+      id: "feather_token",
+      label: "Gettone Piumato",
+      description: UNKNOWN_TOOL_DESCRIPTION,
+      quantity: 1,
+      usableInBattle: false,
+    },
+    shellFragment: {
+      id: "shell_fragment",
+      label: "Frammento di Conchiglia",
+      description: UNKNOWN_TOOL_DESCRIPTION,
       quantity: 1,
       usableInBattle: false,
     },
@@ -157,14 +325,31 @@ function normalizeInventory(savedInventory, fallbackInventory) {
     }
 
     if (inventory[key]) {
-      inventory[key] = {
+      const mergedItem = {
         ...inventory[key],
         ...item,
       };
+      mergedItem.description = normalizeDescriptionText(
+        mergedItem.description,
+        inventory[key].description ?? "",
+      );
+      inventory[key] = mergedItem;
       return;
     }
 
-    inventory[key] = { ...item };
+    inventory[key] = {
+      ...item,
+      description: normalizeDescriptionText(item.description, ""),
+    };
+  });
+
+  Object.entries(inventory).forEach(([key, item]) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const fallbackDescription =
+      key === "amulet" || key === "stone" ? UNKNOWN_TOOL_DESCRIPTION : "";
+    item.description = normalizeDescriptionText(item.description, fallbackDescription);
   });
 
   return inventory;
@@ -202,7 +387,7 @@ function normalizeSkills(savedSkills, fallbackSkills) {
       ...rawSkill,
       id: toSafeString(rawSkill.id, baseSkill.id),
       label: toSafeString(rawSkill.label, baseSkill.label),
-      description: toSafeString(rawSkill.description, baseSkill.description),
+      description: normalizeDescriptionText(rawSkill.description, baseSkill.description),
       manaCost,
       usableInBattle: toBooleanValue(rawSkill.usableInBattle, baseSkill.usableInBattle !== false),
       priority: toBooleanValue(rawSkill.priority, Boolean(baseSkill.priority)),
@@ -276,6 +461,14 @@ function toSafeString(value, fallback = "") {
   }
 
   return text;
+}
+
+function normalizeDescriptionText(value, fallback = "") {
+  const normalized = toSafeString(value, fallback).replace(/\.+$/g, "");
+  if (normalized.toLowerCase() === "nessun effetto per ora") {
+    return UNKNOWN_TOOL_DESCRIPTION;
+  }
+  return normalized;
 }
 
 function toNumberInRange(value, min, max, fallback) {

@@ -14,19 +14,11 @@ export class Input {
     this.typedChars = [];
     this.backspaceCount = 0;
     this.keyToAction = new Map([
-      ["ArrowUp", "up"],
-      ["ArrowDown", "down"],
-      ["ArrowLeft", "left"],
-      ["ArrowRight", "right"],
       ["w", "up"],
       ["s", "down"],
       ["a", "left"],
       ["d", "right"],
-      ["i", "inventory"],
-      ["p", "profile"],
-      ["Enter", "confirm"],
-      [" ", "back"],
-      ["Escape", "back"],
+      [" ", "confirm"],
     ]);
 
     this.onKeyDown = this.onKeyDown.bind(this);
@@ -41,9 +33,12 @@ export class Input {
       if (event.key === "Backspace") {
         this.backspaceCount += 1;
         event.preventDefault();
-      } else if (/^[a-zA-Z0-9]$/.test(event.key)) {
+        return;
+      }
+      if (/^[a-zA-Z0-9]$/.test(event.key)) {
         this.typedChars.push(event.key);
         event.preventDefault();
+        return;
       }
     }
 
@@ -60,6 +55,10 @@ export class Input {
   }
 
   onKeyUp(event) {
+    if (this.textCaptureEnabled && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      return;
+    }
+
     const key = normalizeKey(event.key);
     const mappedActions = this.keyToAction.get(key);
     if (!mappedActions) {
@@ -115,6 +114,10 @@ export class Input {
     this.textCaptureEnabled = enabled;
     this.typedChars.length = 0;
     this.backspaceCount = 0;
+    if (enabled) {
+      this.pressed.clear();
+      this.justPressed.clear();
+    }
   }
 
   injectTypedText(text) {

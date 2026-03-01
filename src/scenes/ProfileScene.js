@@ -18,6 +18,29 @@ const PROFILE_THEME = Object.freeze({
 
 const INVENTORY_PANEL_ITEMS = "items";
 const INVENTORY_PANEL_SKILLS = "skills";
+const VIEW_PROFILE = "profile";
+const VIEW_INVENTORY = "inventory";
+const VIEW_SKILLS = "skills";
+const PROFILE_TOP_Y = 62;
+const PROFILE_INFO_HEIGHT = 56;
+const PROFILE_PROGRESS_HEIGHT = PROFILE_INFO_HEIGHT;
+const INVENTORY_LAYOUT = Object.freeze({
+  containerX: 6,
+  containerY: 62,
+  containerW: GAME_CONFIG.width - 12,
+  containerBottomPad: 4,
+  tabsX: 12,
+  tabsGap: 2,
+  tabsH: 26,
+  tabsTopPad: 4,
+  listX: 10,
+  listW: GAME_CONFIG.width - 20,
+  listGapFromTabs: 4,
+  listBottomPad: 4,
+  rowHeight: 46,
+  descMaxLines: 3,
+});
+let ACTIVE_UI_LOGICAL_HEIGHT = GAME_CONFIG.height;
 
 export class ProfileScene extends Scene {
   constructor(game) {
@@ -30,13 +53,24 @@ export class ProfileScene extends Scene {
     this.skillIndex = 0;
     this.inventoryPanel = INVENTORY_PANEL_ITEMS;
     this.inventoryNotice = "";
+    this.inventoryScrollY = {
+      [INVENTORY_PANEL_ITEMS]: 0,
+      [INVENTORY_PANEL_SKILLS]: 0,
+    };
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
     this.playerIdleImage = createUiImage("../assets/entity/character_animation_idle_r.png");
+    this.playerIdleFrames = [];
+    this.playerIdleFramesReady = false;
 
     this.pointerEventsBound = false;
     this.activePointerId = null;
     this.pointerStart = null;
+    this.pointerLastScenePoint = null;
+    this.pointerDidMove = false;
+    this.pointerDragMode = "";
+    this.pointerDragAccumulator = 0;
     this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerMove = this.onPointerMove.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onPointerCancel = this.onPointerCancel.bind(this);
   }
@@ -48,22 +82,34 @@ export class ProfileScene extends Scene {
     this.time = 0;
     this.inventoryIndex = 0;
     this.skillIndex = 0;
-    this.inventoryPanel = INVENTORY_PANEL_ITEMS;
+    this.inventoryPanel = resolveListPanelForView(this.view, payload.panel);
     this.inventoryNotice = "";
+    this.inventoryScrollY[INVENTORY_PANEL_ITEMS] = 0;
+    this.inventoryScrollY[INVENTORY_PANEL_SKILLS] = 0;
+    this.pointerLastScenePoint = null;
+    this.pointerDidMove = false;
+    this.pointerDragMode = "";
+    this.pointerDragAccumulator = 0;
     this.bindPointerEvents();
+    this.ensurePlayerIdleFrames();
   }
 
   onExit() {
     this.unbindPointerEvents();
     this.activePointerId = null;
     this.pointerStart = null;
+    this.pointerLastScenePoint = null;
+    this.pointerDidMove = false;
+    this.pointerDragMode = "";
+    this.pointerDragAccumulator = 0;
   }
 
   update(dt, input) {
     this.time += dt;
+    this.ensurePlayerIdleFrames();
 
     if (input.wasPressed("profile")) {
-      if (this.view === "profile") {
+      if (this.view === VIEW_PROFILE) {
         this.closeScene();
         return;
       }
@@ -76,7 +122,7 @@ export class ProfileScene extends Scene {
     }
 
     if (input.wasPressed("inventory")) {
-      if (this.view === "inventory") {
+      if (this.view === VIEW_INVENTORY) {
         this.closeScene();
         return;
       }
@@ -88,7 +134,20 @@ export class ProfileScene extends Scene {
       return;
     }
 
-    if (this.view === "inventory" && this.updateInventoryInput(input)) {
+    if (input.wasPressed("skills")) {
+      if (this.view === VIEW_SKILLS) {
+        this.closeScene();
+        return;
+      }
+
+      this.game.changeScene("skills", {
+        returnScene: this.returnScene,
+        returnPayload: this.returnPayload,
+      });
+      return;
+    }
+
+    if (isListViewValue(this.view) && this.updateInventoryInput(input)) {
       return;
     }
 
@@ -106,14 +165,18 @@ export class ProfileScene extends Scene {
 
     this.drawBackground(ctx, canvasWidth, canvasHeight);
 
-    const scale = Math.max(0.01, Math.min(canvasWidth / GAME_CONFIG.width, canvasHeight / GAME_CONFIG.height));
+    ACTIVE_UI_LOGICAL_HEIGHT = computeUiLogicalHeight(canvasWidth, canvasHeight);
+    const scale = Math.max(
+      0.01,
+      Math.min(canvasWidth / GAME_CONFIG.width, canvasHeight / ACTIVE_UI_LOGICAL_HEIGHT),
+    );
     const offsetX = Math.floor((canvasWidth - GAME_CONFIG.width * scale) * 0.5);
-    const offsetY = Math.floor((canvasHeight - GAME_CONFIG.height * scale) * 0.5);
+    const offsetY = Math.floor((canvasHeight - ACTIVE_UI_LOGICAL_HEIGHT * scale) * 0.5);
 
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    if (this.view === "profile") {
+    if (this.view === VIEW_PROFILE) {
       this.drawProfileView(ctx);
       ctx.restore();
       return;
@@ -139,6 +202,7 @@ export class ProfileScene extends Scene {
   drawProfileView(ctx) {
     const player = this.game.state.player;
     const progress = this.game.state.progress;
+    const sceneHeight = ACTIVE_UI_LOGICAL_HEIGHT;
 
     const encounterCount = Array.isArray(progress.encounteredEnemyIds)
       ? progress.encounteredEnemyIds.length
@@ -146,25 +210,34 @@ export class ProfileScene extends Scene {
     const battlesWon = progress.battlesWon ?? 0;
     const playTime = formatPlayTime(progress.playTimeSeconds ?? 0);
 
-    const infoX = 8;
-    const infoY = 32;
-    const infoW = 126;
-    const infoH = 74;
-    const progressX = 136;
-    const progressY = 32;
-    const progressW = GAME_CONFIG.width - progressX - 8;
-    const progressH = 74;
-    const equipX = 8;
-    const equipY = 110;
-    const equipW = GAME_CONFIG.width - 16;
-    const equipH = 64;
-
+    const outerPad = 8;
+    const splitGap = 4;
+    const topRowWidth = GAME_CONFIG.width - outerPad * 2;
+    const halfWidth = Math.floor((topRowWidth - splitGap) * 0.5);
+    const infoX = outerPad;
+    const infoY = PROFILE_TOP_Y;
+    const infoW = halfWidth;
+    const infoH = PROFILE_INFO_HEIGHT;
+    const progressX = infoX + infoW + splitGap;
+    const progressW = GAME_CONFIG.width - outerPad - progressX;
+    const progressH = PROFILE_PROGRESS_HEIGHT;
+    const progressY = PROFILE_TOP_Y;
+    const equipTopGap = 8;
+    const equipY = infoY + infoH + equipTopGap;
+    const equipSize = Math.min(
+      GAME_CONFIG.width - 16,
+      Math.max(36, Math.floor(sceneHeight - equipY - 6)),
+    );
+    const equipX = Math.floor((GAME_CONFIG.width - equipSize) * 0.5);
+    this.drawPanel(ctx, equipX, equipY, equipSize, equipSize);
     this.drawPanel(ctx, infoX, infoY, infoW, infoH);
     this.drawPanel(ctx, progressX, progressY, progressW, progressH);
-    this.drawPanel(ctx, equipX, equipY, equipW, equipH);
-
-    this.drawPanel(ctx, infoX + 6, infoY + 6, infoW - 12, 24, { inset: true });
-    this.drawPanel(ctx, infoX + 6, infoY + 34, infoW - 12, 30, { inset: true });
+    const infoTitleHeight = 14;
+    const infoStatsHeight = 36;
+    const infoTitleY = infoY + 2;
+    const infoStatsY = infoTitleY + infoTitleHeight + 2;
+    this.drawPanel(ctx, infoX + 6, infoTitleY, infoW - 12, infoTitleHeight, { inset: true });
+    this.drawPanel(ctx, infoX + 6, infoStatsY, infoW - 12, infoStatsHeight, { inset: true });
 
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
@@ -176,7 +249,7 @@ export class ProfileScene extends Scene {
     ctx.fillText(
       String(player.pgTitle ?? "Goblin").toUpperCase(),
       infoX + Math.round(infoW * 0.5),
-      infoY + 18,
+      infoTitleY + Math.floor(infoTitleHeight * 0.5),
     );
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
@@ -184,9 +257,9 @@ export class ProfileScene extends Scene {
     this.drawStatBar(
       ctx,
       {
-        x: infoX + 12,
-        y: infoY + 38,
-        width: infoW - 18,
+        x: infoX + 10,
+        y: infoStatsY + 2,
+        width: infoW - 24,
         label: "HP",
         color: "#5ad07a",
       },
@@ -197,9 +270,9 @@ export class ProfileScene extends Scene {
     this.drawStatBar(
       ctx,
       {
-        x: infoX + 12,
-        y: infoY + 50,
-        width: infoW - 18,
+        x: infoX + 10,
+        y: infoStatsY + 14,
+        width: infoW - 24,
         label: "MP",
         color: "#63b9f0",
       },
@@ -209,51 +282,54 @@ export class ProfileScene extends Scene {
 
     this.drawSpeedBar(
       ctx,
-      { x: infoX + 12, y: infoY + 62, width: infoW - 18, label: "SP" },
+      { x: infoX + 10, y: infoStatsY + 26, width: infoW - 24, label: "SP" },
       player.speed ?? 0,
     );
 
     ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.fillText("PROGRESSO", progressX + 10, progressY + 8);
-    ctx.fillText(`Mostri incontrati: ${encounterCount}`, progressX + 10, progressY + 24);
-    ctx.fillText(`Mostri sconfitti: ${battlesWon}`, progressX + 10, progressY + 36);
-    ctx.fillText(`Tempo di vita: ${playTime}`, progressX + 10, progressY + 48);
+    this.drawProgressRow(ctx, progressX, progressY + 8, progressW, "Mostri incontrati", `${encounterCount}`);
+    this.drawProgressRow(ctx, progressX, progressY + 22, progressW, "Mostri sconfitti", `${battlesWon}`);
+    this.drawProgressRow(ctx, progressX, progressY + 36, progressW, "Tempo di vita", playTime);
 
-    this.drawEquipmentSection(ctx, { x: equipX, y: equipY, w: equipW, h: equipH });
+    const navGap = 6;
+    const navPad = 6;
+    const navButtonWidth = Math.floor((GAME_CONFIG.width - navPad * 2 - navGap * 4) / 5);
+    this.drawCoinCounter(ctx, {
+      x: equipX + equipSize - navButtonWidth - 2,
+      y: equipY + 2,
+    });
+
+    this.drawEquipmentSection(ctx, { x: equipX, y: equipY, w: equipSize, h: equipSize });
   }
 
   drawInventoryView(ctx) {
-    this.drawCoinCounter(ctx);
-    this.drawPanel(ctx, 6, 46, GAME_CONFIG.width - 12, 128);
+    const layout = getInventoryLayout({ showTabs: false });
+    const activePanel = this.getActiveListPanel();
+    this.inventoryPanel = activePanel;
+
+    this.drawPanel(
+      ctx,
+      layout.container.x,
+      layout.container.y,
+      layout.container.w,
+      layout.container.h,
+    );
 
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
-    this.drawInventoryPanelTabs(ctx);
 
-    if (this.inventoryPanel === INVENTORY_PANEL_ITEMS) {
-      this.drawInventoryItemsPanel(ctx);
+    if (activePanel === INVENTORY_PANEL_ITEMS) {
+      this.drawInventoryItemsPanel(ctx, layout);
     } else {
-      this.drawInventorySkillsPanel(ctx);
-    }
-
-    if (this.inventoryNotice.length > 0) {
-      this.drawPanel(ctx, 10, 157, GAME_CONFIG.width - 20, 16, { inset: true });
-      ctx.fillStyle = PROFILE_THEME.notice;
-      ctx.fillText(truncate(this.inventoryNotice, 40), 14, 161);
+      this.drawInventorySkillsPanel(ctx, layout);
     }
   }
 
   updateInventoryInput(input) {
-    if (input.wasPressed("left") || input.wasPressed("right")) {
-      this.switchInventoryPanel(
-        this.inventoryPanel === INVENTORY_PANEL_ITEMS
-          ? INVENTORY_PANEL_SKILLS
-          : INVENTORY_PANEL_ITEMS,
-      );
-      return true;
-    }
+    const activePanel = this.getActiveListPanel();
+    this.inventoryPanel = activePanel;
 
-    if (this.inventoryPanel === INVENTORY_PANEL_SKILLS) {
+    if (activePanel === INVENTORY_PANEL_SKILLS) {
       const skills = this.getPlayerSkills();
       if (skills.length <= 0) {
         if (input.wasPressed("confirm")) {
@@ -269,11 +345,13 @@ export class ProfileScene extends Scene {
 
       if (input.wasPressed("up")) {
         this.skillIndex = (this.skillIndex + skills.length - 1) % skills.length;
+        this.ensureSelectionVisible(activePanel, this.skillIndex);
         return true;
       }
 
       if (input.wasPressed("down")) {
         this.skillIndex = (this.skillIndex + 1) % skills.length;
+        this.ensureSelectionVisible(activePanel, this.skillIndex);
         return true;
       }
 
@@ -304,11 +382,13 @@ export class ProfileScene extends Scene {
 
     if (input.wasPressed("up")) {
       this.inventoryIndex = (this.inventoryIndex + inventoryItems.length - 1) % inventoryItems.length;
+      this.ensureSelectionVisible(activePanel, this.inventoryIndex);
       return true;
     }
 
     if (input.wasPressed("down")) {
       this.inventoryIndex = (this.inventoryIndex + 1) % inventoryItems.length;
+      this.ensureSelectionVisible(activePanel, this.inventoryIndex);
       return true;
     }
 
@@ -320,6 +400,10 @@ export class ProfileScene extends Scene {
     return false;
   }
 
+  getActiveListPanel() {
+    return resolveListPanelForView(this.view, this.inventoryPanel);
+  }
+
   switchInventoryPanel(nextPanel) {
     const panel = nextPanel === INVENTORY_PANEL_SKILLS ? INVENTORY_PANEL_SKILLS : INVENTORY_PANEL_ITEMS;
     if (this.inventoryPanel === panel) {
@@ -327,6 +411,35 @@ export class ProfileScene extends Scene {
     }
     this.inventoryPanel = panel;
     this.inventoryNotice = "";
+  }
+
+  getInventoryScroll(panel) {
+    const key = panel === INVENTORY_PANEL_SKILLS ? INVENTORY_PANEL_SKILLS : INVENTORY_PANEL_ITEMS;
+    return Number(this.inventoryScrollY[key]) || 0;
+  }
+
+  setInventoryScroll(panel, value) {
+    const key = panel === INVENTORY_PANEL_SKILLS ? INVENTORY_PANEL_SKILLS : INVENTORY_PANEL_ITEMS;
+    const safeValue = Number(value) || 0;
+    const maxScroll = getInventoryMaxScrollByPanel(this, key);
+    this.inventoryScrollY[key] = Math.max(0, Math.min(maxScroll, safeValue));
+  }
+
+  ensureSelectionVisible(panel, index) {
+    const rowLayout = getInventoryRowsLayout(panel);
+    const targetTop = index * rowLayout.rowHeight;
+    const targetBottom = targetTop + rowLayout.rowHeight;
+    const currentScroll = this.getInventoryScroll(panel);
+    const viewportBottom = currentScroll + rowLayout.listH;
+
+    if (targetTop < currentScroll) {
+      this.setInventoryScroll(panel, targetTop);
+      return;
+    }
+
+    if (targetBottom > viewportBottom) {
+      this.setInventoryScroll(panel, targetBottom - rowLayout.listH);
+    }
   }
 
   bindPointerEvents() {
@@ -340,6 +453,7 @@ export class ProfileScene extends Scene {
     }
 
     canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("pointercancel", this.onPointerCancel);
     this.pointerEventsBound = true;
@@ -356,13 +470,14 @@ export class ProfileScene extends Scene {
     }
 
     canvas.removeEventListener("pointerdown", this.onPointerDown);
+    canvas.removeEventListener("pointermove", this.onPointerMove);
     canvas.removeEventListener("pointerup", this.onPointerUp);
     canvas.removeEventListener("pointercancel", this.onPointerCancel);
     this.pointerEventsBound = false;
   }
 
   onPointerDown(event) {
-    if (this.view !== "inventory") {
+    if (!isListViewValue(this.view)) {
       return;
     }
 
@@ -372,7 +487,42 @@ export class ProfileScene extends Scene {
 
     this.activePointerId = event.pointerId;
     this.pointerStart = { x: event.clientX, y: event.clientY };
+    this.pointerDidMove = false;
+    this.pointerDragAccumulator = 0;
+    this.pointerLastScenePoint = this.resolveScenePointFromPointer(event);
+    const activePanel = this.getActiveListPanel();
+    const layout = getInventoryLayout({ showTabs: false });
+    this.inventoryPanel = activePanel;
+    this.pointerDragMode =
+      this.pointerLastScenePoint &&
+      pointInRect(this.pointerLastScenePoint, getInventoryListRect(activePanel, layout))
+        ? "list"
+        : "tap";
     this.game.canvas.setPointerCapture?.(event.pointerId);
+  }
+
+  onPointerMove(event) {
+    if (this.activePointerId !== event.pointerId || !this.pointerStart || !isListViewValue(this.view)) {
+      return;
+    }
+
+    const point = this.resolveScenePointFromPointer(event);
+    if (!point) {
+      return;
+    }
+
+    const travelX = event.clientX - this.pointerStart.x;
+    const travelY = event.clientY - this.pointerStart.y;
+    if (Math.hypot(travelX, travelY) > 10) {
+      this.pointerDidMove = true;
+    }
+
+    if (this.pointerDragMode === "list" && this.pointerLastScenePoint) {
+      const deltaY = point.y - this.pointerLastScenePoint.y;
+      this.applyInventoryDrag(deltaY);
+    }
+
+    this.pointerLastScenePoint = point;
   }
 
   onPointerUp(event) {
@@ -382,12 +532,16 @@ export class ProfileScene extends Scene {
 
     const deltaX = event.clientX - this.pointerStart.x;
     const deltaY = event.clientY - this.pointerStart.y;
-    const moved = Math.hypot(deltaX, deltaY) > 10;
+    const moved = this.pointerDidMove || Math.hypot(deltaX, deltaY) > 10;
     this.pointerStart = null;
     this.activePointerId = null;
+    this.pointerLastScenePoint = null;
+    this.pointerDidMove = false;
+    this.pointerDragMode = "";
+    this.pointerDragAccumulator = 0;
     this.game.canvas.releasePointerCapture?.(event.pointerId);
 
-    if (moved || this.view !== "inventory") {
+    if (moved || !isListViewValue(this.view)) {
       return;
     }
 
@@ -406,11 +560,56 @@ export class ProfileScene extends Scene {
 
     this.pointerStart = null;
     this.activePointerId = null;
+    this.pointerLastScenePoint = null;
+    this.pointerDidMove = false;
+    this.pointerDragMode = "";
+    this.pointerDragAccumulator = 0;
     this.game.canvas.releasePointerCapture?.(event.pointerId);
   }
 
+  applyInventoryDrag(deltaY) {
+    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 0.25) {
+      return;
+    }
+
+    const maxScroll = getInventoryMaxScrollByPanel(this, this.inventoryPanel);
+    if (maxScroll <= 0) {
+      return;
+    }
+
+    const nextScroll = this.getInventoryScroll(this.inventoryPanel) - deltaY;
+    this.setInventoryScroll(this.inventoryPanel, nextScroll);
+  }
+
+  shiftInventorySelection(delta) {
+    const shift = Math.trunc(delta);
+    if (shift === 0) {
+      return;
+    }
+
+    if (this.inventoryPanel === INVENTORY_PANEL_SKILLS) {
+      const skills = this.getPlayerSkills();
+      if (skills.length <= 0) {
+        return;
+      }
+      this.skillIndex = Math.max(0, Math.min(skills.length - 1, this.skillIndex + shift));
+      return;
+    }
+
+    const items = this.getInventoryItems();
+    if (items.length <= 0) {
+      return;
+    }
+    this.inventoryIndex = Math.max(0, Math.min(items.length - 1, this.inventoryIndex + shift));
+  }
+
   handleInventoryTap(point) {
-    const tabRects = getInventoryTabRects();
+    const layout = getInventoryLayout({ showTabs: false });
+    if (!layout.showTabs) {
+      return;
+    }
+
+    const tabRects = getInventoryTabRects(layout);
     if (pointInRect(point, tabRects.items)) {
       this.switchInventoryPanel(INVENTORY_PANEL_ITEMS);
       return;
@@ -434,20 +633,25 @@ export class ProfileScene extends Scene {
 
     const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    const scale = Math.max(0.01, Math.min(canvas.width / GAME_CONFIG.width, canvas.height / GAME_CONFIG.height));
+    const logicalHeight = computeUiLogicalHeight(canvas.width, canvas.height);
+    ACTIVE_UI_LOGICAL_HEIGHT = logicalHeight;
+    const scale = Math.max(
+      0.01,
+      Math.min(canvas.width / GAME_CONFIG.width, canvas.height / logicalHeight),
+    );
     const offsetX = (canvas.width - GAME_CONFIG.width * scale) * 0.5;
-    const offsetY = (canvas.height - GAME_CONFIG.height * scale) * 0.5;
+    const offsetY = (canvas.height - logicalHeight * scale) * 0.5;
     const sceneX = (canvasX - offsetX) / scale;
     const sceneY = (canvasY - offsetY) / scale;
-    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > GAME_CONFIG.height) {
+    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > logicalHeight) {
       return null;
     }
 
     return { x: sceneX, y: sceneY };
   }
 
-  drawInventoryPanelTabs(ctx) {
-    const tabRects = getInventoryTabRects();
+  drawInventoryPanelTabs(ctx, layout) {
+    const tabRects = getInventoryTabRects(layout);
     const leftTabRect = tabRects.items;
     const rightTabRect = tabRects.skills;
 
@@ -485,12 +689,12 @@ export class ProfileScene extends Scene {
     ctx.textBaseline = "top";
   }
 
-  drawInventoryItemsPanel(ctx) {
+  drawInventoryItemsPanel(ctx, layout) {
     const inventoryItems = this.getInventoryItems();
 
     if (inventoryItems.length === 0) {
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText("(vuoto)", 14, 86);
+      ctx.fillText("(vuoto)", layout.list.x + 4, layout.list.y + 4);
       return;
     }
 
@@ -498,44 +702,59 @@ export class ProfileScene extends Scene {
       this.inventoryIndex = inventoryItems.length - 1;
     }
 
-    const maxVisible = 2;
-    const windowStart = clampIndexWindow(this.inventoryIndex, inventoryItems.length, maxVisible);
-    const visibleItems = inventoryItems.slice(windowStart, windowStart + maxVisible);
-    const rowStartY = 76;
-    const rowHeight = 40;
+    const rowLayout = getInventoryRowsLayout(INVENTORY_PANEL_ITEMS, layout);
+    const rowHeight = rowLayout.rowHeight;
+    this.setInventoryScroll(INVENTORY_PANEL_ITEMS, this.getInventoryScroll(INVENTORY_PANEL_ITEMS));
+    const scrollY = this.getInventoryScroll(INVENTORY_PANEL_ITEMS);
 
-    visibleItems.forEach((item, visibleIndex) => {
-      const itemIndex = windowStart + visibleIndex;
-      const rowY = rowStartY + visibleIndex * rowHeight;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rowLayout.x, rowLayout.y, rowLayout.w, rowLayout.listH);
+    ctx.clip();
+
+    inventoryItems.forEach((item, itemIndex) => {
+      const rowY = rowLayout.y + itemIndex * rowHeight - scrollY;
+      if (rowY + rowHeight < rowLayout.y || rowY > rowLayout.y + rowLayout.listH) {
+        return;
+      }
       const isSelected = itemIndex === this.inventoryIndex;
-      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 4, {
+      this.drawPanel(ctx, rowLayout.x, rowY, rowLayout.w, rowHeight - 4, {
         selected: isSelected,
         inset: true,
       });
 
-      if (isSelected) {
-        this.drawCursor(ctx, 14, rowY + 15);
-      }
-
-      const desc = truncate(`${item.description}`, 30);
+      const descLines = splitTextIntoLines(
+        sanitizeDescriptionText(item.description),
+        31,
+        INVENTORY_LAYOUT.descMaxLines,
+      ).map((line) => sanitizeDescriptionText(line));
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText(truncate(item.label, 14), 22, rowY + 7);
+      ctx.fillText(truncate(item.label, 16), 22, rowY + 5);
       ctx.textAlign = "right";
-      ctx.fillText(`x${String(item.quantity)}`, GAME_CONFIG.width - 16, rowY + 7);
+      ctx.fillText(`x${String(item.quantity)}`, GAME_CONFIG.width - 16, rowY + 5);
       ctx.textAlign = "left";
       ctx.fillStyle = PROFILE_THEME.textSecondary;
-      ctx.fillText(desc, 22, rowY + 23);
+      descLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, 22, rowY + 17 + lineIndex * 9);
+      });
     });
+    ctx.restore();
   }
 
-  drawInventorySkillsPanel(ctx) {
+  drawInventorySkillsPanel(ctx, layout) {
     const skills = this.getPlayerSkills();
     if (skills.length <= 0) {
-      this.drawPanel(ctx, 10, 76, GAME_CONFIG.width - 20, 84, { inset: true });
+      this.drawPanel(ctx, layout.list.x, layout.list.y, layout.list.w, layout.list.h, {
+        inset: true,
+      });
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText("Nessuna abilita' appresa.", Math.round(GAME_CONFIG.width * 0.5), 108);
+      ctx.fillText(
+        "Nessuna abilita' appresa.",
+        Math.round(GAME_CONFIG.width * 0.5),
+        layout.list.y + Math.round(layout.list.h * 0.5),
+      );
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       return;
@@ -545,44 +764,63 @@ export class ProfileScene extends Scene {
       this.skillIndex = skills.length - 1;
     }
 
-    const maxVisible = 2;
-    const windowStart = clampIndexWindow(this.skillIndex, skills.length, maxVisible);
-    const visibleSkills = skills.slice(windowStart, windowStart + maxVisible);
-    const rowStartY = 76;
-    const rowHeight = 40;
+    const rowLayout = getInventoryRowsLayout(INVENTORY_PANEL_SKILLS, layout);
+    const rowHeight = rowLayout.rowHeight;
+    this.setInventoryScroll(INVENTORY_PANEL_SKILLS, this.getInventoryScroll(INVENTORY_PANEL_SKILLS));
+    const scrollY = this.getInventoryScroll(INVENTORY_PANEL_SKILLS);
 
-    visibleSkills.forEach((skill, visibleIndex) => {
-      const skillIndex = windowStart + visibleIndex;
-      const rowY = rowStartY + visibleIndex * rowHeight;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rowLayout.x, rowLayout.y, rowLayout.w, rowLayout.listH);
+    ctx.clip();
+
+    skills.forEach((skill, skillIndex) => {
+      const rowY = rowLayout.y + skillIndex * rowHeight - scrollY;
+      if (rowY + rowHeight < rowLayout.y || rowY > rowLayout.y + rowLayout.listH) {
+        return;
+      }
       const isSelected = skillIndex === this.skillIndex;
-      this.drawPanel(ctx, 10, rowY, GAME_CONFIG.width - 20, rowHeight - 4, {
+      this.drawPanel(ctx, rowLayout.x, rowY, rowLayout.w, rowHeight - 4, {
         selected: isSelected,
         inset: true,
       });
 
-      if (isSelected) {
-        this.drawCursor(ctx, 14, rowY + 15);
-      }
-
+      const descLines = splitTextIntoLines(
+        sanitizeDescriptionText(skill.description ?? ""),
+        31,
+        INVENTORY_LAYOUT.descMaxLines,
+      ).map((line) => sanitizeDescriptionText(line));
       ctx.fillStyle = PROFILE_THEME.textPrimary;
-      ctx.fillText(truncate(skill.label, 17), 22, rowY + 7);
+      ctx.fillText(truncate(skill.label, 16), 22, rowY + 5);
       ctx.textAlign = "right";
-      ctx.fillText(`MP ${skill.manaCost ?? 0}`, GAME_CONFIG.width - 16, rowY + 7);
+      ctx.fillText(`MP ${skill.manaCost ?? 0}`, GAME_CONFIG.width - 16, rowY + 5);
       ctx.textAlign = "left";
       ctx.fillStyle = PROFILE_THEME.textSecondary;
-      ctx.fillText(truncate(`${skill.description ?? ""}`, 30), 22, rowY + 23);
+      descLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, 22, rowY + 17 + lineIndex * 9);
+      });
     });
+    ctx.restore();
   }
 
-  drawCoinCounter(ctx) {
+  drawCoinCounter(ctx, position = null) {
+    const layout = getInventoryLayout();
     const coins = Math.max(0, Math.floor(Number(this.game.state.progress?.coins) || 0));
     const navGap = 6;
     const navPad = 6;
     const navButtonWidth = Math.floor((GAME_CONFIG.width - navPad * 2 - navGap * 4) / 5);
-    const counterX = GAME_CONFIG.width - navPad - navButtonWidth;
-    const counterY = 30;
+    const hasCustomPosition =
+      position &&
+      Number.isFinite(position.x) &&
+      Number.isFinite(position.y);
+    const counterX = hasCustomPosition
+      ? Math.round(position.x)
+      : GAME_CONFIG.width - navPad - navButtonWidth;
+    const counterY = hasCustomPosition
+      ? Math.round(position.y)
+      : Math.max(22, layout.container.y - 18);
     this.drawPanel(ctx, counterX, counterY, navButtonWidth, 14, { inset: true });
-    drawCoinIcon(ctx, counterX + 4, counterY + 3);
+    drawCoinIcon(ctx, counterX + 8, counterY + 3);
     ctx.fillStyle = PROFILE_THEME.textPrimary;
     ctx.font = "8px monospace";
     ctx.textAlign = "right";
@@ -679,12 +917,14 @@ export class ProfileScene extends Scene {
     const safeValue = Math.max(0, Math.min(safeMax, Math.round(Number(value) || 0)));
     const ratio = safeValue / safeMax;
 
+    ctx.font = "7px monospace";
     ctx.fillStyle = PROFILE_THEME.textSecondary;
     ctx.fillText(`${config.label}`, config.x, config.y);
 
-    const barX = config.x + 22;
+    const labelWidth = 10;
+    const barX = config.x + labelWidth + 2;
     const barY = config.y;
-    const barW = config.width - 44;
+    const barW = Math.max(20, config.width - labelWidth - 2);
     const barH = 8;
 
     this.drawPanel(ctx, barX, barY, barW, barH, { inset: true });
@@ -692,19 +932,26 @@ export class ProfileScene extends Scene {
     ctx.fillStyle = config.color;
     ctx.fillRect(barX + 2, barY + 2, Math.max(0, Math.floor((barW - 4) * ratio)), barH - 4);
 
-    ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.fillText(`${safeValue}/${safeMax}`, barX + barW + 4, config.y);
+    ctx.fillStyle = "#101010";
+    ctx.font = "6px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${safeValue}/${safeMax}`, barX + Math.floor(barW * 0.5), barY + Math.floor(barH * 0.5));
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
   drawSpeedBar(ctx, config, speedValue) {
     const safeSpeed = Math.max(0, Math.min(5, Math.floor(Number(speedValue) || 0)));
 
+    ctx.font = "7px monospace";
     ctx.fillStyle = PROFILE_THEME.textSecondary;
     ctx.fillText(`${config.label}`, config.x, config.y);
 
-    const barX = config.x + 22;
+    const labelWidth = 10;
+    const barX = config.x + labelWidth + 2;
     const barY = config.y;
-    const barW = config.width - 44;
+    const barW = Math.max(20, config.width - labelWidth - 2);
     const barH = 8;
     const totalSquares = 5;
     const gap = 2;
@@ -723,8 +970,16 @@ export class ProfileScene extends Scene {
       ctx.fillRect(x, y, squareWidth, h);
     }
 
+    ctx.textAlign = "left";
+  }
+
+  drawProgressRow(ctx, panelX, rowY, panelWidth, label, value) {
     ctx.fillStyle = PROFILE_THEME.textPrimary;
-    ctx.fillText(`${safeSpeed}/5`, barX + barW + 4, config.y);
+    ctx.textAlign = "left";
+    ctx.fillText(label, panelX + 10, rowY);
+    ctx.textAlign = "right";
+    ctx.fillText(value, panelX + panelWidth - 10, rowY);
+    ctx.textAlign = "left";
   }
 
   drawEquipmentSection(ctx, rect) {
@@ -734,59 +989,90 @@ export class ProfileScene extends Scene {
     ctx.textBaseline = "top";
     ctx.fillText("EQUIPAGGIAMENTO", rect.x + 8, rect.y + 8);
 
-    const boxW = 40;
-    const boxH = 20;
-    const topY = rect.y + 20;
-    const bottomY = rect.y + rect.h - boxH - 6;
+    const slotSize = 20;
+    const slotVerticalGap = 12;
+    const slotStackHeight = slotSize * 2 + slotVerticalGap;
+    const topY = rect.y + Math.floor((rect.h - slotStackHeight) * 0.5);
+    const bottomY = topY + slotSize + slotVerticalGap;
     const leftX = rect.x + 8;
-    const rightX = rect.x + rect.w - boxW - 8;
+    const rightX = rect.x + rect.w - slotSize - 8;
 
-    this.drawPanel(ctx, leftX, topY, boxW, boxH, { inset: true });
-    this.drawPanel(ctx, rightX, topY, boxW, boxH, { inset: true });
-    this.drawPanel(ctx, leftX, bottomY, boxW, boxH, { inset: true });
-    this.drawPanel(ctx, rightX, bottomY, boxW, boxH, { inset: true });
+    this.drawPanel(ctx, leftX, topY, slotSize, slotSize, { inset: true });
+    this.drawPanel(ctx, rightX, topY, slotSize, slotSize, { inset: true });
+    this.drawPanel(ctx, leftX, bottomY, slotSize, slotSize, { inset: true });
+    this.drawPanel(ctx, rightX, bottomY, slotSize, slotSize, { inset: true });
 
     this.drawPlayerIdleSprite(ctx, {
       x: rect.x + Math.round(rect.w * 0.5),
-      y: rect.y + Math.round(rect.h * 0.66),
-      maxHeight: rect.h - 24,
+      y: rect.y + Math.round(rect.h * 0.5),
+      maxHeight: Math.max(12, Math.floor((rect.h - 12) * 0.34)),
     });
   }
 
   drawPlayerIdleSprite(ctx, { x, y, maxHeight = 34 } = {}) {
-    const image = this.playerIdleImage;
-    if (!image || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
-      return;
+    const fallbackImage = this.playerIdleImage;
+    const frameCount = Math.max(1, this.playerIdleFrames.length || 4);
+    const frameIndex = Math.floor(this.time * 6) % frameCount;
+    const maskedFrame = this.playerIdleFrames[frameIndex] ?? null;
+
+    let sourceImage = maskedFrame;
+    let sourceX = 0;
+    let sourceWidth = maskedFrame?.width ?? 0;
+    let sourceHeight = maskedFrame?.height ?? 0;
+
+    if (!sourceImage) {
+      if (
+        !fallbackImage ||
+        !fallbackImage.complete ||
+        fallbackImage.naturalWidth <= 0 ||
+        fallbackImage.naturalHeight <= 0
+      ) {
+        return;
+      }
+      sourceImage = fallbackImage;
+      sourceWidth = Math.max(1, Math.floor(fallbackImage.naturalWidth / 4));
+      sourceHeight = Math.max(1, fallbackImage.naturalHeight);
+      sourceX = frameIndex * sourceWidth;
     }
 
-    const frameCount = 4;
-    const sourceWidth = Math.max(1, Math.floor(image.naturalWidth / frameCount));
-    const sourceHeight = Math.max(1, image.naturalHeight);
-    const drawHeight = Math.max(18, Math.floor(maxHeight));
+    const drawHeight = Math.max(36, Math.floor(maxHeight));
     const drawWidth = Math.max(12, Math.floor((drawHeight * sourceWidth) / sourceHeight));
     const drawX = Math.round(x - drawWidth * 0.5);
     const drawY = Math.round(y - drawHeight * 0.5);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(
-      image,
-      0,
-      0,
-      sourceWidth,
-      sourceHeight,
-      drawX,
-      drawY,
-      drawWidth,
-      drawHeight,
-    );
+
+    if (maskedFrame) {
+      ctx.drawImage(sourceImage, drawX, drawY, drawWidth, drawHeight);
+      return;
+    }
+
+    ctx.drawImage(sourceImage, sourceX, 0, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
+  }
+
+  ensurePlayerIdleFrames() {
+    if (this.playerIdleFramesReady) {
+      return;
+    }
+
+    if (!isUiImageUsable(this.playerIdleImage)) {
+      return;
+    }
+
+    const frameCount = 4;
+    const frameWidth = Math.max(1, Math.floor((this.playerIdleImage.naturalWidth || this.playerIdleImage.width) / frameCount));
+    const frameHeight = Math.max(1, this.playerIdleImage.naturalHeight || this.playerIdleImage.height);
+    this.playerIdleFrames = buildMaskedSpriteFrames(this.playerIdleImage, {
+      frameWidth,
+      frameHeight,
+      frameCount,
+    });
+    this.playerIdleFramesReady = true;
   }
 
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
     const radius = inset ? 4 : 6;
-    const top = selected ? PROFILE_THEME.panelSelectedTop : PROFILE_THEME.panelTop;
-    const bottom = selected ? PROFILE_THEME.panelSelectedBottom : PROFILE_THEME.panelBottom;
-
-    ctx.fillStyle = PROFILE_THEME.panelShadow;
-    ctx.fillRect(x + 2, y + 2, w, h);
+    const top = PROFILE_THEME.panelTop;
+    const bottom = PROFILE_THEME.panelBottom;
 
     const gradient = ctx.createLinearGradient(x, y, x, y + h);
     gradient.addColorStop(0, top);
@@ -818,19 +1104,34 @@ export class ProfileScene extends Scene {
     ctx.fillRect(x + 27, y + 17, 2, 4);
   }
 
-  drawCursor(ctx, x, y) {
-    ctx.fillStyle = "#e2b36a";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 4, y + 3);
-    ctx.lineTo(x, y + 6);
-    ctx.closePath();
-    ctx.fill();
-  }
 }
 
 function normalizeView(value) {
-  return value === "inventory" ? "inventory" : "profile";
+  if (value === VIEW_INVENTORY) {
+    return VIEW_INVENTORY;
+  }
+  if (value === VIEW_SKILLS) {
+    return VIEW_SKILLS;
+  }
+  return VIEW_PROFILE;
+}
+
+function normalizeInventoryPanel(value) {
+  return value === INVENTORY_PANEL_SKILLS ? INVENTORY_PANEL_SKILLS : INVENTORY_PANEL_ITEMS;
+}
+
+function isListViewValue(view) {
+  return view === VIEW_INVENTORY || view === VIEW_SKILLS;
+}
+
+function resolveListPanelForView(view, fallbackPanel) {
+  if (view === VIEW_SKILLS) {
+    return INVENTORY_PANEL_SKILLS;
+  }
+  if (view === VIEW_INVENTORY) {
+    return INVENTORY_PANEL_ITEMS;
+  }
+  return normalizeInventoryPanel(fallbackPanel);
 }
 
 function truncate(text, maxLen) {
@@ -839,6 +1140,64 @@ function truncate(text, maxLen) {
   }
 
   return `${text.slice(0, maxLen - 1)}.`;
+}
+
+function sanitizeDescriptionText(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\.+$/g, "");
+}
+
+function splitTextIntoLines(text, maxLen, maxLines = 2) {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (normalized.length === 0) {
+    return [""];
+  }
+
+  const words = normalized.split(" ");
+  const lines = [];
+  let currentLine = "";
+
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const candidate = currentLine.length === 0 ? word : `${currentLine} ${word}`;
+    if (candidate.length <= maxLen) {
+      currentLine = candidate;
+      continue;
+    }
+
+    if (currentLine.length > 0) {
+      lines.push(currentLine);
+      if (lines.length >= maxLines) {
+        break;
+      }
+      currentLine = word;
+      continue;
+    }
+
+    lines.push(truncate(word, maxLen));
+    if (lines.length >= maxLines) {
+      break;
+    }
+    currentLine = "";
+  }
+
+  if (lines.length < maxLines && currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+  }
+
+  if (lines.length === maxLines && words.length > 0) {
+    const usedChars = lines.join(" ").length;
+    if (normalized.length > usedChars) {
+      lines[maxLines - 1] = truncate(lines[maxLines - 1], maxLen);
+    }
+  }
+
+  return lines;
 }
 
 function formatPlayTime(seconds) {
@@ -857,28 +1216,102 @@ function clampIndexWindow(selectedIndex, totalItems, maxVisible) {
   return Math.max(0, Math.min(centered, maxStart));
 }
 
-function getInventoryTabRects() {
-  const tabsX = 12;
-  const tabsY = 50;
-  const tabsGap = 2;
-  const tabsHeight = 20;
+function computeUiLogicalHeight(canvasWidth, canvasHeight) {
+  const safeWidth = Math.max(1, Number(canvasWidth) || GAME_CONFIG.width);
+  const safeHeight = Math.max(1, Number(canvasHeight) || GAME_CONFIG.height);
+  return Math.max(GAME_CONFIG.height, Math.round((safeHeight * GAME_CONFIG.width) / safeWidth));
+}
+
+function getInventoryLayout({ showTabs = false } = {}) {
+  const containerX = INVENTORY_LAYOUT.containerX;
+  const containerY = INVENTORY_LAYOUT.containerY;
+  const containerW = INVENTORY_LAYOUT.containerW;
+  const containerH = Math.max(
+    60,
+    Math.floor(ACTIVE_UI_LOGICAL_HEIGHT - containerY - INVENTORY_LAYOUT.containerBottomPad),
+  );
+
+  const tabsX = INVENTORY_LAYOUT.tabsX;
+  const tabsY = containerY + INVENTORY_LAYOUT.tabsTopPad;
+  const tabsGap = INVENTORY_LAYOUT.tabsGap;
+  const tabsHeight = showTabs ? INVENTORY_LAYOUT.tabsH : 0;
   const tabsTotalWidth = GAME_CONFIG.width - tabsX * 2;
   const tabWidth = Math.floor((tabsTotalWidth - tabsGap) / 2);
 
+  const listX = INVENTORY_LAYOUT.listX;
+  const listY = tabsY + tabsHeight + (showTabs ? INVENTORY_LAYOUT.listGapFromTabs : 0);
+  const listW = INVENTORY_LAYOUT.listW;
+  const listBottom = containerY + containerH - INVENTORY_LAYOUT.listBottomPad;
+  const listH = Math.max(20, listBottom - listY);
+
   return {
-    items: {
+    showTabs,
+    container: {
+      x: containerX,
+      y: containerY,
+      w: containerW,
+      h: containerH,
+    },
+    tabs: {
       x: tabsX,
       y: tabsY,
-      w: tabWidth,
       h: tabsHeight,
+      gap: tabsGap,
+      tabWidth,
     },
-    skills: {
-      x: tabsX + tabWidth + tabsGap,
-      y: tabsY,
-      w: tabWidth,
-      h: tabsHeight,
+    list: {
+      x: listX,
+      y: listY,
+      w: listW,
+      h: listH,
     },
   };
+}
+
+function getInventoryTabRects(layout = getInventoryLayout({ showTabs: false })) {
+  return {
+    items: {
+      x: layout.tabs.x,
+      y: layout.tabs.y,
+      w: layout.tabs.tabWidth,
+      h: layout.tabs.h,
+    },
+    skills: {
+      x: layout.tabs.x + layout.tabs.tabWidth + layout.tabs.gap,
+      y: layout.tabs.y,
+      w: layout.tabs.tabWidth,
+      h: layout.tabs.h,
+    },
+  };
+}
+
+function getInventoryRowsLayout(panel, layout = getInventoryLayout({ showTabs: false })) {
+  return {
+    x: layout.list.x,
+    y: layout.list.y,
+    w: layout.list.w,
+    listH: layout.list.h,
+    rowHeight: INVENTORY_LAYOUT.rowHeight,
+  };
+}
+
+function getInventoryListRect(panel, layout = getInventoryLayout({ showTabs: false })) {
+  const rowLayout = getInventoryRowsLayout(panel, layout);
+  return {
+    x: rowLayout.x,
+    y: rowLayout.y,
+    w: rowLayout.w,
+    h: rowLayout.listH,
+  };
+}
+
+function getInventoryMaxScrollByPanel(scene, panel, layout = getInventoryLayout({ showTabs: false })) {
+  const rowLayout = getInventoryRowsLayout(panel, layout);
+  const totalItems =
+    panel === INVENTORY_PANEL_SKILLS
+      ? scene.getPlayerSkills().length
+      : scene.getInventoryItems().length;
+  return Math.max(0, totalItems * rowLayout.rowHeight - rowLayout.listH);
 }
 
 function pointInRect(point, rect) {
@@ -892,6 +1325,219 @@ function pointInRect(point, rect) {
     point.y >= rect.y &&
     point.y <= rect.y + rect.h
   );
+}
+
+function isUiImageUsable(image) {
+  return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+}
+
+function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCount }) {
+  if (typeof document === "undefined") {
+    return [];
+  }
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = sourceImage.naturalWidth || sourceImage.width;
+  sourceCanvas.height = sourceImage.naturalHeight || sourceImage.height;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) {
+    return [];
+  }
+  sourceContext.drawImage(sourceImage, 0, 0);
+
+  const frameCanvas = document.createElement("canvas");
+  frameCanvas.width = frameWidth;
+  frameCanvas.height = frameHeight;
+  const frameContext = frameCanvas.getContext("2d");
+  if (!frameContext) {
+    return [];
+  }
+
+  const frames = [];
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    const sourceX = frameIndex * frameWidth;
+    if (sourceX >= sourceCanvas.width) {
+      break;
+    }
+
+    frameContext.clearRect(0, 0, frameWidth, frameHeight);
+    frameContext.drawImage(
+      sourceCanvas,
+      sourceX,
+      0,
+      frameWidth,
+      frameHeight,
+      0,
+      0,
+      frameWidth,
+      frameHeight,
+    );
+
+    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
+    maskFrameBackground(imageData.data, frameWidth, frameHeight);
+
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
+      continue;
+    }
+
+    outputContext.putImageData(imageData, 0, 0);
+    frames.push(outputCanvas);
+  }
+
+  return frames;
+}
+
+function maskFrameBackground(pixelData, width, height) {
+  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
+  if (backgroundSamples.length <= 0) {
+    return;
+  }
+
+  const backgroundMinDistance = 20;
+  const totalPixels = width * height;
+  const queue = new Uint32Array(totalPixels);
+  const visited = new Uint8Array(totalPixels);
+  let queueHead = 0;
+  let queueTail = 0;
+
+  const tryQueuePixel = (x, y) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return;
+    }
+
+    const pixelIndex = y * width + x;
+    if (visited[pixelIndex]) {
+      return;
+    }
+
+    const dataOffset = pixelIndex * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      visited[pixelIndex] = 1;
+      return;
+    }
+
+    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
+    if (minDistance > backgroundMinDistance) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue[queueTail] = pixelIndex;
+    queueTail += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    tryQueuePixel(x, 0);
+    tryQueuePixel(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    tryQueuePixel(0, y);
+    tryQueuePixel(width - 1, y);
+  }
+
+  while (queueHead < queueTail) {
+    const pixelIndex = queue[queueHead];
+    queueHead += 1;
+    const x = pixelIndex % width;
+    const y = (pixelIndex - x) / width;
+    const dataOffset = pixelIndex * 4;
+    pixelData[dataOffset + 3] = 0;
+
+    tryQueuePixel(x + 1, y);
+    tryQueuePixel(x - 1, y);
+    tryQueuePixel(x, y + 1);
+    tryQueuePixel(x, y - 1);
+  }
+}
+
+function collectBorderColorSamples(pixelData, width, height) {
+  const samples = [];
+  const seen = new Set();
+
+  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
+    const safeX = clampNumber(Math.floor(x), 0, width - 1);
+    const safeY = clampNumber(Math.floor(y), 0, height - 1);
+    const dataOffset = (safeY * width + safeX) * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      return;
+    }
+
+    const r = pixelData[dataOffset];
+    const g = pixelData[dataOffset + 1];
+    const b = pixelData[dataOffset + 2];
+
+    if (preferBackground) {
+      if (b < g + 8 || b < r + 12) {
+        return;
+      }
+      const brightness = (r + g + b) / 3;
+      if (brightness < 96) {
+        return;
+      }
+    }
+
+    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+
+    seen.add(dedupeKey);
+    samples.push({ r, g, b });
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0, { preferBackground: true });
+    addSampleAt(x, height - 1, { preferBackground: true });
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y, { preferBackground: true });
+    addSampleAt(width - 1, y, { preferBackground: true });
+  }
+
+  if (samples.length > 0) {
+    return samples;
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0, { preferBackground: false });
+    addSampleAt(x, height - 1, { preferBackground: false });
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y, { preferBackground: false });
+    addSampleAt(width - 1, y, { preferBackground: false });
+  }
+
+  return samples;
+}
+
+function getMinColorDistance(pixelData, dataOffset, colorSamples) {
+  const r = pixelData[dataOffset];
+  const g = pixelData[dataOffset + 1];
+  const b = pixelData[dataOffset + 2];
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < colorSamples.length; index += 1) {
+    const sample = colorSamples[index];
+    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
+    if (distance < minDistance) {
+      minDistance = distance;
+    }
+  }
+
+  return minDistance;
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }
 
 function drawCoinIcon(ctx, x, y) {

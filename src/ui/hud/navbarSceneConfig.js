@@ -6,8 +6,8 @@ const DEFAULT_NAVBAR_LAYOUT = Object.freeze({
   activeTabId: "",
 });
 
-const MENU_TAB_IDS = Object.freeze(["settings", "profile", "bag", "slot_b"]);
-const WORLD_TAB_IDS = Object.freeze(["settings", "profile", "bag"]);
+const MENU_TAB_IDS = Object.freeze(["settings", "profile", "bag", "slot_a", "slot_b"]);
+const WORLD_TAB_IDS = Object.freeze(["settings", "profile", "bag", "slot_a"]);
 
 export const NAVBAR_SCENE_LAYOUTS = Object.freeze({
   world: Object.freeze({
@@ -30,6 +30,13 @@ export const NAVBAR_SCENE_LAYOUTS = Object.freeze({
     controlsVisible: false,
     visibleTabIds: MENU_TAB_IDS,
     activeTabId: "bag",
+  }),
+  skills: Object.freeze({
+    visible: true,
+    topbarVisible: true,
+    controlsVisible: false,
+    visibleTabIds: MENU_TAB_IDS,
+    activeTabId: "slot_a",
   }),
   settings: Object.freeze({
     visible: true,

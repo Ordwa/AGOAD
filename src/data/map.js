@@ -40,6 +40,7 @@ export const WORLD_MAP_ASSET_PATH = normalizedMap.assetPath;
 export const MAP_LAYOUT = Object.freeze(normalizedMap.layout);
 export const WORLD_MAP = Object.freeze(normalizedMap.collisionGrid.map((row) => Object.freeze(row)));
 export const WORLD_POINTS = Object.freeze(normalizedMap.points);
+export const WORLD_SPAWN_POINT = Object.freeze(normalizedMap.spawn);
 
 export function isInsideMap(x, y, map = WORLD_MAP) {
   if (!Array.isArray(map) || map.length === 0 || !Array.isArray(map[0])) {
@@ -108,6 +109,7 @@ function normalizeMapDefinition(expectedId, definition, definitionUrl) {
   const layout = normalizeLayout(definition?.layout, inferredCols, inferredRows);
   const legend = normalizeCollisionLegend(definition?.collisionMap?.legend);
   const collisionGrid = parseCollisionRows(rows, layout, legend, definitionUrl);
+  const spawn = normalizeCollisionSpawn(definition?.collisionMap?.spawn, layout, collisionGrid);
   const points = normalizeWorldPoints(definition?.points);
   const assetPath = resolveMapAssetPath(definition?.asset, id, definitionUrl);
 
@@ -115,6 +117,7 @@ function normalizeMapDefinition(expectedId, definition, definitionUrl) {
     id,
     layout,
     collisionGrid,
+    spawn,
     points,
     assetPath,
   };
@@ -179,6 +182,21 @@ function parseCollisionRows(rows, layout, legend, definitionUrl) {
   });
 }
 
+function normalizeCollisionSpawn(rawSpawn, layout, collisionGrid) {
+  const fallback = findFirstWalkableTile(collisionGrid) ?? { x: 0, y: 0 };
+  const x = clampInt(rawSpawn?.x, 0, layout.cols - 1, fallback.x);
+  const y = clampInt(rawSpawn?.y, 0, layout.rows - 1, fallback.y);
+  const tile = collisionGrid[y]?.[x];
+  const safeSpawn = isWalkableTile(tile) ? { x, y } : fallback;
+  const facing = normalizeFacing(rawSpawn?.facing);
+
+  return {
+    x: safeSpawn.x,
+    y: safeSpawn.y,
+    facing,
+  };
+}
+
 function normalizeWorldPoints(rawPoints) {
   if (!rawPoints || typeof rawPoints !== "object") {
     return EMPTY_POINTS;
@@ -219,6 +237,42 @@ function toPositiveInt(value, fallback) {
     return fallback;
   }
   return Math.max(1, Math.floor(parsed));
+}
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
+function findFirstWalkableTile(grid) {
+  if (!Array.isArray(grid) || grid.length <= 0) {
+    return null;
+  }
+
+  for (let y = 0; y < grid.length; y += 1) {
+    const row = grid[y];
+    if (!Array.isArray(row)) {
+      continue;
+    }
+    for (let x = 0; x < row.length; x += 1) {
+      if (isWalkableTile(row[x])) {
+        return { x, y };
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeFacing(value) {
+  const facing = String(value ?? "").trim().toLowerCase();
+  if (facing === "up" || facing === "down" || facing === "left" || facing === "right") {
+    return facing;
+  }
+  return "down";
 }
 
 function toTileValue(tileName) {

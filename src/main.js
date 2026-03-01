@@ -8,6 +8,7 @@ const [
   { BattleScene },
   { InventoryScene },
   { ProfileScene },
+  { SkillScene },
   { SettingsScene },
   { SetupScene },
   { StartScene },
@@ -21,6 +22,7 @@ const [
   importWithVersion("./scenes/BattleScene.js"),
   importWithVersion("./scenes/InventoryScene.js"),
   importWithVersion("./scenes/ProfileScene.js"),
+  importWithVersion("./scenes/SkillScene.js"),
   importWithVersion("./scenes/SettingsScene.js"),
   importWithVersion("./scenes/SetupScene.js"),
   importWithVersion("./scenes/StartScene.js"),
@@ -45,6 +47,24 @@ if (gameShell instanceof HTMLElement) {
   });
 }
 
+document.addEventListener("selectionchange", () => {
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement?.getAttribute?.("contenteditable") === "true"
+  ) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount <= 0 || selection.isCollapsed) {
+    return;
+  }
+
+  selection.removeAllRanges();
+});
+
 const input = new Input();
 const game = new Game(canvas, input);
 await game.initializeCloudSession();
@@ -56,6 +76,7 @@ game.registerScene("world", new WorldScene(game));
 game.registerScene("battle", new BattleScene(game));
 game.registerScene("profile", new ProfileScene(game));
 game.registerScene("inventory", new InventoryScene(game));
+game.registerScene("skills", new SkillScene(game));
 
 let consoleShellHud = null;
 let consoleShellBridge = null;

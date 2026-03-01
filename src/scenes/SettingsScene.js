@@ -26,12 +26,26 @@ export class SettingsScene extends Scene {
     this.returnPayload = {};
     this.selectedIndex = 0;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+
+    this.pointerEventsBound = false;
+    this.activePointerId = null;
+    this.pointerStart = null;
+    this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onPointerCancel = this.onPointerCancel.bind(this);
   }
 
   onEnter(payload = {}) {
     this.returnScene = payload.returnScene ?? "start";
     this.returnPayload = payload.returnPayload ?? {};
     this.selectedIndex = 0;
+    this.bindPointerEvents();
+  }
+
+  onExit() {
+    this.unbindPointerEvents();
+    this.pointerStart = null;
+    this.activePointerId = null;
   }
 
   getNavbarLayout() {
@@ -49,13 +63,150 @@ export class SettingsScene extends Scene {
       visible: true,
       topbarVisible: true,
       controlsVisible: false,
-      visibleTabIds: ["settings", "profile", "bag", "slot_b"],
+      visibleTabIds: ["settings", "profile", "bag", "slot_a", "slot_b"],
       activeTabId: "settings",
     };
   }
 
   closeFromNavbar() {
     this.closeScene();
+  }
+
+  bindPointerEvents() {
+    if (this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = true;
+  }
+
+  unbindPointerEvents() {
+    if (!this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.removeEventListener("pointerdown", this.onPointerDown);
+    canvas.removeEventListener("pointerup", this.onPointerUp);
+    canvas.removeEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = false;
+  }
+
+  onPointerDown(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    this.activePointerId = event.pointerId;
+    this.pointerStart = { x: event.clientX, y: event.clientY };
+    this.game.canvas.setPointerCapture?.(event.pointerId);
+  }
+
+  onPointerUp(event) {
+    if (this.activePointerId !== event.pointerId || !this.pointerStart) {
+      return;
+    }
+
+    const deltaX = event.clientX - this.pointerStart.x;
+    const deltaY = event.clientY - this.pointerStart.y;
+    const moved = Math.hypot(deltaX, deltaY) > 10;
+
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+
+    if (moved) {
+      return;
+    }
+
+    const point = this.resolveScenePointFromPointer(event);
+    if (!point) {
+      return;
+    }
+
+    this.handleSettingsTap(point);
+  }
+
+  onPointerCancel(event) {
+    if (this.activePointerId !== event.pointerId) {
+      return;
+    }
+
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+  }
+
+  resolveScenePointFromPointer(event) {
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const scale = Math.max(0.01, Math.min(canvas.width / GAME_CONFIG.width, canvas.height / GAME_CONFIG.height));
+    const offsetX = (canvas.width - GAME_CONFIG.width * scale) * 0.5;
+    const offsetY = (canvas.height - GAME_CONFIG.height * scale) * 0.5;
+    const sceneX = (canvasX - offsetX) / scale;
+    const sceneY = (canvasY - offsetY) / scale;
+    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > GAME_CONFIG.height) {
+      return null;
+    }
+
+    return { x: sceneX, y: sceneY };
+  }
+
+  handleSettingsTap(point) {
+    const rowRects = getSettingsRowRects();
+    for (let rowIndex = 0; rowIndex < rowRects.length; rowIndex += 1) {
+      const row = rowRects[rowIndex];
+      if (!pointInRect(point, row.rowRect)) {
+        continue;
+      }
+
+      this.selectedIndex = rowIndex;
+      if (row.id === "debug") {
+        this.game.toggleDebugOverlay();
+        return;
+      }
+
+      if (pointInRect(point, row.valueRect)) {
+        const sliderRatio = clamp((point.x - row.valueRect.x) / row.valueRect.w, 0, 1);
+        const nextValue = Math.round(sliderRatio * 5);
+        if (row.id === "sound") {
+          this.game.setSoundLevel(nextValue);
+        } else {
+          this.game.setMusicLevel(nextValue);
+        }
+        return;
+      }
+
+      const delta = point.x < row.valueRect.x + row.valueRect.w * 0.5 ? -1 : 1;
+      if (row.id === "sound") {
+        this.game.shiftSoundLevel(delta);
+      } else {
+        this.game.shiftMusicLevel(delta);
+      }
+      return;
+    }
   }
 
   update(_dt, input) {
@@ -189,11 +340,8 @@ export class SettingsScene extends Scene {
 
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
     const radius = inset ? 4 : 6;
-    const top = selected ? SETTINGS_THEME.panelSelectedTop : SETTINGS_THEME.panelTop;
-    const bottom = selected ? SETTINGS_THEME.panelSelectedBottom : SETTINGS_THEME.panelBottom;
-
-    ctx.fillStyle = SETTINGS_THEME.panelShadow;
-    ctx.fillRect(x + 2, y + 2, w, h);
+    const top = SETTINGS_THEME.panelTop;
+    const bottom = SETTINGS_THEME.panelBottom;
 
     const gradient = ctx.createLinearGradient(x, y, x, y + h);
     gradient.addColorStop(0, top);
@@ -283,4 +431,41 @@ function strokeRoundedRect(ctx, x, y, w, h, radius) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
   ctx.stroke();
+}
+
+function getSettingsRowRects() {
+  const rowHeight = 38;
+  const startY = 44;
+  const rows = [];
+
+  for (let index = 0; index < ROW_KEYS.length; index += 1) {
+    const y = startY + rowHeight * index;
+    rows.push({
+      id: ROW_KEYS[index],
+      rowRect: { x: 12, y, w: GAME_CONFIG.width - 24, h: rowHeight - 4 },
+      valueRect: ROW_KEYS[index] === "debug" ? { x: 188, y: y + 8, w: 64, h: 18 } : { x: 128, y: y + 8, w: 124, h: 16 },
+    });
+  }
+
+  return rows;
+}
+
+function pointInRect(point, rect) {
+  if (!point || !rect) {
+    return false;
+  }
+
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }

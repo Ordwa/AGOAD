@@ -1,21 +1,22 @@
 import { Scene } from "../core/Scene.js";
-import { WORLD_NPCS, WORLD_PLAYER } from "../data/npcs.js";
+import { WORLD_NPCS } from "../data/npcs.js";
 import {
   WORLD_MAP_ASSET_PATH,
   MAP_LAYOUT,
   WORLD_MAP,
   WORLD_POINTS,
+  WORLD_SPAWN_POINT,
   getTileAt,
   isInsideMap,
   isWalkableTile,
 } from "../data/map.js";
 
-const MOVE_DURATION_SECONDS = 0.35;
+const MOVE_DURATION_SECONDS = 0.2;
 const CAMERA_VIEW_HEIGHT_RATIO = 0.5;
 const CAMERA_ZOOM_MIN = 1.45;
 const CAMERA_ZOOM_MAX = 3.8;
 const INTERACTION_MESSAGE_SECONDS = 2.4;
-const PLAYER_DRAW_SIZE_TILES = 0.5;
+const PLAYER_DRAW_SIZE_TILES = 1;
 const NPC_DRAW_SIZE_TILES = 1;
 const PLAYER_ANIMATION_IDLE_LEFT = "idleLeft";
 const PLAYER_ANIMATION_IDLE_RIGHT = "idleRight";
@@ -53,9 +54,9 @@ const DIRECTION_STEP = Object.freeze({
 });
 
 const DEFAULT_SPAWN = Object.freeze({
-  x: WORLD_PLAYER.spawn?.x ?? 8,
-  y: WORLD_PLAYER.spawn?.y ?? 8,
-  facing: WORLD_PLAYER.spawn?.facing ?? "down",
+  x: WORLD_SPAWN_POINT?.x ?? 8,
+  y: WORLD_SPAWN_POINT?.y ?? 8,
+  facing: WORLD_SPAWN_POINT?.facing ?? "down",
 });
 
 export class WorldScene extends Scene {
