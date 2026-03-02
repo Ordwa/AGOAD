@@ -18,9 +18,9 @@ const SETTINGS_THEME = Object.freeze({
   toggleOn: "#6fd17e",
 });
 
-const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode"]);
-const SETTINGS_ROW_HEIGHT = 30;
-const SETTINGS_ROW_START_Y = 38;
+const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode", "logout"]);
+const SETTINGS_ROW_HEIGHT = 26;
+const SETTINGS_ROW_START_Y = 36;
 const MAX_GM_PASSWORD_LENGTH = 20;
 
 export class SettingsScene extends Scene {
@@ -30,6 +30,7 @@ export class SettingsScene extends Scene {
     this.returnPayload = {};
     this.selectedIndex = 0;
     this.gmEditStatus = "";
+    this.actionBusy = false;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
 
     this.pointerEventsBound = false;
@@ -45,6 +46,7 @@ export class SettingsScene extends Scene {
     this.returnPayload = payload.returnPayload ?? {};
     this.selectedIndex = 0;
     this.gmEditStatus = "";
+    this.actionBusy = false;
     this.bindPointerEvents();
   }
 
@@ -194,6 +196,11 @@ export class SettingsScene extends Scene {
         return;
       }
 
+      if (row.id === "logout") {
+        this.startLogoutFlow();
+        return;
+      }
+
       if (row.id === "debug_mode") {
         this.game.toggleDebugOverlay();
         return;
@@ -266,6 +273,13 @@ export class SettingsScene extends Scene {
       return;
     }
 
+    if (selectedKey === "logout") {
+      if (input.wasPressed("confirm")) {
+        this.startLogoutFlow();
+      }
+      return;
+    }
+
     if (selectedKey === "debug_mode") {
       if (input.wasPressed("left") || input.wasPressed("right") || input.wasPressed("confirm")) {
         this.game.toggleDebugOverlay();
@@ -287,7 +301,8 @@ export class SettingsScene extends Scene {
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    this.drawPanel(ctx, 6, 32, GAME_CONFIG.width - 12, 142, { selected: true });
+    const panelHeight = SETTINGS_ROW_START_Y + ROW_KEYS.length * SETTINGS_ROW_HEIGHT + 8 - 32;
+    this.drawPanel(ctx, 6, 32, GAME_CONFIG.width - 12, panelHeight, { selected: true });
     this.drawRows(ctx);
     this.drawStatus(ctx);
     ctx.restore();
@@ -298,20 +313,26 @@ export class SettingsScene extends Scene {
   }
 
   async openGmEdit() {
+    if (this.actionBusy) {
+      return;
+    }
     if (typeof window === "undefined" || typeof window.prompt !== "function") {
       this.gmEditStatus = "GM-EDIT non disponibile qui.";
       return;
     }
 
+    this.actionBusy = true;
     const rawPassword = window.prompt("Inserisci password GM-EDIT", "");
     if (rawPassword === null) {
       this.gmEditStatus = "";
+      this.actionBusy = false;
       return;
     }
 
     const password = String(rawPassword ?? "").slice(0, MAX_GM_PASSWORD_LENGTH).trim();
     if (password.length === 0) {
       this.gmEditStatus = "Password richiesta.";
+      this.actionBusy = false;
       return;
     }
 
@@ -320,12 +341,80 @@ export class SettingsScene extends Scene {
       const isValid = await verifyGmEditPassword(password);
       if (!isValid) {
         this.gmEditStatus = "Password errata.";
+        this.actionBusy = false;
         return;
       }
       this.gmEditStatus = "Accesso GM-EDIT autorizzato.";
+      this.openGmClassesEditorPrompt();
     } catch {
       this.gmEditStatus = "Verifica non disponibile.";
+    } finally {
+      this.actionBusy = false;
     }
+  }
+
+  openGmClassesEditorPrompt() {
+    if (typeof window === "undefined" || typeof window.prompt !== "function") {
+      return;
+    }
+
+    const currentTable = this.game.exportClassesAsTable();
+    const editedTable = window.prompt(
+      "GM-EDIT CLASSI\nModifica la tabella TSV e premi OK per applicare",
+      currentTable,
+    );
+    if (editedTable === null) {
+      this.gmEditStatus = "GM-EDIT annullato.";
+      return;
+    }
+
+    const importResult = this.game.importClassesFromTable(String(editedTable ?? ""));
+    if (!importResult.ok) {
+      this.gmEditStatus = importResult.error ?? "Import classi fallito.";
+      return;
+    }
+
+    if (typeof window.confirm === "function") {
+      const shouldSave = window.confirm("Salvare le modifiche GM-EDIT?");
+      if (!shouldSave) {
+        this.game.discardUnsavedGmDataChanges();
+        this.gmEditStatus = "Modifiche annullate.";
+        return;
+      }
+    }
+
+    const saveResult = this.game.saveGmDataChanges();
+    if (!saveResult.ok) {
+      this.gmEditStatus = saveResult.error ?? "Salvataggio GM fallito.";
+      return;
+    }
+
+    this.gmEditStatus = `Classi aggiornate: ${importResult.count}`;
+  }
+
+  startLogoutFlow() {
+    if (this.actionBusy) {
+      return;
+    }
+
+    this.actionBusy = true;
+    this.gmEditStatus = "Logout in corso...";
+    this.game
+      .signOutAccount()
+      .then((result) => {
+        if (!result.ok) {
+          this.gmEditStatus = result.error ?? this.game.getLastSyncError() ?? "Logout fallito.";
+          return;
+        }
+
+        this.game.changeScene("start", { startMode: "auth" });
+      })
+      .catch((error) => {
+        this.gmEditStatus = error instanceof Error ? error.message : "Logout fallito.";
+      })
+      .finally(() => {
+        this.actionBusy = false;
+      });
   }
 
   drawRows(ctx) {
@@ -334,6 +423,7 @@ export class SettingsScene extends Scene {
       { id: "music", label: "MUSIC", value: this.game.getMusicLevel() },
       { id: "gm_edit", label: "GM-EDIT", valueLabel: "APRI" },
       { id: "debug_mode", label: "DEBUG MODE", value: this.game.getDebugOverlayEnabled() ? 1 : 0 },
+      { id: "logout", label: "LOGOUT", valueLabel: "ESCI" },
     ];
 
     const rowHeight = SETTINGS_ROW_HEIGHT;
@@ -351,12 +441,17 @@ export class SettingsScene extends Scene {
       ctx.fillText(row.label, 20, y + 7);
 
       if (row.id === "gm_edit") {
-        this.drawActionChip(ctx, row.valueLabel ?? "APRI", 184, y + 4, 68, 18, rowIndex === this.selectedIndex);
+        this.drawActionChip(ctx, row.valueLabel ?? "APRI", 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
         return;
       }
 
       if (row.id === "debug_mode") {
-        this.drawDebugModeSwitch(ctx, row.value > 0, 184, y + 4, 68, 18, rowIndex === this.selectedIndex);
+        this.drawDebugModeSwitch(ctx, row.value > 0, 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
+        return;
+      }
+
+      if (row.id === "logout") {
+        this.drawActionChip(ctx, row.valueLabel ?? "ESCI", 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
         return;
       }
 
@@ -423,7 +518,7 @@ export class SettingsScene extends Scene {
     ctx.font = "7px monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText(message, 12, 176);
+    ctx.fillText(message, 12, 170);
   }
 
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
@@ -532,7 +627,7 @@ function getSettingsRowRects() {
     const valueRect =
       rowId === "sound" || rowId === "music"
         ? { x: 128, y: y + 8, w: 124, h: 16 }
-        : { x: 184, y: y + 4, w: 68, h: 18 };
+        : { x: 184, y: y + 2, w: 68, h: 18 };
     rows.push({
       id: rowId,
       rowRect: { x: 12, y, w: GAME_CONFIG.width - 24, h: rowHeight - 4 },

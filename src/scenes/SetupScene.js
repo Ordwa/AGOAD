@@ -182,7 +182,7 @@ export class SetupScene extends Scene {
     );
 
     const fieldRect = layout.nameFieldRect;
-    ctx.fillStyle = "rgba(8, 21, 37, 0.75)";
+    ctx.fillStyle = "rgba(8, 21, 37, 0.82)";
     fillRoundedRect(
       ctx,
       fieldRect.x,
@@ -191,7 +191,7 @@ export class SetupScene extends Scene {
       fieldRect.h,
       Math.max(8, Math.round(fieldRect.h * 0.23)),
     );
-    ctx.strokeStyle = "rgba(130, 168, 224, 0.82)";
+    ctx.strokeStyle = "#d79a4a";
     ctx.lineWidth = Math.max(2, Math.round(fieldRect.h * 0.08));
     strokeRoundedRect(
       ctx,
@@ -200,6 +200,16 @@ export class SetupScene extends Scene {
       fieldRect.w,
       fieldRect.h,
       Math.max(8, Math.round(fieldRect.h * 0.23)),
+    );
+    ctx.strokeStyle = "#40230e";
+    ctx.lineWidth = 1;
+    strokeRoundedRect(
+      ctx,
+      fieldRect.x + 1,
+      fieldRect.y + 1,
+      fieldRect.w - 2,
+      fieldRect.h - 2,
+      Math.max(7, Math.round(fieldRect.h * 0.22)),
     );
 
     const displayName = this.nameBuffer.length > 0 ? this.nameBuffer : "____";
@@ -286,11 +296,23 @@ export class SetupScene extends Scene {
 
   drawSetupCard(ctx, rect, selected = false) {
     const radius = Math.max(10, Math.round(rect.h * 0.2));
-    ctx.fillStyle = selected ? "rgba(84, 120, 173, 0.88)" : "rgba(18, 35, 59, 0.8)";
+    const gradient = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
+    if (selected) {
+      gradient.addColorStop(0, "rgba(62, 90, 132, 0.92)");
+      gradient.addColorStop(1, "rgba(31, 50, 78, 0.92)");
+    } else {
+      gradient.addColorStop(0, "rgba(30, 48, 76, 0.9)");
+      gradient.addColorStop(1, "rgba(12, 24, 42, 0.9)");
+    }
+
+    ctx.fillStyle = gradient;
     fillRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
-    ctx.strokeStyle = selected ? "#b1ccff" : "rgba(120, 162, 214, 0.72)";
-    ctx.lineWidth = Math.max(2, Math.round(rect.h * 0.08));
+    ctx.strokeStyle = "#d79a4a";
+    ctx.lineWidth = 2;
     strokeRoundedRect(ctx, rect.x, rect.y, rect.w, rect.h, radius);
+    ctx.strokeStyle = "#40230e";
+    ctx.lineWidth = 1;
+    strokeRoundedRect(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, Math.max(8, radius - 1));
   }
 
   drawSetupOptionRow(ctx, rect, label, selected) {
@@ -369,9 +391,12 @@ function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_C
 
   const cardW = Math.round(clampNumber(surfaceWidth * 0.9, 240, surfaceWidth - sidePadding * 2));
   const nameH = Math.round(clampNumber(surfaceHeight * 0.24, 96, 250));
+  const centeredNameY = Math.floor((surfaceHeight - nameH) * 0.5);
+  const minNameY = bannerRect.y + bannerRect.h + verticalGap;
+  const nameY = Math.max(minNameY, centeredNameY);
   const nameRect = {
     x: Math.floor((surfaceWidth - cardW) / 2),
-    y: bannerRect.y + bannerRect.h + verticalGap,
+    y: nameY,
     w: cardW,
     h: nameH,
   };

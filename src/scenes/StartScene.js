@@ -5,7 +5,7 @@ import { verifyGmEditPassword } from "../utils/security.js";
 const MAIN_OPTION_CONTINUE = "CONTINUE";
 const MAIN_OPTION_NEW_GAME = "NEW GAME";
 const MAIN_OPTION_SETTINGS = "SETTINGS";
-const OPTIONS_MENU = ["SOUND", "MUSIC", "ELIMINA PG", "LOGOUT", "INDIETRO"];
+const OPTIONS_MENU = ["SOUND", "MUSIC", "ELIMINA PG", "INDIETRO"];
 const GM_EDIT_MENU = [
   { id: "edit_classes", label: "EDIT CLASSES" },
   { id: "back", label: "INDIETRO" },
@@ -898,11 +898,6 @@ export class StartScene extends Scene {
 
       this.deleteProfileConfirmArmed = false;
       this.startDeleteProfileFlow();
-      return;
-    }
-
-    if (this.optionsIndex === 3) {
-      this.startLogoutFlow();
       return;
     }
 

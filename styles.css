@@ -16,9 +16,7 @@ body {
   height: 100%;
   font-family: "Trebuchet MS", "Verdana", sans-serif;
   color: var(--text);
-  background:
-    linear-gradient(180deg, #1a2f43 0%, #325770 36%, #9a6c3f 68%, #3d2b1f 100%),
-    url("./src/assets/UI/UI_background.png") center / cover no-repeat;
+  background: #000;
   overflow: hidden;
   position: relative;
   -webkit-user-select: none;
@@ -28,15 +26,7 @@ body {
 }
 
 body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 18%, #ffecb933 0 22%, transparent 23%),
-    radial-gradient(circle at 78% 22%, #f5c46f22 0 18%, transparent 19%),
-    radial-gradient(circle at 50% 74%, #20382a55 0 18%, transparent 19%),
-    linear-gradient(180deg, #10171f00 58%, #0c111acc 100%);
+  content: none;
 }
 
 .layout {

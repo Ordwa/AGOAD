@@ -1,39 +1,20 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
 import { AUTO_SAVE_TRIGGER } from "../data/autoSave.js";
+import { MAP_LAYOUT, WORLD_MAP_ASSET_PATH } from "../data/map.js";
 import { clamp, pickRandom, randomInt } from "../utils/math.js";
 
-const MAIN_OPTIONS = ["FIGHT", "BAG", "SKILLS", "RUN"];
+const MAIN_OPTIONS = ["COMBATTI", "BORSA", "ABILITA'", "FUGA"];
 
-const BOTTOM_UI_Y = GAME_CONFIG.height - 52;
-const PROMPT_BOX = {
-  x: 6,
-  y: BOTTOM_UI_Y + 4,
-  w: 148,
-  h: 44,
-};
-const COMMAND_BOX = {
-  x: 158,
-  y: BOTTOM_UI_Y + 4,
-  w: 106,
-  h: 44,
-};
-const FULL_MESSAGE_BOX = {
-  x: 6,
-  y: BOTTOM_UI_Y + 4,
-  w: GAME_CONFIG.width - 12,
-  h: 44,
-};
-const INVENTORY_PANEL = {
-  x: 12,
-  y: 18,
-  w: GAME_CONFIG.width - 24,
-  h: GAME_CONFIG.height - 36,
-};
-const ENEMY_GROUND = { x: 196, y: 60, rx: 35, ry: 11 };
-const PLAYER_GROUND = { x: 76, y: 108, rx: 45, ry: 14 };
-const ENEMY_SPRITE = { w: 34, h: 26 };
-const PLAYER_SPRITE = { w: 26, h: 40 };
+const BATTLEFIELD_BASE_BOTTOM = 124;
+const MESSAGE_BOX_HEIGHT = 40;
+const INVENTORY_PANEL_PAD = 10;
+const PLAYER_BASE_HEIGHT = 30;
+const COMMAND_BUTTON_HALF_W = 38;
+const COMMAND_BUTTON_HALF_H = 22;
+const PLAYER_IDLE_FRAME_COUNT = 4;
+const PLAYER_IDLE_FPS = 5;
+let ACTIVE_BATTLE_LOGICAL_HEIGHT = GAME_CONFIG.height;
 
 export class BattleScene extends Scene {
   constructor(game) {
@@ -59,11 +40,35 @@ export class BattleScene extends Scene {
 
     this.floatTimer = 0;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
+    this.playerBattleSpriteImage = createUiImage("../assets/entity/character_animation_idle_r.png");
+    this.playerBattleFrames = [];
+    this.playerBattleFramesReady = false;
+    this.worldMapBackdropImage = createUiImage(WORLD_MAP_ASSET_PATH);
+    this.encounterTileX = null;
+    this.encounterTileY = null;
+    this.layout = getBattleLayout(GAME_CONFIG.height);
+    this.battleBackdropCanvas = null;
+    this.battleBackdropHeight = 0;
+    this.battleBackdropBottom = 0;
+
+    this.pointerEventsBound = false;
+    this.onPointerDown = this.onPointerDown.bind(this);
   }
 
   onEnter(payload = {}) {
     if (payload.resume) {
+      this.bindPointerEvents();
       return;
+    }
+
+    const encounterTileX = Number(payload.encounterTileX);
+    const encounterTileY = Number(payload.encounterTileY);
+    this.encounterTileX = Number.isFinite(encounterTileX) ? encounterTileX : null;
+    this.encounterTileY = Number.isFinite(encounterTileY) ? encounterTileY : null;
+
+    const mapAssetPath = String(payload.mapAssetPath ?? "").trim();
+    if (mapAssetPath) {
+      this.worldMapBackdropImage = createUiImage(mapAssetPath);
     }
 
     const enemyPool = this.game.getEnemies();
@@ -102,14 +107,23 @@ export class BattleScene extends Scene {
     this.enemySkipTurns = 0;
 
     this.floatTimer = 0;
+    this.layout = getBattleLayout(GAME_CONFIG.height);
+    this.ensureBattleBackdrop(this.layout.logicalHeight, this.layout.battlefieldBottom);
+    this.ensurePlayerBattleFrames();
+    this.bindPointerEvents();
 
     this.queueMessages([`Un ${this.enemy.name} selvatico appare!`], () => {
       this.phase = "menu-main";
     });
   }
 
+  onExit() {
+    this.unbindPointerEvents();
+  }
+
   update(dt, input) {
     this.floatTimer += dt;
+    this.ensurePlayerBattleFrames();
 
     if (this.phase === "anim-enemy" || this.phase === "anim-player") {
       this.updateHpAnimation(dt);
@@ -143,6 +157,130 @@ export class BattleScene extends Scene {
     }
   }
 
+  bindPointerEvents() {
+    if (this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    this.pointerEventsBound = true;
+  }
+
+  unbindPointerEvents() {
+    if (!this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      this.pointerEventsBound = false;
+      return;
+    }
+
+    canvas.removeEventListener("pointerdown", this.onPointerDown);
+    this.pointerEventsBound = false;
+  }
+
+  onPointerDown(event) {
+    const point = this.resolvePointerScenePoint(event);
+    if (!point) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const canvas = this.game?.canvas;
+    const logicalHeight =
+      canvas instanceof HTMLCanvasElement
+        ? computeBattleLogicalHeight(canvas.width, canvas.height)
+        : ACTIVE_BATTLE_LOGICAL_HEIGHT;
+    const layout = getBattleLayout(logicalHeight);
+    this.layout = layout;
+    if (this.phase === "messages") {
+      if (isInsideRect(point.x, point.y, layout.messageBox)) {
+        this.advanceMessage();
+      }
+      return;
+    }
+
+    if (this.phase === "menu-main") {
+      const pressedOptionIndex = getMainOptionIndexAtPoint(
+        point.x,
+        point.y,
+        layout.commandPoints,
+        layout.commandHalfW,
+        layout.commandHalfH,
+      );
+      if (pressedOptionIndex >= 0) {
+        this.mainMenuIndex = pressedOptionIndex;
+        this.selectMainOption();
+      }
+      return;
+    }
+
+    if (this.phase === "menu-fight" && isInsideRect(point.x, point.y, layout.messageBox)) {
+      this.performAttack();
+    }
+  }
+
+  resolvePointerScenePoint(event) {
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const logicalHeight = computeBattleLogicalHeight(canvas.width, canvas.height);
+    const scale = Math.max(
+      0.01,
+      Math.min(canvas.width / GAME_CONFIG.width, canvas.height / logicalHeight),
+    );
+    const offsetX = (canvas.width - GAME_CONFIG.width * scale) * 0.5;
+    const offsetY = (canvas.height - logicalHeight * scale) * 0.5;
+    const sceneX = (canvasX - offsetX) / scale;
+    const sceneY = (canvasY - offsetY) / scale;
+
+    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > logicalHeight) {
+      return null;
+    }
+
+    return { x: sceneX, y: sceneY };
+  }
+
+  ensurePlayerBattleFrames() {
+    if (this.playerBattleFramesReady) {
+      return;
+    }
+
+    const image = this.playerBattleSpriteImage;
+    if (!isUiImageUsable(image)) {
+      return;
+    }
+
+    const frameWidth = Math.max(1, Math.floor((image.naturalWidth || image.width) / PLAYER_IDLE_FRAME_COUNT));
+    const frameHeight = Math.max(1, image.naturalHeight || image.height);
+    const frames = buildMaskedSpriteFrames(image, {
+      frameWidth,
+      frameHeight,
+      frameCount: PLAYER_IDLE_FRAME_COUNT,
+    });
+    if (frames.length > 0) {
+      this.playerBattleFrames = frames;
+      this.playerBattleFramesReady = true;
+    }
+  }
+
   trackEncounterProgress(enemyId) {
     const progress = this.game.state.progress;
     progress.battlesTotal = (progress.battlesTotal ?? 0) + 1;
@@ -157,23 +295,31 @@ export class BattleScene extends Scene {
   }
 
   updateMainMenu(input) {
-    if (input.wasPressed("up") && this.mainMenuIndex >= 2) {
-      this.mainMenuIndex -= 2;
+    const directionLinks = [
+      { up: 0, down: 3, left: 2, right: 1 },
+      { up: 0, down: 3, left: 0, right: 1 },
+      { up: 0, down: 3, left: 2, right: 0 },
+      { up: 0, down: 3, left: 2, right: 1 },
+    ];
+    const currentLinks = directionLinks[this.mainMenuIndex] ?? directionLinks[0];
+
+    if (input.wasPressed("up")) {
+      this.mainMenuIndex = currentLinks.up;
       return;
     }
 
-    if (input.wasPressed("down") && this.mainMenuIndex <= 1) {
-      this.mainMenuIndex += 2;
+    if (input.wasPressed("down")) {
+      this.mainMenuIndex = currentLinks.down;
       return;
     }
 
-    if (input.wasPressed("left") && this.mainMenuIndex % 2 === 1) {
-      this.mainMenuIndex -= 1;
+    if (input.wasPressed("left")) {
+      this.mainMenuIndex = currentLinks.left;
       return;
     }
 
-    if (input.wasPressed("right") && this.mainMenuIndex % 2 === 0) {
-      this.mainMenuIndex += 1;
+    if (input.wasPressed("right")) {
+      this.mainMenuIndex = currentLinks.right;
       return;
     }
 
@@ -830,141 +976,439 @@ export class BattleScene extends Scene {
   }
 
   render(ctx) {
+    const canvasWidth = this.game.canvas.width;
+    const canvasHeight = this.game.canvas.height;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#05070a";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    ACTIVE_BATTLE_LOGICAL_HEIGHT = computeBattleLogicalHeight(canvasWidth, canvasHeight);
+    const scale = Math.max(
+      0.01,
+      Math.min(canvasWidth / GAME_CONFIG.width, canvasHeight / ACTIVE_BATTLE_LOGICAL_HEIGHT),
+    );
+    const offsetX = Math.floor((canvasWidth - GAME_CONFIG.width * scale) * 0.5);
+    const offsetY = Math.floor((canvasHeight - ACTIVE_BATTLE_LOGICAL_HEIGHT * scale) * 0.5);
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+
+    this.layout = getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+
     this.drawBattlefield(ctx);
     this.drawEnemySprite(ctx);
     this.drawPlayerSprite(ctx);
     this.drawStatusPanels(ctx);
     this.drawBottomInterface(ctx);
     this.drawDebugOverlay(ctx);
+    ctx.restore();
+  }
+
+  ensureBattleBackdrop(logicalHeight = GAME_CONFIG.height, battlefieldBottom = BATTLEFIELD_BASE_BOTTOM) {
+    if (
+      this.battleBackdropCanvas &&
+      this.battleBackdropHeight === logicalHeight &&
+      this.battleBackdropBottom === battlefieldBottom
+    ) {
+      return;
+    }
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = GAME_CONFIG.width;
+    canvas.height = logicalHeight;
+    const buffer = canvas.getContext("2d");
+    if (!buffer) {
+      return;
+    }
+
+    const backgroundGradient = buffer.createLinearGradient(0, 0, 0, logicalHeight);
+    backgroundGradient.addColorStop(0, "#141922");
+    backgroundGradient.addColorStop(0.45, "#1a2029");
+    backgroundGradient.addColorStop(1, "#1a231f");
+    buffer.fillStyle = backgroundGradient;
+    buffer.fillRect(0, 0, GAME_CONFIG.width, logicalHeight);
+
+    // Upper cave wall bricks.
+    for (let y = 0; y < 62; y += 7) {
+      for (let x = 0; x < GAME_CONFIG.width; x += 11) {
+        const seed = deterministicHash(x, y);
+        const brickW = 8 + (seed % 4);
+        const brickH = 5 + ((seed >> 3) % 3);
+        const jitterX = (seed % 3) - 1;
+        const jitterY = ((seed >> 5) % 3) - 1;
+        const tone = 26 + (seed % 20);
+        buffer.fillStyle = `rgb(${tone}, ${tone + 3}, ${tone + 6})`;
+        buffer.fillRect(x + jitterX, y + jitterY, brickW, brickH);
+      }
+    }
+
+    // Stone floor with deterministic cobbles.
+    for (let y = 56; y < logicalHeight + 8; y += 7) {
+      const rowOffset = Math.floor((y / 7) % 2) * 6;
+      for (let x = -6 + rowOffset; x < GAME_CONFIG.width + 6; x += 12) {
+        const seed = deterministicHash(x * 3, y * 5);
+        const radiusX = 5 + (seed % 3);
+        const radiusY = 2 + ((seed >> 2) % 3);
+        const centerX = x + 6 + ((seed >> 4) % 3) - 1;
+        const centerY = y + 3 + ((seed >> 6) % 3) - 1;
+        const tone = 42 + (seed % 26);
+        buffer.fillStyle = `rgb(${tone}, ${tone + 7}, ${tone + 2})`;
+        buffer.beginPath();
+        buffer.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+        buffer.fill();
+      }
+    }
+
+    // Dark side walls.
+    const sideGradient = buffer.createLinearGradient(0, 0, 32, 0);
+    sideGradient.addColorStop(0, "rgba(8, 10, 14, 0.95)");
+    sideGradient.addColorStop(1, "rgba(8, 10, 14, 0)");
+    buffer.fillStyle = sideGradient;
+    buffer.fillRect(0, 0, 36, battlefieldBottom);
+    buffer.save();
+    buffer.translate(GAME_CONFIG.width, 0);
+    buffer.scale(-1, 1);
+    buffer.fillRect(0, 0, 36, battlefieldBottom);
+    buffer.restore();
+
+    this.battleBackdropCanvas = canvas;
+    this.battleBackdropHeight = logicalHeight;
+    this.battleBackdropBottom = battlefieldBottom;
   }
 
   drawBattlefield(ctx) {
-    ctx.fillStyle = "#b8e0ff";
-    ctx.fillRect(0, 0, GAME_CONFIG.width, 44);
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const hasMapBackdrop = this.drawEncounterMapBackdrop(ctx, layout);
+    if (!hasMapBackdrop) {
+      this.ensureBattleBackdrop(layout.logicalHeight, layout.battlefieldBottom);
+      if (this.battleBackdropCanvas) {
+        ctx.drawImage(this.battleBackdropCanvas, 0, 0);
+      } else {
+        ctx.fillStyle = "#11161e";
+        ctx.fillRect(0, 0, GAME_CONFIG.width, layout.logicalHeight);
+      }
 
-    ctx.fillStyle = "#8ecf6f";
-    ctx.fillRect(0, 44, GAME_CONFIG.width, BOTTOM_UI_Y - 44);
-
-    ctx.fillStyle = "#7cbe60";
-    for (let y = 46; y < BOTTOM_UI_Y; y += 8) {
-      ctx.fillRect(0, y, GAME_CONFIG.width, 2);
+      this.drawTorch(ctx, 236, 22, this.floatTimer * 9);
+      this.drawTorch(ctx, 254, 18, this.floatTimer * 9 + 1.6);
     }
 
-    ctx.fillStyle = "#74b454";
-    ctx.beginPath();
-    ctx.ellipse(ENEMY_GROUND.x, ENEMY_GROUND.y, ENEMY_GROUND.rx, ENEMY_GROUND.ry, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const depthGradient = ctx.createLinearGradient(0, 0, 0, layout.battlefieldBottom + 24);
+    depthGradient.addColorStop(0, hasMapBackdrop ? "rgba(5, 8, 12, 0.24)" : "rgba(4, 6, 10, 0.3)");
+    depthGradient.addColorStop(1, hasMapBackdrop ? "rgba(4, 8, 12, 0.72)" : "rgba(4, 6, 10, 0.6)");
+    ctx.fillStyle = depthGradient;
+    ctx.fillRect(0, 0, GAME_CONFIG.width, layout.logicalHeight);
 
-    ctx.beginPath();
-    ctx.ellipse(
-      PLAYER_GROUND.x,
-      PLAYER_GROUND.y,
-      PLAYER_GROUND.rx,
-      PLAYER_GROUND.ry,
-      0,
-      0,
-      Math.PI * 2,
+    const vignette = ctx.createRadialGradient(
+      GAME_CONFIG.width * 0.5,
+      layout.battlefieldBottom * 0.52,
+      36,
+      GAME_CONFIG.width * 0.5,
+      layout.battlefieldBottom * 0.5,
+      168,
     );
-    ctx.fill();
+    vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+    vignette.addColorStop(1, hasMapBackdrop ? "rgba(0, 0, 0, 0.58)" : "rgba(0, 0, 0, 0.66)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, GAME_CONFIG.width, layout.logicalHeight);
+  }
+
+  drawEncounterMapBackdrop(ctx, layout) {
+    const image = this.worldMapBackdropImage;
+    if (!isUiImageUsable(image)) {
+      return false;
+    }
+
+    const sourceW = image.naturalWidth || image.width;
+    const sourceH = image.naturalHeight || image.height;
+    if (sourceW <= 0 || sourceH <= 0) {
+      return false;
+    }
+
+    const tileSize = Math.max(1, MAP_LAYOUT?.tileSize ?? 64);
+    const focusTileX = Number.isFinite(this.encounterTileX) ? this.encounterTileX : (MAP_LAYOUT?.cols ?? 0) * 0.5;
+    const focusTileY = Number.isFinite(this.encounterTileY) ? this.encounterTileY : (MAP_LAYOUT?.rows ?? 0) * 0.5;
+    const focusX = (focusTileX + 0.5) * tileSize;
+    const focusY = (focusTileY + 0.5) * tileSize;
+
+    const targetRatio = GAME_CONFIG.width / Math.max(1, layout.logicalHeight);
+    const baseViewW = tileSize * 8.8;
+    const viewW = clamp(baseViewW, sourceW * 0.22, sourceW);
+    const viewH = clamp(viewW / targetRatio, sourceH * 0.22, sourceH);
+    const sourceX = clamp(Math.round(focusX - viewW * 0.5), 0, Math.max(0, sourceW - viewW));
+    const sourceY = clamp(Math.round(focusY - viewH * 0.5), 0, Math.max(0, sourceH - viewH));
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      image,
+      sourceX,
+      sourceY,
+      Math.round(viewW),
+      Math.round(viewH),
+      0,
+      0,
+      GAME_CONFIG.width,
+      layout.logicalHeight,
+    );
+    return true;
+  }
+
+  drawTorch(ctx, x, y, flickerSeed) {
+    const flicker = 1 + Math.sin(flickerSeed) * 0.08 + Math.sin(flickerSeed * 1.7) * 0.05;
+    const glow = ctx.createRadialGradient(x, y, 1, x, y, 26 * flicker);
+    glow.addColorStop(0, "rgba(255, 212, 124, 0.5)");
+    glow.addColorStop(1, "rgba(255, 149, 52, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - 28, y - 26, 56, 52);
+
+    ctx.fillStyle = "#46301e";
+    ctx.fillRect(x - 1, y + 4, 3, 12);
+    ctx.fillStyle = "#8d6a46";
+    ctx.fillRect(x - 2, y + 2, 5, 3);
+
+    ctx.fillStyle = "#ffd682";
+    ctx.fillRect(x - 1, y - 4, 3, 5);
+    ctx.fillStyle = "#ff9d3d";
+    ctx.fillRect(x, y - 3, 1, 4);
   }
 
   drawEnemySprite(ctx) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
     const bob = Math.sin(this.floatTimer * 4) * 1.2;
-    const x = Math.round(ENEMY_GROUND.x - ENEMY_SPRITE.w / 2);
-    const y = Math.round(ENEMY_GROUND.y - ENEMY_SPRITE.h + bob);
+    const primaryX = Math.round(layout.enemyPrimaryAnchor.x - 13);
+    const primaryY = Math.round(layout.enemyPrimaryAnchor.y - 28 + bob);
+    const secondaryX = Math.round(layout.enemySecondaryAnchor.x - 12);
+    const secondaryY = Math.round(layout.enemySecondaryAnchor.y - 27 + bob * 0.65);
 
-    ctx.fillStyle = this.enemy.colorB;
-    ctx.fillRect(x + 3, y + 11, 28, 15);
+    this.drawSkeletonFighter(ctx, secondaryX, secondaryY, {
+      alpha: 0.72,
+      shieldTint: "#6f5331",
+      bladeTint: "#8f9199",
+    });
+    this.drawSkeletonFighter(ctx, primaryX, primaryY, {
+      alpha: 1,
+      shieldTint: "#a17239",
+      bladeTint: "#c7c9d1",
+    });
+  }
 
-    ctx.fillStyle = this.enemy.colorA;
-    ctx.fillRect(x + 6, y + 3, 22, 11);
-    ctx.fillRect(x + 0, y + 12, 10, 9);
-    ctx.fillRect(x + 24, y + 12, 10, 9);
+  drawSkeletonFighter(ctx, x, y, { alpha = 1, shieldTint = "#8d6537", bladeTint = "#b7bcc8" } = {}) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
 
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x + 12, y + 8, 2, 2);
-    ctx.fillRect(x + 19, y + 8, 2, 2);
+    ctx.fillStyle = "#1e1f26";
+    ctx.fillRect(x + 8, y + 18, 10, 11);
+    ctx.fillRect(x + 4, y + 28, 7, 9);
+    ctx.fillRect(x + 15, y + 28, 7, 9);
+
+    ctx.fillStyle = "#8f8774";
+    ctx.fillRect(x + 8, y + 4, 10, 9);
+    ctx.fillRect(x + 9, y + 13, 8, 6);
+    ctx.fillStyle = "#3a3d44";
+    ctx.fillRect(x + 6, y + 15, 14, 3);
+
+    ctx.fillStyle = "#111317";
+    ctx.fillRect(x + 10, y + 7, 2, 2);
+    ctx.fillRect(x + 14, y + 7, 2, 2);
+    ctx.fillRect(x + 11, y + 10, 4, 1);
+
+    ctx.fillStyle = "#2a2d34";
+    ctx.fillRect(x + 2, y + 17, 5, 3);
+    ctx.fillRect(x + 18, y + 17, 5, 3);
+
+    // Sword arm and blade.
+    ctx.fillStyle = "#4c3221";
+    ctx.fillRect(x + 2, y + 17, 4, 2);
+    ctx.fillStyle = bladeTint;
+    ctx.fillRect(x - 1, y + 10, 6, 2);
+    ctx.fillRect(x + 1, y + 8, 2, 5);
+
+    // Shield.
+    ctx.fillStyle = shieldTint;
+    ctx.fillRect(x + 20, y + 15, 8, 8);
+    ctx.fillStyle = "rgba(255, 225, 164, 0.35)";
+    ctx.fillRect(x + 22, y + 17, 3, 3);
+
+    ctx.restore();
   }
 
   drawPlayerSprite(ctx) {
-    const x = Math.round(PLAYER_GROUND.x - PLAYER_SPRITE.w / 2);
-    const y = Math.round(PLAYER_GROUND.y - PLAYER_SPRITE.h);
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const sourceImage = this.playerBattleSpriteImage;
+    const maskedFrames = this.playerBattleFramesReady ? this.playerBattleFrames : [];
+    const idleBob = Math.sin(this.floatTimer * 4.2) * 0.6;
+    const targetHeight = clamp(
+      Math.round((layout.battlefieldBottom / BATTLEFIELD_BASE_BOTTOM) * PLAYER_BASE_HEIGHT),
+      26,
+      38,
+    );
+    let targetWidth = targetHeight;
+    const frameIndex = Math.floor(this.floatTimer * PLAYER_IDLE_FPS) % PLAYER_IDLE_FRAME_COUNT;
 
-    ctx.fillStyle = "#8f1f2f";
-    ctx.fillRect(x + 9, y + 3, 16, 9);
-    ctx.fillStyle = "#f4d7ae";
-    ctx.fillRect(x + 11, y + 12, 12, 10);
-    ctx.fillStyle = "#d8474d";
-    ctx.fillRect(x + 8, y + 22, 18, 12);
-    ctx.fillStyle = "#304c8f";
-    ctx.fillRect(x + 8, y + 34, 7, 6);
-    ctx.fillRect(x + 19, y + 34, 7, 6);
+    if (maskedFrames.length > 0) {
+      const frame = maskedFrames[frameIndex % maskedFrames.length];
+      const frameWidth = Math.max(1, frame.width || frame.naturalWidth || 0);
+      const frameHeight = Math.max(1, frame.height || frame.naturalHeight || 0);
+      targetWidth = Math.max(16, Math.round(targetHeight * (frameWidth / frameHeight)));
+      const drawX = Math.round(layout.playerAnchor.x - targetWidth * 0.5);
+      const drawY = Math.round(layout.playerAnchor.y - targetHeight + idleBob);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(frame, drawX, drawY, targetWidth, targetHeight);
+      return;
+    }
+
+    if (sourceImage && sourceImage.complete && sourceImage.naturalWidth > 0) {
+      const frameWidth = Math.max(1, Math.floor(sourceImage.naturalWidth / PLAYER_IDLE_FRAME_COUNT));
+      const frameHeight = Math.max(1, sourceImage.naturalHeight);
+      const sourceX = frameIndex * frameWidth;
+      targetWidth = Math.max(16, Math.round(targetHeight * (frameWidth / frameHeight)));
+      const drawX = Math.round(layout.playerAnchor.x - targetWidth * 0.5);
+      const drawY = Math.round(layout.playerAnchor.y - targetHeight + idleBob);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        sourceImage,
+        sourceX,
+        0,
+        frameWidth,
+        frameHeight,
+        drawX,
+        drawY,
+        targetWidth,
+        targetHeight,
+      );
+      return;
+    }
+
+    const drawX = Math.round(layout.playerAnchor.x - targetWidth * 0.5);
+    const drawY = Math.round(layout.playerAnchor.y - targetHeight + idleBob);
+    this.drawFallbackGoblin(ctx, drawX, drawY);
+  }
+
+  drawFallbackGoblin(ctx, x, y) {
+    const scale = 0.94;
+    const draw = (offsetX, offsetY, width, height, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(
+        x + Math.round(offsetX * scale),
+        y + Math.round(offsetY * scale),
+        Math.max(1, Math.round(width * scale)),
+        Math.max(1, Math.round(height * scale)),
+      );
+    };
+
+    draw(9, 8, 10, 10, "#65b53e");
+    draw(6, 9, 4, 4, "#65b53e");
+    draw(18, 9, 4, 4, "#65b53e");
+    draw(8, 18, 12, 8, "#5b4129");
+    draw(8, 26, 4, 4, "#29421f");
+    draw(16, 26, 4, 4, "#29421f");
+    draw(20, 15, 5, 2, "#cfd2d8");
+    draw(23, 13, 2, 3, "#cfd2d8");
   }
 
   drawStatusPanels(ctx) {
     const enemyHp = Math.max(0, Math.round(this.enemyDisplayHp));
     const playerHp = Math.max(0, Math.round(this.playerDisplayHp));
+    const playerMana = Math.max(0, Math.round(this.game.state.player.mana ?? 0));
+    const playerMaxMana = Math.max(1, this.game.state.player.maxMana ?? 1);
 
-    this.drawEnemyStatusPanel(ctx, 12, 10, 108, 34, enemyHp);
-    this.drawPlayerStatusPanel(ctx, 152, 84, 106, 36, playerHp);
+    this.drawBattleStatusCard(ctx, {
+      x: 8,
+      y: 6,
+      w: 124,
+      h: 32,
+      title: String(this.game.state.player.name ?? "Goblin").toUpperCase(),
+      hp: playerHp,
+      maxHp: this.game.state.player.maxHp,
+      mp: playerMana,
+      maxMp: playerMaxMana,
+      isEnemy: false,
+    });
+    this.drawBattleStatusCard(ctx, {
+      x: 138,
+      y: 6,
+      w: 124,
+      h: 26,
+      title: String(this.enemy.name ?? "Nemico").toUpperCase(),
+      hp: enemyHp,
+      maxHp: this.enemy.maxHp,
+      mp: null,
+      maxMp: null,
+      isEnemy: true,
+    });
   }
 
-  drawEnemyStatusPanel(ctx, x, y, w, h, hp) {
-    ctx.fillStyle = "#efefdc";
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "#3f4a3d";
+  drawBattleStatusCard(ctx, config) {
+    const gradient = ctx.createLinearGradient(config.x, config.y, config.x, config.y + config.h);
+    gradient.addColorStop(0, "rgba(30, 48, 76, 0.92)");
+    gradient.addColorStop(1, "rgba(12, 24, 42, 0.92)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(config.x, config.y, config.w, config.h);
+    ctx.strokeStyle = "#d79a4a";
     ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = "#2a2f2a";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText(this.enemy.name, x + 6, y + 6);
-    ctx.fillText("HP", x + 6, y + 18);
-
-    this.drawHpBar(ctx, x + 24, y + 18, w - 30, hp, this.enemy.maxHp);
-
-    ctx.fillStyle = "#2a2f2a";
-    ctx.fillText(`${hp}/${this.enemy.maxHp}`, x + 24, y + 26);
-  }
-
-  drawPlayerStatusPanel(ctx, x, y, w, h, hp) {
-    const player = this.game.state.player;
-
-    ctx.fillStyle = "#efefdc";
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "#3f4a3d";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = "#2a2f2a";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText(player.name.toUpperCase(), x + 6, y + 6);
-    ctx.fillText("HP", x + 6, y + 18);
-
-    this.drawHpBar(ctx, x + 24, y + 18, w - 30, hp, player.maxHp);
-
-    ctx.fillStyle = "#2a2f2a";
-    ctx.fillText(`${hp}/${player.maxHp}`, x + 24, y + 26);
-  }
-
-  drawHpBar(ctx, x, y, width, hp, maxHp) {
-    const ratio = clamp(hp / maxHp, 0, 1);
-
-    ctx.fillStyle = "#ced8c4";
-    ctx.fillRect(x, y, width, 7);
-    ctx.strokeStyle = "#4a5f46";
+    ctx.strokeRect(config.x, config.y, config.w, config.h);
+    ctx.strokeStyle = "#40230e";
     ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, 7);
+    ctx.strokeRect(config.x + 1, config.y + 1, config.w - 2, config.h - 2);
 
-    ctx.fillStyle = ratio > 0.35 ? "#4dc06e" : "#d9b84c";
-    ctx.fillRect(x + 1, y + 1, Math.floor((width - 2) * ratio), 5);
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "7px monospace";
+    ctx.textBaseline = "top";
+    ctx.fillText(truncateLabel(config.title, 14), config.x + 5, config.y + 4);
+
+    this.drawStatusBar(ctx, {
+      x: config.x + 5,
+      y: config.y + 13,
+      w: config.w - 10,
+      label: "HP",
+      value: config.hp,
+      maxValue: config.maxHp,
+      color: config.isEnemy ? "#d06756" : "#57c86f",
+    });
+
+    if (!config.isEnemy && config.mp !== null && config.maxMp !== null) {
+      this.drawStatusBar(ctx, {
+        x: config.x + 5,
+        y: config.y + 22,
+        w: config.w - 10,
+        label: "MP",
+        value: config.mp,
+        maxValue: config.maxMp,
+        color: "#67b9f4",
+      });
+    }
+  }
+
+  drawStatusBar(ctx, config) {
+    const maxValue = Math.max(1, Number(config.maxValue) || 1);
+    const value = clamp(Number(config.value) || 0, 0, maxValue);
+    const ratio = value / maxValue;
+
+    ctx.fillStyle = "#d8dfce";
+    ctx.fillRect(config.x, config.y, config.w, 6);
+    ctx.strokeStyle = "#2e3a2c";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(config.x, config.y, config.w, 6);
+    ctx.fillStyle = config.color;
+    ctx.fillRect(config.x + 1, config.y + 1, Math.floor((config.w - 2) * ratio), 4);
+
+    ctx.fillStyle = "#0f1116";
+    ctx.font = "6px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(config.label, config.x + 2, config.y);
+    ctx.textAlign = "right";
+    ctx.fillText(`${Math.round(value)}/${maxValue}`, config.x + config.w - 2, config.y);
+    ctx.textAlign = "left";
   }
 
   drawBottomInterface(ctx) {
     if (this.phase === "messages") {
-      this.drawFullMessageBox(ctx, this.currentMessage);
+      this.drawFullMessageBox(ctx, this.currentMessage, true);
       return;
     }
 
@@ -973,13 +1417,10 @@ export class BattleScene extends Scene {
       return;
     }
 
-    if (this.phase === "anim-enemy" || this.phase === "anim-player") {
-      this.drawPromptBox(ctx, "...");
-      this.drawCommandBoxShell(ctx);
+    if (this.phase === "menu-skills") {
+      this.drawBattleSkillsScreen(ctx);
       return;
     }
-
-    this.drawPromptBox(ctx, this.getPromptText());
 
     if (this.phase === "menu-main") {
       this.drawMainMenu(ctx);
@@ -991,223 +1432,258 @@ export class BattleScene extends Scene {
       return;
     }
 
-    if (this.phase === "menu-skills") {
-      this.drawBattleSkillsScreen(ctx);
-      return;
+    this.drawFullMessageBox(ctx, "...", false);
+  }
+
+  drawFullMessageBox(ctx, text, showPrompt = false) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const box = layout.messageBox;
+    const gradient = ctx.createLinearGradient(box.x, box.y, box.x, box.y + box.h);
+    gradient.addColorStop(0, "rgba(30, 48, 76, 0.92)");
+    gradient.addColorStop(1, "rgba(12, 24, 42, 0.92)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.strokeStyle = "#d79a4a";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x, box.y, box.w, box.h);
+    ctx.strokeStyle = "#40230e";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
+
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "8px monospace";
+    ctx.textBaseline = "top";
+
+    const lines = wrapText(text, 40);
+    lines.slice(0, 3).forEach((line, index) => {
+      ctx.fillText(line, box.x + 8, box.y + 8 + index * 10);
+    });
+
+    if (showPrompt) {
+      this.drawAdvancePrompt(ctx, box.x + box.w - 12, box.y + 28);
+    }
+  }
+
+  drawMainMenu(ctx) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const colors = ["#8a211d", "#5f401f", "#203f7a", "#8d6a1b"];
+    MAIN_OPTIONS.forEach((label, index) => {
+      const center = layout.commandPoints[index];
+      this.drawDiamondCommandButton(
+        ctx,
+        center.x,
+        center.y,
+        layout.commandHalfW,
+        layout.commandHalfH,
+        label,
+        colors[index],
+        this.mainMenuIndex === index,
+        index,
+      );
+    });
+  }
+
+  drawDiamondCommandButton(ctx, cx, cy, halfW, halfH, label, colorBase, selected, iconIndex) {
+    const topColor = brightenHex(colorBase, selected ? 34 : 20);
+    const bottomColor = darkenHex(colorBase, selected ? 24 : 34);
+    const gradient = ctx.createLinearGradient(cx, cy - halfH, cx, cy + halfH);
+    gradient.addColorStop(0, topColor);
+    gradient.addColorStop(1, bottomColor);
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - halfH);
+    ctx.lineTo(cx + halfW, cy);
+    ctx.lineTo(cx, cy + halfH);
+    ctx.lineTo(cx - halfW, cy);
+    ctx.closePath();
+
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.strokeStyle = selected ? "#ffd37d" : "#b58140";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (selected) {
+      ctx.strokeStyle = "rgba(255, 223, 143, 0.45)";
+      ctx.lineWidth = 5;
+      ctx.stroke();
     }
 
-    this.drawCommandBoxShell(ctx);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - halfH + 3);
+    ctx.lineTo(cx + halfW - 3, cy);
+    ctx.lineTo(cx, cy + halfH - 3);
+    ctx.lineTo(cx - halfW + 3, cy);
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+    ctx.fillRect(cx - halfW, cy, halfW * 2, halfH);
+    ctx.restore();
+
+    this.drawCommandIcon(ctx, cx, cy - 5, iconIndex, selected);
+
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cx, cy + 7);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+  }
+
+  drawCommandIcon(ctx, x, y, iconIndex, selected) {
+    switch (iconIndex) {
+      case 0: {
+        ctx.strokeStyle = selected ? "#f5f9ff" : "#d9dce5";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y + 4);
+        ctx.lineTo(x + 1, y - 2);
+        ctx.moveTo(x + 5, y + 4);
+        ctx.lineTo(x - 1, y - 2);
+        ctx.stroke();
+        break;
+      }
+      case 1: {
+        ctx.fillStyle = "#a06c39";
+        ctx.fillRect(x - 5, y - 1, 10, 7);
+        ctx.fillStyle = "#d79a4a";
+        ctx.fillRect(x - 4, y, 8, 1);
+        break;
+      }
+      case 2: {
+        const orbGlow = ctx.createRadialGradient(x, y + 1, 1, x, y + 1, 7);
+        orbGlow.addColorStop(0, "rgba(189, 241, 255, 0.95)");
+        orbGlow.addColorStop(1, "rgba(96, 158, 255, 0)");
+        ctx.fillStyle = orbGlow;
+        ctx.fillRect(x - 7, y - 6, 14, 14);
+        ctx.fillStyle = "#b8f5ff";
+        ctx.fillRect(x - 1, y, 3, 3);
+        break;
+      }
+      default: {
+        ctx.fillStyle = "#f0d76b";
+        ctx.fillRect(x - 1, y - 2, 3, 7);
+        ctx.fillRect(x - 4, y + 0, 3, 2);
+        ctx.fillRect(x + 2, y + 0, 3, 2);
+        ctx.fillRect(x - 3, y + 5, 2, 3);
+        ctx.fillRect(x + 1, y + 5, 2, 3);
+      }
+    }
+  }
+
+  drawFightMenu(ctx) {
+    this.drawFullMessageBox(ctx, this.getPromptText(), false);
   }
 
   getPromptText() {
     if (this.phase === "menu-fight") {
-      return "Scegli ATTACK.";
+      return "Premi A per attaccare.";
     }
 
     if (this.phase === "menu-skills") {
-      return "Scegli una skill.";
+      return "Scegli un'abilita'.";
     }
 
-    const trainerName = this.game.state.player.name.toUpperCase();
-    return `What will ${trainerName} do?`;
-  }
-
-  drawPromptBox(ctx, text) {
-    ctx.fillStyle = "#2b4d68";
-    ctx.fillRect(PROMPT_BOX.x, PROMPT_BOX.y, PROMPT_BOX.w, PROMPT_BOX.h);
-    ctx.strokeStyle = "#f3f0d9";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(PROMPT_BOX.x, PROMPT_BOX.y, PROMPT_BOX.w, PROMPT_BOX.h);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-
-    const lines = wrapText(text, 23);
-    lines.slice(0, 3).forEach((line, index) => {
-      ctx.fillText(line, PROMPT_BOX.x + 8, PROMPT_BOX.y + 8 + index * 10);
-    });
-  }
-
-  drawFullMessageBox(ctx, text) {
-    ctx.fillStyle = "#2b4d68";
-    ctx.fillRect(FULL_MESSAGE_BOX.x, FULL_MESSAGE_BOX.y, FULL_MESSAGE_BOX.w, FULL_MESSAGE_BOX.h);
-    ctx.strokeStyle = "#f3f0d9";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(FULL_MESSAGE_BOX.x, FULL_MESSAGE_BOX.y, FULL_MESSAGE_BOX.w, FULL_MESSAGE_BOX.h);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-
-    const lines = wrapText(text, 42);
-    lines.slice(0, 3).forEach((line, index) => {
-      ctx.fillText(line, FULL_MESSAGE_BOX.x + 8, FULL_MESSAGE_BOX.y + 8 + index * 10);
-    });
-
-    this.drawAdvancePrompt(ctx, FULL_MESSAGE_BOX.x + FULL_MESSAGE_BOX.w - 12, FULL_MESSAGE_BOX.y + 32);
-  }
-
-  drawCommandBoxShell(ctx) {
-    ctx.fillStyle = "#f0efe2";
-    ctx.fillRect(COMMAND_BOX.x, COMMAND_BOX.y, COMMAND_BOX.w, COMMAND_BOX.h);
-    ctx.strokeStyle = "#3d3f52";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(COMMAND_BOX.x, COMMAND_BOX.y, COMMAND_BOX.w, COMMAND_BOX.h);
-  }
-
-  drawMainMenu(ctx) {
-    this.drawCommandBoxShell(ctx);
-
-    const positions = [
-      { x: COMMAND_BOX.x + 12, y: COMMAND_BOX.y + 8 },
-      { x: COMMAND_BOX.x + 58, y: COMMAND_BOX.y + 8 },
-      { x: COMMAND_BOX.x + 12, y: COMMAND_BOX.y + 24 },
-      { x: COMMAND_BOX.x + 58, y: COMMAND_BOX.y + 24 },
-    ];
-
-    ctx.fillStyle = "#2c2d36";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-
-    MAIN_OPTIONS.forEach((label, index) => {
-      const pos = positions[index];
-      if (this.mainMenuIndex === index) {
-        this.drawCursor(ctx, pos.x - 7, pos.y + 1);
-      }
-      ctx.fillText(label, pos.x, pos.y);
-    });
-  }
-
-  drawFightMenu(ctx) {
-    this.drawCommandBoxShell(ctx);
-
-    const fightOptions = this.getFightOptions();
-
-    ctx.fillStyle = "#2c2d36";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-
-    fightOptions.forEach((option, index) => {
-      const y = COMMAND_BOX.y + 8 + index * 16;
-      if (this.fightMenuIndex === index) {
-        this.drawCursor(ctx, COMMAND_BOX.x + 6, y + 1);
-      }
-      ctx.fillText(option.label, COMMAND_BOX.x + 14, y);
-    });
-  }
-
-  drawSkillsMenu(ctx) {
-    this.drawCommandBoxShell(ctx);
-
-    const skills = this.getSkillOptions();
-
-    ctx.fillStyle = "#2c2d36";
-    ctx.font = "6px monospace";
-    ctx.textBaseline = "top";
-
-    skills.forEach((skill, index) => {
-      const y = COMMAND_BOX.y + 8 + index * 16;
-      if (this.skillMenuIndex === index) {
-        this.drawCursor(ctx, COMMAND_BOX.x + 6, y + 1);
-      }
-
-      const manaInfo = `${skill.manaCost}/${skill.manaLeft}`;
-      const manaInfoWidth = ctx.measureText(manaInfo).width;
-      const labelMaxChars = 13;
-      const label = truncateLabel(skill.label, labelMaxChars);
-      const manaX = COMMAND_BOX.x + COMMAND_BOX.w - 8 - manaInfoWidth;
-
-      ctx.fillText(label, COMMAND_BOX.x + 14, y + 1);
-      ctx.fillText(manaInfo, manaX, y + 1);
-    });
+    return "Scegli un'azione.";
   }
 
   drawBattleInventoryScreen(ctx) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const panel = layout.inventoryPanel;
     const entries = this.getBattleInventoryEntries();
-
     this.drawUiWindowBackground(ctx);
+    this.drawModalPanel(ctx, panel.x, panel.y, panel.w, panel.h);
 
-    ctx.fillStyle = "#f0efe2";
-    ctx.fillRect(INVENTORY_PANEL.x, INVENTORY_PANEL.y, INVENTORY_PANEL.w, INVENTORY_PANEL.h);
-    ctx.strokeStyle = "#3d3f52";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(INVENTORY_PANEL.x, INVENTORY_PANEL.y, INVENTORY_PANEL.w, INVENTORY_PANEL.h);
-
-    ctx.fillStyle = "#2c2d36";
+    ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
+    ctx.fillText("BORSA", panel.x + 8, panel.y + 6);
+    ctx.font = "7px monospace";
 
-    ctx.fillText("INVENTARIO", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + 8);
-    ctx.fillText("Oggetto", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + 24);
-    ctx.fillText("Qt", INVENTORY_PANEL.x + 94, INVENTORY_PANEL.y + 24);
-    ctx.fillText("Descrizione", INVENTORY_PANEL.x + 122, INVENTORY_PANEL.y + 24);
+    const listTop = panel.y + 20;
+    const rowHeight = 12;
+    const maxVisible = Math.max(4, Math.floor((panel.h - 34) / rowHeight));
+    const windowStart = computeListWindowStart(entries.length, this.bagMenuIndex, maxVisible);
+    const visibleEntries = entries.slice(windowStart, windowStart + maxVisible);
 
-    entries.forEach((entry, index) => {
-      const y = INVENTORY_PANEL.y + 36 + index * 12;
-
-      if (this.bagMenuIndex === index) {
-        this.drawCursor(ctx, INVENTORY_PANEL.x + 8, y + 1);
+    visibleEntries.forEach((entry, localIndex) => {
+      const absoluteIndex = windowStart + localIndex;
+      const rowY = listTop + localIndex * rowHeight;
+      const selected = absoluteIndex === this.bagMenuIndex;
+      if (selected) {
+        ctx.fillStyle = "rgba(215, 154, 74, 0.22)";
+        ctx.fillRect(panel.x + 6, rowY - 1, panel.w - 12, rowHeight - 1);
       }
 
-      if (entry.isBack) {
-        ctx.fillText(entry.label, INVENTORY_PANEL.x + 16, y);
-        return;
+      ctx.fillStyle = "#f6ecd2";
+      const label = entry.isBack ? "INDIETRO" : truncateLabel(entry.label.toUpperCase(), 12);
+      ctx.fillText(label, panel.x + 10, rowY + 1);
+      if (!entry.isBack) {
+        ctx.textAlign = "right";
+        ctx.fillText(`x${entry.quantity}`, panel.x + 74, rowY + 1);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#d6c79f";
+        ctx.fillText(truncateLabel(entry.description, 28), panel.x + 80, rowY + 1);
       }
-
-      ctx.fillText(truncateLabel(entry.label.toUpperCase(), 10), INVENTORY_PANEL.x + 16, y);
-      ctx.fillText(String(entry.quantity), INVENTORY_PANEL.x + 94, y);
-      ctx.fillText(truncateLabel(entry.description, 17), INVENTORY_PANEL.x + 122, y);
     });
 
-    ctx.fillText("A usa", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + INVENTORY_PANEL.h - 12);
-    ctx.fillText("B indietro", INVENTORY_PANEL.x + 80, INVENTORY_PANEL.y + INVENTORY_PANEL.h - 12);
+    ctx.fillStyle = "#d6c79f";
+    ctx.fillText("A usa  B indietro", panel.x + 8, panel.y + panel.h - 12);
   }
 
   drawBattleSkillsScreen(ctx) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const panel = layout.inventoryPanel;
     const entries = this.getSkillMenuEntries();
-
     this.drawUiWindowBackground(ctx);
+    this.drawModalPanel(ctx, panel.x, panel.y, panel.w, panel.h);
 
-    ctx.fillStyle = "#f0efe2";
-    ctx.fillRect(INVENTORY_PANEL.x, INVENTORY_PANEL.y, INVENTORY_PANEL.w, INVENTORY_PANEL.h);
-    ctx.strokeStyle = "#3d3f52";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(INVENTORY_PANEL.x, INVENTORY_PANEL.y, INVENTORY_PANEL.w, INVENTORY_PANEL.h);
-
-    ctx.fillStyle = "#2c2d36";
+    ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
+    ctx.fillText("ABILITA'", panel.x + 8, panel.y + 6);
+    ctx.font = "7px monospace";
 
-    ctx.fillText("SKILLS", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + 8);
-    ctx.fillText("Abilita'", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + 24);
-    ctx.fillText("MP", INVENTORY_PANEL.x + 104, INVENTORY_PANEL.y + 24);
-    ctx.fillText("Descrizione", INVENTORY_PANEL.x + 132, INVENTORY_PANEL.y + 24);
+    const listTop = panel.y + 20;
+    const rowHeight = 12;
+    const maxVisible = Math.max(4, Math.floor((panel.h - 44) / rowHeight));
+    const windowStart = computeListWindowStart(entries.length, this.skillMenuIndex, maxVisible);
+    const visibleEntries = entries.slice(windowStart, windowStart + maxVisible);
 
-    entries.forEach((entry, index) => {
-      const y = INVENTORY_PANEL.y + 36 + index * 12;
-
-      if (this.skillMenuIndex === index) {
-        this.drawCursor(ctx, INVENTORY_PANEL.x + 8, y + 1);
+    visibleEntries.forEach((entry, localIndex) => {
+      const absoluteIndex = windowStart + localIndex;
+      const rowY = listTop + localIndex * rowHeight;
+      const selected = absoluteIndex === this.skillMenuIndex;
+      if (selected) {
+        ctx.fillStyle = "rgba(215, 154, 74, 0.22)";
+        ctx.fillRect(panel.x + 6, rowY - 1, panel.w - 12, rowHeight - 1);
       }
 
+      ctx.fillStyle = "#f6ecd2";
       if (entry.isBack) {
-        ctx.fillText(entry.label, INVENTORY_PANEL.x + 16, y);
+        ctx.fillText("INDIETRO", panel.x + 10, rowY + 1);
         return;
       }
 
       const manaInfo = `${entry.manaCost}/${entry.manaLeft}`;
-      ctx.fillText(truncateLabel(entry.label, 13), INVENTORY_PANEL.x + 16, y);
-      ctx.fillText(manaInfo, INVENTORY_PANEL.x + 104, y);
-      ctx.fillText(truncateLabel(entry.description, 17), INVENTORY_PANEL.x + 132, y);
+      ctx.fillText(truncateLabel(entry.label, 13), panel.x + 10, rowY + 1);
+      ctx.textAlign = "right";
+      ctx.fillText(manaInfo, panel.x + 90, rowY + 1);
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#d6c79f";
+      ctx.fillText(truncateLabel(entry.description, 24), panel.x + 96, rowY + 1);
     });
 
+    ctx.fillStyle = "#d6c79f";
     ctx.fillText(
-      this.skillDescriptionPopupOpen ? "Sinistra chiude dettaglio" : "A usa  Destra dettaglio",
-      INVENTORY_PANEL.x + 8,
-      INVENTORY_PANEL.y + INVENTORY_PANEL.h - 22,
+      this.skillDescriptionPopupOpen ? "Sinistra: chiudi dettaglio" : "A usa  Destra dettaglio",
+      panel.x + 8,
+      panel.y + panel.h - 22,
     );
-    ctx.fillText("B indietro", INVENTORY_PANEL.x + 8, INVENTORY_PANEL.y + INVENTORY_PANEL.h - 12);
+    ctx.fillText("B indietro", panel.x + 8, panel.y + panel.h - 12);
 
     if (this.skillDescriptionPopupOpen) {
       const selected = entries[this.skillMenuIndex];
@@ -1218,21 +1694,18 @@ export class BattleScene extends Scene {
   }
 
   drawSkillDescriptionPopup(ctx, skillEntry) {
-    const popupX = INVENTORY_PANEL.x + 14;
-    const popupY = INVENTORY_PANEL.y + 62;
-    const popupW = INVENTORY_PANEL.w - 28;
-    const popupH = 48;
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const panel = layout.inventoryPanel;
+    const popupX = panel.x + 16;
+    const popupY = panel.y + 58;
+    const popupW = panel.w - 32;
+    const popupH = 50;
 
     ctx.fillStyle = "#00000099";
-    ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+    ctx.fillRect(0, 0, GAME_CONFIG.width, layout.logicalHeight);
+    this.drawModalPanel(ctx, popupX, popupY, popupW, popupH);
 
-    ctx.fillStyle = "#f0efe2";
-    ctx.fillRect(popupX, popupY, popupW, popupH);
-    ctx.strokeStyle = "#3d3f52";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(popupX, popupY, popupW, popupH);
-
-    ctx.fillStyle = "#2c2d36";
+    ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
     ctx.fillText(skillEntry.label, popupX + 8, popupY + 6);
@@ -1244,19 +1717,22 @@ export class BattleScene extends Scene {
   }
 
   drawUiWindowBackground(ctx) {
-    if (
-      this.uiBackgroundImage &&
-      this.uiBackgroundImage.complete &&
-      this.uiBackgroundImage.naturalWidth > 0
-    ) {
-      drawImageCover(ctx, this.uiBackgroundImage, 0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
-    } else {
-      ctx.fillStyle = "#0f1116";
-      ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
-    }
+    ctx.fillStyle = "rgba(0, 0, 0, 0.48)";
+    ctx.fillRect(0, 0, GAME_CONFIG.width, ACTIVE_BATTLE_LOGICAL_HEIGHT);
+  }
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-    ctx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+  drawModalPanel(ctx, x, y, w, h) {
+    const gradient = ctx.createLinearGradient(x, y, x, y + h);
+    gradient.addColorStop(0, "rgba(30, 48, 76, 0.95)");
+    gradient.addColorStop(1, "rgba(12, 24, 42, 0.95)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#d79a4a";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = "#40230e";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
   }
 
   drawDebugOverlay(ctx) {
@@ -1304,7 +1780,7 @@ export class BattleScene extends Scene {
   }
 
   drawCursor(ctx, x, y) {
-    ctx.fillStyle = "#2c2d36";
+    ctx.fillStyle = "#f6ecd2";
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + 4, y + 3);
@@ -1312,6 +1788,60 @@ export class BattleScene extends Scene {
     ctx.closePath();
     ctx.fill();
   }
+}
+
+function computeBattleLogicalHeight(canvasWidth, canvasHeight) {
+  const safeWidth = Math.max(1, Number(canvasWidth) || GAME_CONFIG.width);
+  const safeHeight = Math.max(1, Number(canvasHeight) || GAME_CONFIG.height);
+  return Math.max(GAME_CONFIG.height, Math.round((safeHeight * GAME_CONFIG.width) / safeWidth));
+}
+
+function getBattleLayout(logicalHeight = GAME_CONFIG.height) {
+  const safeHeight = Math.max(GAME_CONFIG.height, Math.round(Number(logicalHeight) || GAME_CONFIG.height));
+  const messageBoxY = safeHeight - MESSAGE_BOX_HEIGHT - 8;
+  const battlefieldBottom = clamp(
+    BATTLEFIELD_BASE_BOTTOM + Math.round((safeHeight - GAME_CONFIG.height) * 0.58),
+    112,
+    messageBoxY - 8,
+  );
+  const menuCenterY = clamp(messageBoxY - 4, battlefieldBottom - 4, safeHeight - 28);
+
+  return {
+    logicalHeight: safeHeight,
+    battlefieldBottom,
+    messageBox: {
+      x: 8,
+      y: messageBoxY,
+      w: GAME_CONFIG.width - 16,
+      h: MESSAGE_BOX_HEIGHT,
+    },
+    inventoryPanel: {
+      x: INVENTORY_PANEL_PAD,
+      y: 16,
+      w: GAME_CONFIG.width - INVENTORY_PANEL_PAD * 2,
+      h: safeHeight - 22,
+    },
+    enemyPrimaryAnchor: {
+      x: 192,
+      y: battlefieldBottom - 54,
+    },
+    enemySecondaryAnchor: {
+      x: 228,
+      y: battlefieldBottom - 52,
+    },
+    playerAnchor: {
+      x: 60,
+      y: battlefieldBottom - 10,
+    },
+    commandHalfW: COMMAND_BUTTON_HALF_W,
+    commandHalfH: COMMAND_BUTTON_HALF_H,
+    commandPoints: [
+      { x: 135, y: menuCenterY - 24 },
+      { x: 170, y: menuCenterY },
+      { x: 100, y: menuCenterY },
+      { x: 135, y: menuCenterY + 24 },
+    ],
+  };
 }
 
 function wrapText(text, maxChars) {
@@ -1381,4 +1911,306 @@ function drawImageCover(ctx, image, targetX, targetY, targetW, targetH) {
   const offsetX = targetX + (targetW - drawW) / 2;
   const offsetY = targetY + (targetH - drawH) / 2;
   ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+}
+
+function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCount } = {}) {
+  if (typeof document === "undefined") {
+    return [];
+  }
+
+  const sourceWidth = sourceImage.naturalWidth || sourceImage.width;
+  const sourceHeight = sourceImage.naturalHeight || sourceImage.height;
+  if (
+    sourceWidth <= 0 ||
+    sourceHeight <= 0 ||
+    frameWidth <= 0 ||
+    frameHeight <= 0
+  ) {
+    return [];
+  }
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = sourceWidth;
+  sourceCanvas.height = sourceHeight;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) {
+    return [];
+  }
+  sourceContext.drawImage(sourceImage, 0, 0);
+
+  const frameCanvas = document.createElement("canvas");
+  frameCanvas.width = frameWidth;
+  frameCanvas.height = frameHeight;
+  const frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
+  if (!frameContext) {
+    return [];
+  }
+
+  const safeFrameCount = clampNumber(Math.floor(frameCount ?? 1), 1, 32);
+  const frames = [];
+  for (let frameIndex = 0; frameIndex < safeFrameCount; frameIndex += 1) {
+    const sourceX = frameIndex * frameWidth;
+    if (sourceX >= sourceCanvas.width) {
+      break;
+    }
+
+    frameContext.clearRect(0, 0, frameWidth, frameHeight);
+    frameContext.drawImage(
+      sourceCanvas,
+      sourceX,
+      0,
+      frameWidth,
+      frameHeight,
+      0,
+      0,
+      frameWidth,
+      frameHeight,
+    );
+
+    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
+    maskFrameBackground(imageData.data, frameWidth, frameHeight);
+
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
+      continue;
+    }
+
+    outputContext.putImageData(imageData, 0, 0);
+    frames.push(outputCanvas);
+  }
+
+  return frames;
+}
+
+function maskFrameBackground(pixelData, width, height) {
+  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
+  if (backgroundSamples.length <= 0) {
+    return;
+  }
+
+  const backgroundMinDistance = 20;
+  const totalPixels = width * height;
+  const queue = new Uint32Array(totalPixels);
+  const visited = new Uint8Array(totalPixels);
+  let queueHead = 0;
+  let queueTail = 0;
+
+  const tryQueuePixel = (x, y) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return;
+    }
+
+    const pixelIndex = y * width + x;
+    if (visited[pixelIndex]) {
+      return;
+    }
+
+    const dataOffset = pixelIndex * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      visited[pixelIndex] = 1;
+      return;
+    }
+
+    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
+    if (minDistance > backgroundMinDistance) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue[queueTail] = pixelIndex;
+    queueTail += 1;
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    tryQueuePixel(x, 0);
+    tryQueuePixel(x, height - 1);
+  }
+  for (let y = 0; y < height; y += 1) {
+    tryQueuePixel(0, y);
+    tryQueuePixel(width - 1, y);
+  }
+
+  while (queueHead < queueTail) {
+    const pixelIndex = queue[queueHead];
+    queueHead += 1;
+    const x = pixelIndex % width;
+    const y = (pixelIndex - x) / width;
+    const dataOffset = pixelIndex * 4;
+    pixelData[dataOffset + 3] = 0;
+
+    tryQueuePixel(x + 1, y);
+    tryQueuePixel(x - 1, y);
+    tryQueuePixel(x, y + 1);
+    tryQueuePixel(x, y - 1);
+  }
+}
+
+function collectBorderColorSamples(pixelData, width, height) {
+  const samples = [];
+  const seen = new Set();
+
+  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
+    const safeX = clampNumber(Math.floor(x), 0, width - 1);
+    const safeY = clampNumber(Math.floor(y), 0, height - 1);
+    const dataOffset = (safeY * width + safeX) * 4;
+    const alpha = pixelData[dataOffset + 3];
+    if (alpha <= 0) {
+      return;
+    }
+
+    const r = pixelData[dataOffset];
+    const g = pixelData[dataOffset + 1];
+    const b = pixelData[dataOffset + 2];
+
+    if (preferBackground) {
+      if (b < g + 8 || b < r + 12) {
+        return;
+      }
+      const brightness = (r + g + b) / 3;
+      if (brightness < 96) {
+        return;
+      }
+    }
+
+    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+
+    seen.add(dedupeKey);
+    samples.push({ r, g, b });
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0, { preferBackground: true });
+    addSampleAt(x, height - 1, { preferBackground: true });
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y, { preferBackground: true });
+    addSampleAt(width - 1, y, { preferBackground: true });
+  }
+
+  if (samples.length > 0) {
+    return samples;
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    addSampleAt(x, 0, { preferBackground: false });
+    addSampleAt(x, height - 1, { preferBackground: false });
+  }
+  for (let y = 0; y < height; y += 1) {
+    addSampleAt(0, y, { preferBackground: false });
+    addSampleAt(width - 1, y, { preferBackground: false });
+  }
+
+  return samples;
+}
+
+function getMinColorDistance(pixelData, dataOffset, colorSamples) {
+  const r = pixelData[dataOffset];
+  const g = pixelData[dataOffset + 1];
+  const b = pixelData[dataOffset + 2];
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < colorSamples.length; index += 1) {
+    const sample = colorSamples[index];
+    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
+    if (distance < minDistance) {
+      minDistance = distance;
+    }
+  }
+
+  return minDistance;
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function isUiImageUsable(image) {
+  return Boolean(
+    image &&
+      image.complete &&
+      (image.naturalWidth || image.width || 0) > 0 &&
+      (image.naturalHeight || image.height || 0) > 0,
+  );
+}
+
+function isInsideRect(x, y, rect) {
+  if (!rect || typeof rect !== "object") {
+    return false;
+  }
+
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+function getMainOptionIndexAtPoint(x, y, commandPoints, halfW, halfH) {
+  if (!Array.isArray(commandPoints)) {
+    return -1;
+  }
+
+  return commandPoints.findIndex((center) =>
+    isPointInsideDiamond(x, y, center?.x ?? 0, center?.y ?? 0, halfW, halfH),
+  );
+}
+
+function isPointInsideDiamond(x, y, centerX, centerY, halfW, halfH) {
+  const safeHalfW = Math.max(1, Number(halfW) || 1);
+  const safeHalfH = Math.max(1, Number(halfH) || 1);
+  const normalizedX = Math.abs(x - centerX) / safeHalfW;
+  const normalizedY = Math.abs(y - centerY) / safeHalfH;
+  return normalizedX + normalizedY <= 1;
+}
+
+function computeListWindowStart(totalItems, selectedIndex, maxVisible) {
+  const safeTotal = Math.max(0, Math.floor(totalItems));
+  const safeVisible = Math.max(1, Math.floor(maxVisible));
+  if (safeTotal <= safeVisible) {
+    return 0;
+  }
+
+  const safeSelected = clamp(Math.floor(selectedIndex), 0, safeTotal - 1);
+  const half = Math.floor(safeVisible * 0.5);
+  const minStart = 0;
+  const maxStart = safeTotal - safeVisible;
+  return clamp(safeSelected - half, minStart, maxStart);
+}
+
+function deterministicHash(x, y) {
+  let value = Math.floor(x) * 374761393 + Math.floor(y) * 668265263;
+  value = (value ^ (value >> 13)) * 1274126177;
+  return Math.abs(value ^ (value >> 16));
+}
+
+function brightenHex(hexColor, amount) {
+  return adjustHexColor(hexColor, Math.abs(amount));
+}
+
+function darkenHex(hexColor, amount) {
+  return adjustHexColor(hexColor, -Math.abs(amount));
+}
+
+function adjustHexColor(hexColor, delta) {
+  const match = String(hexColor ?? "").trim().match(/^#?([0-9a-f]{6})$/i);
+  if (!match) {
+    return "#4f4f4f";
+  }
+
+  const raw = match[1];
+  const r = clamp(parseInt(raw.slice(0, 2), 16) + delta, 0, 255);
+  const g = clamp(parseInt(raw.slice(2, 4), 16) + delta, 0, 255);
+  const b = clamp(parseInt(raw.slice(4, 6), 16) + delta, 0, 255);
+  return `#${toHexChannel(r)}${toHexChannel(g)}${toHexChannel(b)}`;
+}
+
+function toHexChannel(value) {
+  const safe = clamp(Math.round(value), 0, 255);
+  return safe.toString(16).padStart(2, "0");
 }

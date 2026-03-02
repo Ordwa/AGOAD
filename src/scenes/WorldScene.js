@@ -538,6 +538,9 @@ export class WorldScene extends Scene {
 
     this.game.changeScene("battle", {
       zoneId: zone.id ?? "",
+      encounterTileX: this.player.tileX,
+      encounterTileY: this.player.tileY,
+      mapAssetPath: WORLD_MAP_ASSET_PATH,
     });
     return true;
   }
