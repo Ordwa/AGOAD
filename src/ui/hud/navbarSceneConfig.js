@@ -45,6 +45,13 @@ export const NAVBAR_SCENE_LAYOUTS = Object.freeze({
     visibleTabIds: MENU_TAB_IDS,
     activeTabId: "settings",
   }),
+  gm_edit: Object.freeze({
+    visible: true,
+    topbarVisible: true,
+    controlsVisible: false,
+    visibleTabIds: MENU_TAB_IDS,
+    activeTabId: "settings",
+  }),
 });
 
 export function resolveNavbarLayout(sceneName) {

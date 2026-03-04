@@ -18,7 +18,12 @@ export class Input {
       ["s", "down"],
       ["a", "left"],
       ["d", "right"],
+      ["ArrowUp", "up"],
+      ["ArrowDown", "down"],
+      ["ArrowLeft", "left"],
+      ["ArrowRight", "right"],
       [" ", "confirm"],
+      ["Enter", "confirm"],
     ]);
 
     this.onKeyDown = this.onKeyDown.bind(this);

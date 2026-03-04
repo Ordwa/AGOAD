@@ -19,8 +19,10 @@ const SETTINGS_THEME = Object.freeze({
 });
 
 const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode", "logout"]);
-const SETTINGS_ROW_HEIGHT = 26;
-const SETTINGS_ROW_START_Y = 36;
+const SETTINGS_ROW_HEIGHT = 31;
+const SETTINGS_ROW_START_Y = 24;
+const SETTINGS_ACTION_CONTROL = Object.freeze({ x: 186, yOffset: 7, w: 64, h: 16 });
+const SETTINGS_SLIDER_CONTROL = Object.freeze({ x: 126, yOffset: 8, w: 124, h: 14 });
 const MAX_GM_PASSWORD_LENGTH = 20;
 
 export class SettingsScene extends Scene {
@@ -301,8 +303,11 @@ export class SettingsScene extends Scene {
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    const panelHeight = SETTINGS_ROW_START_Y + ROW_KEYS.length * SETTINGS_ROW_HEIGHT + 8 - 32;
-    this.drawPanel(ctx, 6, 32, GAME_CONFIG.width - 12, panelHeight, { selected: true });
+    const basePanelY = 26;
+    const basePanelHeight = GAME_CONFIG.height - basePanelY - 6;
+    const panelHeight = basePanelHeight * 2;
+    const panelY = basePanelY - Math.floor((panelHeight - basePanelHeight) * 0.5);
+    this.drawPanel(ctx, 6, panelY, GAME_CONFIG.width - 12, panelHeight, { selected: true });
     this.drawRows(ctx);
     this.drawStatus(ctx);
     ctx.restore();
@@ -345,51 +350,18 @@ export class SettingsScene extends Scene {
         return;
       }
       this.gmEditStatus = "Accesso GM-EDIT autorizzato.";
-      this.openGmClassesEditorPrompt();
+      this.game.changeScene("gm_edit", {
+        returnScene: "settings",
+        returnPayload: {
+          returnScene: this.returnScene,
+          returnPayload: this.returnPayload,
+        },
+      });
     } catch {
       this.gmEditStatus = "Verifica non disponibile.";
     } finally {
       this.actionBusy = false;
     }
-  }
-
-  openGmClassesEditorPrompt() {
-    if (typeof window === "undefined" || typeof window.prompt !== "function") {
-      return;
-    }
-
-    const currentTable = this.game.exportClassesAsTable();
-    const editedTable = window.prompt(
-      "GM-EDIT CLASSI\nModifica la tabella TSV e premi OK per applicare",
-      currentTable,
-    );
-    if (editedTable === null) {
-      this.gmEditStatus = "GM-EDIT annullato.";
-      return;
-    }
-
-    const importResult = this.game.importClassesFromTable(String(editedTable ?? ""));
-    if (!importResult.ok) {
-      this.gmEditStatus = importResult.error ?? "Import classi fallito.";
-      return;
-    }
-
-    if (typeof window.confirm === "function") {
-      const shouldSave = window.confirm("Salvare le modifiche GM-EDIT?");
-      if (!shouldSave) {
-        this.game.discardUnsavedGmDataChanges();
-        this.gmEditStatus = "Modifiche annullate.";
-        return;
-      }
-    }
-
-    const saveResult = this.game.saveGmDataChanges();
-    if (!saveResult.ok) {
-      this.gmEditStatus = saveResult.error ?? "Salvataggio GM fallito.";
-      return;
-    }
-
-    this.gmEditStatus = `Classi aggiornate: ${importResult.count}`;
   }
 
   startLogoutFlow() {
@@ -430,7 +402,7 @@ export class SettingsScene extends Scene {
     const startY = SETTINGS_ROW_START_Y;
     rows.forEach((row, rowIndex) => {
       const y = startY + rowIndex * rowHeight;
-      this.drawPanel(ctx, 12, y, GAME_CONFIG.width - 24, rowHeight - 4, {
+      this.drawPanel(ctx, 12, y, GAME_CONFIG.width - 24, rowHeight - 2, {
         selected: rowIndex === this.selectedIndex,
       });
 
@@ -438,24 +410,50 @@ export class SettingsScene extends Scene {
       ctx.font = "8px monospace";
       ctx.textBaseline = "top";
       ctx.textAlign = "left";
-      ctx.fillText(row.label, 20, y + 7);
+      ctx.fillText(row.label, 20, y + Math.floor((rowHeight - 8) * 0.5));
+
+      const valueRect = getRowControlRect(row.id, y);
 
       if (row.id === "gm_edit") {
-        this.drawActionChip(ctx, row.valueLabel ?? "APRI", 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
+        this.drawActionChip(
+          ctx,
+          row.valueLabel ?? "APRI",
+          valueRect.x,
+          valueRect.y,
+          valueRect.w,
+          valueRect.h,
+          rowIndex === this.selectedIndex,
+        );
         return;
       }
 
       if (row.id === "debug_mode") {
-        this.drawDebugModeSwitch(ctx, row.value > 0, 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
+        this.drawDebugModeSwitch(
+          ctx,
+          row.value > 0,
+          valueRect.x,
+          valueRect.y,
+          valueRect.w,
+          valueRect.h,
+          rowIndex === this.selectedIndex,
+        );
         return;
       }
 
       if (row.id === "logout") {
-        this.drawActionChip(ctx, row.valueLabel ?? "ESCI", 184, y + 2, 68, 18, rowIndex === this.selectedIndex);
+        this.drawActionChip(
+          ctx,
+          row.valueLabel ?? "ESCI",
+          valueRect.x,
+          valueRect.y,
+          valueRect.w,
+          valueRect.h,
+          rowIndex === this.selectedIndex,
+        );
         return;
       }
 
-      this.drawSlider(ctx, row.value, 5, 128, y + 8, 124, 16);
+      this.drawSlider(ctx, row.value, 5, valueRect.x, valueRect.y, valueRect.w, valueRect.h);
     });
   }
 
@@ -469,10 +467,10 @@ export class SettingsScene extends Scene {
     ctx.fillRect(x + 3, y + 3, Math.floor((width - 6) * ratio), height - 6);
 
     ctx.fillStyle = SETTINGS_THEME.textPrimary;
-    ctx.font = "8px monospace";
+    ctx.font = "7px monospace";
     ctx.textAlign = "right";
     ctx.textBaseline = "top";
-    ctx.fillText(`${value}/${maxValue}`, x + width - 4, y + 3);
+    ctx.fillText(`${value}/${maxValue}`, x + width - 3, y + 2);
     ctx.textAlign = "left";
   }
 
@@ -500,7 +498,7 @@ export class SettingsScene extends Scene {
     ctx.fillStyle = selected ? "rgba(31, 69, 110, 0.95)" : "rgba(14, 36, 61, 0.9)";
     fillRoundedRect(ctx, x + 3, y + 3, width - 6, height - 6, 4);
     ctx.fillStyle = "#f6ecd2";
-    ctx.font = "8px monospace";
+    ctx.font = "7px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(String(label ?? "APRI"), x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
@@ -514,11 +512,22 @@ export class SettingsScene extends Scene {
       return;
     }
 
+    const boxX = 12;
+    const boxY = 6;
+    const boxW = GAME_CONFIG.width - 24;
+    const boxH = 16;
+    this.drawPanel(ctx, boxX, boxY, boxW, boxH, { inset: true });
+
     ctx.fillStyle = SETTINGS_THEME.textSecondary;
     ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const maxChars = Math.max(14, Math.floor((boxW - 12) / 4.6));
+    const clippedMessage =
+      message.length > maxChars ? `${message.slice(0, Math.max(0, maxChars - 3))}...` : message;
+    ctx.fillText(clippedMessage, boxX + Math.floor(boxW * 0.5), boxY + Math.floor(boxH * 0.5) + 1);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText(message, 12, 170);
   }
 
   drawPanel(ctx, x, y, w, h, { selected = false, inset = false } = {}) {
@@ -624,18 +633,33 @@ function getSettingsRowRects() {
   for (let index = 0; index < ROW_KEYS.length; index += 1) {
     const y = startY + rowHeight * index;
     const rowId = ROW_KEYS[index];
-    const valueRect =
-      rowId === "sound" || rowId === "music"
-        ? { x: 128, y: y + 8, w: 124, h: 16 }
-        : { x: 184, y: y + 2, w: 68, h: 18 };
+    const valueRect = getRowControlRect(rowId, y);
     rows.push({
       id: rowId,
-      rowRect: { x: 12, y, w: GAME_CONFIG.width - 24, h: rowHeight - 4 },
+      rowRect: { x: 12, y, w: GAME_CONFIG.width - 24, h: rowHeight - 2 },
       valueRect,
     });
   }
 
   return rows;
+}
+
+function getRowControlRect(rowId, rowY) {
+  if (rowId === "sound" || rowId === "music") {
+    return {
+      x: SETTINGS_SLIDER_CONTROL.x,
+      y: rowY + SETTINGS_SLIDER_CONTROL.yOffset,
+      w: SETTINGS_SLIDER_CONTROL.w,
+      h: SETTINGS_SLIDER_CONTROL.h,
+    };
+  }
+
+  return {
+    x: SETTINGS_ACTION_CONTROL.x,
+    y: rowY + SETTINGS_ACTION_CONTROL.yOffset,
+    w: SETTINGS_ACTION_CONTROL.w,
+    h: SETTINGS_ACTION_CONTROL.h,
+  };
 }
 
 function pointInRect(point, rect) {

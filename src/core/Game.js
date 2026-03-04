@@ -15,6 +15,8 @@ import {
 const SAVE_STORAGE_KEY = "gba_like_rpg_profile_slot_v2";
 const SAVE_SLOT_COUNT = 1;
 const GM_CONFIG_STORAGE_KEY = "gba_like_rpg_gm_config_v1";
+const DEBUG_MODE_STORAGE_KEY = "agoad_debug_mode";
+const LEGACY_THE_BUG_MODE_STORAGE_KEY = "agoad_the_bug_mode";
 const MOBILE_RENDER_SCALE = 3;
 const PRIMARY_SAVE_SLOT_INDEX = 0;
 const DEFAULT_AUTO_SAVE_INTERVAL_SECONDS = 30;
@@ -163,7 +165,7 @@ function createDefaultGameData() {
 
 function createDefaultPlayer(_classes = PLAYER_CLASSES) {
   return {
-    name: "Pippo",
+    name: "Rit",
     pgTitle: GOBLIN_PLAYER_BASE.pgTitle,
     maxHp: GOBLIN_PLAYER_BASE.maxHp,
     hp: GOBLIN_PLAYER_BASE.maxHp,
@@ -296,6 +298,7 @@ function createInitialState(classes = PLAYER_CLASSES) {
       encounteredEnemyIds: [],
       playTimeSeconds: 0,
       lastRestPoint: null,
+      cutsceneSpeakerLabels: {},
     },
     world: {
       playerX: null,
@@ -305,6 +308,31 @@ function createInitialState(classes = PLAYER_CLASSES) {
     inventory: createDefaultInventory(),
     skills: createDefaultSkills(),
   };
+}
+
+function normalizeCutsceneSpeakerLabels(rawLabels) {
+  if (!rawLabels || typeof rawLabels !== "object" || Array.isArray(rawLabels)) {
+    return {};
+  }
+
+  const normalizedLabels = {};
+  Object.entries(rawLabels).forEach(([speakerId, label]) => {
+    const safeSpeakerId = String(speakerId ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "");
+    if (!safeSpeakerId) {
+      return;
+    }
+
+    const safeLabel = String(label ?? "").trim().toLocaleUpperCase("it-IT");
+    if (!safeLabel) {
+      return;
+    }
+
+    normalizedLabels[safeSpeakerId] = safeLabel;
+  });
+  return normalizedLabels;
 }
 
 function normalizeInventory(savedInventory, fallbackInventory) {
@@ -429,6 +457,47 @@ function createDefaultSettings() {
     soundLevel: 5,
     musicLevel: 5,
   };
+}
+
+function readStoredDebugModeFlag() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return false;
+  }
+
+  try {
+    const debugModeValue = window.localStorage.getItem(DEBUG_MODE_STORAGE_KEY);
+    if (debugModeValue === "1" || debugModeValue === "0") {
+      return debugModeValue === "1";
+    }
+
+    return window.localStorage.getItem(LEGACY_THE_BUG_MODE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function persistDebugModeFlag(enabled) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(DEBUG_MODE_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // Ignore storage write failures in restricted environments.
+  }
+}
+
+function emitDebugModeChange(enabled) {
+  if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("agoad:debugmodechange", {
+      detail: { enabled: Boolean(enabled) },
+    }),
+  );
 }
 
 function clampSettingLevel(value) {
@@ -707,6 +776,8 @@ export class Game {
     this.currentScene = null;
     this.currentSceneName = "";
     this.previousSceneName = "";
+    this.overlayScene = null;
+    this.overlaySceneName = "";
     this.lastFrameTime = 0;
 
     this.account = {
@@ -723,6 +794,7 @@ export class Game {
     this.state = createInitialState(this.getClasses());
     this.profileSlot = this.readSaveSlots()[0] ?? null;
     this.settings = createDefaultSettings();
+    this.settings.debugOverlay = readStoredDebugModeFlag();
     this.autoSave = createDefaultAutoSaveState();
     this.registerAutoSaveTriggers(DEFAULT_AUTO_SAVE_TRIGGER_CONFIG);
 
@@ -892,6 +964,12 @@ export class Game {
       throw new Error(`Scene "${name}" non trovata.`);
     }
 
+    if (this.overlayScene) {
+      this.overlayScene.onExit();
+      this.overlayScene = null;
+      this.overlaySceneName = "";
+    }
+
     const outgoingSceneName = this.currentSceneName;
     if (this.currentScene) {
       this.currentScene.onExit();
@@ -909,6 +987,48 @@ export class Game {
     }
 
     this.currentScene.onEnter(payload);
+  }
+
+  openOverlayScene(name, payload = {}) {
+    const nextOverlayScene = this.scenes.get(name);
+    if (!nextOverlayScene) {
+      throw new Error(`Overlay scene "${name}" non trovata.`);
+    }
+
+    if (this.overlayScene) {
+      this.overlayScene.onExit();
+    }
+
+    this.overlaySceneName = name;
+    this.overlayScene = nextOverlayScene;
+    const safePayload =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? { ...payload }
+        : {};
+    if (!safePayload.sourceSceneName) {
+      safePayload.sourceSceneName = this.currentSceneName;
+    }
+
+    this.overlayScene.onEnter(safePayload);
+  }
+
+  closeOverlayScene(payload = {}) {
+    if (!this.overlayScene) {
+      return;
+    }
+
+    const closingOverlayScene = this.overlayScene;
+    const closedOverlayName = this.overlaySceneName;
+    this.overlayScene = null;
+    this.overlaySceneName = "";
+    closingOverlayScene.onExit();
+
+    if (this.currentScene && typeof this.currentScene.onOverlayClosed === "function") {
+      this.currentScene.onOverlayClosed({
+        overlayName: closedOverlayName,
+        ...(payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}),
+      });
+    }
   }
 
   getPreviousSceneName() {
@@ -1253,6 +1373,7 @@ export class Game {
       progress.coins = Math.max(0, Math.floor(Number(progress.coins) || 0));
       progress.battlesWon = Math.max(0, Math.floor(Number(progress.battlesWon) || 0));
       progress.battlesTotal = Math.max(0, Math.floor(Number(progress.battlesTotal) || 0));
+      progress.cutsceneSpeakerLabels = normalizeCutsceneSpeakerLabels(progress.cutsceneSpeakerLabels);
     }
 
     this.state.skills = normalizeSkills(this.state.skills, createDefaultSkills());
@@ -1433,6 +1554,8 @@ export class Game {
     }
 
     this.settings.debugOverlay = Boolean(enabled);
+    persistDebugModeFlag(this.settings.debugOverlay);
+    emitDebugModeChange(this.settings.debugOverlay);
   }
 
   getSoundLevel() {
@@ -1514,9 +1637,17 @@ export class Game {
       0,
     );
 
-    if (this.currentScene) {
+    if (this.overlayScene) {
+      this.overlayScene.update(dt, this.input);
+    } else if (this.currentScene) {
       this.currentScene.update(dt, this.input);
+    }
+
+    if (this.currentScene) {
       this.currentScene.render(this.ctx);
+    }
+    if (this.overlayScene) {
+      this.overlayScene.render(this.ctx);
     }
 
     this.state.progress.playTimeSeconds += dt;

@@ -6,10 +6,7 @@ const MAIN_OPTION_CONTINUE = "CONTINUE";
 const MAIN_OPTION_NEW_GAME = "NEW GAME";
 const MAIN_OPTION_SETTINGS = "SETTINGS";
 const OPTIONS_MENU = ["SOUND", "MUSIC", "ELIMINA PG", "INDIETRO"];
-const GM_EDIT_MENU = [
-  { id: "edit_classes", label: "EDIT CLASSES" },
-  { id: "back", label: "INDIETRO" },
-];
+const GM_EDIT_MENU = [{ id: "back", label: "INDIETRO" }];
 const CLASS_TABLE_FIELDS = [
   { key: "id", label: "ID" },
   { key: "label", label: "LABEL" },
@@ -1203,11 +1200,6 @@ export class StartScene extends Scene {
   handleGmEditSelection() {
     const selected = GM_EDIT_MENU[this.gmEditIndex];
     if (!selected) {
-      return;
-    }
-
-    if (selected.id === "edit_classes") {
-      this.startGmClassesEditing();
       return;
     }
 

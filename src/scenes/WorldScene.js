@@ -90,6 +90,8 @@ export class WorldScene extends Scene {
     }));
     this.interactionPoints = [...(WORLD_POINTS.interactionPoints ?? [])];
     this.battleZones = normalizeBattleZones(WORLD_POINTS.battleZones ?? []);
+    this.cutsceneTriggers = normalizeCutsceneTriggers(WORLD_POINTS.cutsceneTriggers ?? []);
+    this.cutsceneTriggerCooldown = new Set();
 
     this.player = {
       tileX: DEFAULT_SPAWN.x,
@@ -109,18 +111,38 @@ export class WorldScene extends Scene {
     };
   }
 
-  onEnter() {
+  onEnter(payload = {}) {
     this.time = 0;
     this.worldMessage.text = "";
     this.worldMessage.ttl = 0;
     this.turnBufferDirection = "";
+    this.cutsceneTriggerCooldown.clear();
     this.syncPlayerFromPersistentState();
     this.ensurePlayerAnimationFrames();
+
+    const requestedDialogId =
+      String(payload?.dialogId ?? "").trim() || String(payload?.cutsceneId ?? "").trim();
+    if (requestedDialogId) {
+      this.openCutsceneOverlay(requestedDialogId);
+    }
+  }
+
+  onExit() {}
+
+  getNavbarLayout() {
+    return {
+      visible: true,
+      topbarVisible: true,
+      controlsVisible: true,
+      visibleTabIds: ["settings", "profile", "bag", "slot_a"],
+      activeTabId: "",
+    };
   }
 
   update(dt, input) {
     this.time += dt;
     this.ensurePlayerAnimationFrames();
+
     this.updateMessageTimer(dt);
 
     if (input.wasPressed("profile")) {
@@ -143,7 +165,9 @@ export class WorldScene extends Scene {
     }
 
     if (input.wasPressed("confirm")) {
-      this.tryInteract();
+      if (this.tryInteract()) {
+        return;
+      }
     }
 
     if (!isUiImageUsable(this.mapImage)) {
@@ -211,6 +235,7 @@ export class WorldScene extends Scene {
     this.drawBattleZoneMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawNpcMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawPlayer(ctx, camera.zoom, canvasWidth, canvasHeight);
+
     drawWorldMessage(ctx, this.worldMessage.text, this.worldMessage.ttl, canvasWidth, canvasHeight);
 
     ctx.restore();
@@ -459,6 +484,10 @@ export class WorldScene extends Scene {
       stateWorld.playerY = this.player.tileY;
       stateWorld.facing = this.player.facing;
     }
+
+    if (this.tryStartCutsceneFromTrigger(this.player.tileX, this.player.tileY)) {
+      return false;
+    }
     return this.tryEnterBattleZone();
   }
 
@@ -485,6 +514,11 @@ export class WorldScene extends Scene {
       this.getInteractionAtTile(frontTile.x, frontTile.y) ??
       this.getInteractionAtTile(this.player.tileX, this.player.tileY);
     if (interaction) {
+      const interactionDialogId =
+        String(interaction.cutsceneId ?? "").trim() || String(interaction.dialogId ?? "").trim();
+      if (interactionDialogId && this.openCutsceneOverlay(interactionDialogId)) {
+        return true;
+      }
       this.showWorldMessage(interaction.text ?? "Interazione disponibile.");
       return true;
     }
@@ -558,6 +592,58 @@ export class WorldScene extends Scene {
     if (this.worldMessage.ttl === 0) {
       this.worldMessage.text = "";
     }
+  }
+
+  openCutsceneOverlay(cutsceneId) {
+    const safeCutsceneId = String(cutsceneId ?? "").trim();
+    if (!safeCutsceneId) {
+      return false;
+    }
+
+    this.worldMessage.text = "";
+    this.worldMessage.ttl = 0;
+    this.turnBufferDirection = "";
+    this.player.move = null;
+    try {
+      this.game.openOverlayScene("cutscene_overlay", {
+        dialogId: safeCutsceneId,
+        sourceSceneName: "world",
+      });
+    } catch {
+      this.showWorldMessage("Cut-scene non disponibile.", 1.1);
+      return false;
+    }
+    return true;
+  }
+
+  tryStartCutsceneFromTrigger(tileX, tileY) {
+    if (!Array.isArray(this.cutsceneTriggers) || this.cutsceneTriggers.length <= 0) {
+      return false;
+    }
+
+    for (let index = 0; index < this.cutsceneTriggers.length; index += 1) {
+      const trigger = this.cutsceneTriggers[index];
+      if (!trigger || trigger.mode !== "step") {
+        continue;
+      }
+      if (trigger.x !== tileX || trigger.y !== tileY) {
+        continue;
+      }
+      const triggerId = String(trigger.id ?? `trigger_${index}`);
+      if (trigger.once !== false && this.cutsceneTriggerCooldown.has(triggerId)) {
+        continue;
+      }
+      const started = this.openCutsceneOverlay(trigger.cutsceneId);
+      if (!started) {
+        continue;
+      }
+      if (trigger.once !== false) {
+        this.cutsceneTriggerCooldown.add(triggerId);
+      }
+      return true;
+    }
+
+    return false;
   }
 
   syncFacingOnly(direction) {
@@ -819,21 +905,21 @@ function buildMaskedSpriteFrames(image, { frameWidth, frameHeight, frameCount } 
   }
   sourceContext.drawImage(image, 0, 0);
 
-  const frameCanvas = document.createElement("canvas");
-  frameCanvas.width = frameWidth;
-  frameCanvas.height = frameHeight;
-  const frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
-  if (!frameContext) {
-    return [];
-  }
-
   const frames = [];
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
     const sourceX = (frameIndex % columns) * frameWidth;
     const sourceY = Math.floor(frameIndex / columns) * frameHeight;
 
-    frameContext.clearRect(0, 0, frameWidth, frameHeight);
-    frameContext.drawImage(
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
+      continue;
+    }
+
+    outputContext.imageSmoothingEnabled = false;
+    outputContext.drawImage(
       sourceCanvas,
       sourceX,
       sourceY,
@@ -844,165 +930,10 @@ function buildMaskedSpriteFrames(image, { frameWidth, frameHeight, frameCount } 
       frameWidth,
       frameHeight,
     );
-
-    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
-    maskFrameBackground(imageData.data, frameWidth, frameHeight);
-
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = frameWidth;
-    outputCanvas.height = frameHeight;
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      continue;
-    }
-
-    outputContext.putImageData(imageData, 0, 0);
     frames.push(outputCanvas);
   }
 
   return frames;
-}
-
-function maskFrameBackground(pixelData, width, height) {
-  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
-  if (backgroundSamples.length <= 0) {
-    return;
-  }
-
-  const backgroundMinDistance = 20;
-
-  const totalPixels = width * height;
-  const queue = new Uint32Array(totalPixels);
-  const visited = new Uint8Array(totalPixels);
-  let queueHead = 0;
-  let queueTail = 0;
-
-  const tryQueuePixel = (x, y) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) {
-      return;
-    }
-
-    const pixelIndex = y * width + x;
-    if (visited[pixelIndex]) {
-      return;
-    }
-
-    const dataOffset = pixelIndex * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      visited[pixelIndex] = 1;
-      return;
-    }
-
-    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
-    if (minDistance > backgroundMinDistance) {
-      return;
-    }
-
-    visited[pixelIndex] = 1;
-    queue[queueTail] = pixelIndex;
-    queueTail += 1;
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    tryQueuePixel(x, 0);
-    tryQueuePixel(x, height - 1);
-  }
-  for (let y = 0; y < height; y += 1) {
-    tryQueuePixel(0, y);
-    tryQueuePixel(width - 1, y);
-  }
-
-  while (queueHead < queueTail) {
-    const pixelIndex = queue[queueHead];
-    queueHead += 1;
-    const x = pixelIndex % width;
-    const y = (pixelIndex - x) / width;
-    const dataOffset = pixelIndex * 4;
-    pixelData[dataOffset + 3] = 0;
-
-    tryQueuePixel(x + 1, y);
-    tryQueuePixel(x - 1, y);
-    tryQueuePixel(x, y + 1);
-    tryQueuePixel(x, y - 1);
-  }
-}
-
-function collectBorderColorSamples(pixelData, width, height) {
-  const samples = [];
-  const seen = new Set();
-
-  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
-    const safeX = clampNumber(Math.floor(x), 0, width - 1);
-    const safeY = clampNumber(Math.floor(y), 0, height - 1);
-    const dataOffset = (safeY * width + safeX) * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      return;
-    }
-
-    const r = pixelData[dataOffset];
-    const g = pixelData[dataOffset + 1];
-    const b = pixelData[dataOffset + 2];
-    if (preferBackground) {
-      // Keep only bright blue-ish tones from the border to avoid sampling the sprite outline.
-      if (b < g + 8 || b < r + 12) {
-        return;
-      }
-      const brightness = (r + g + b) / 3;
-      if (brightness < 96) {
-        return;
-      }
-    }
-    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
-    if (seen.has(dedupeKey)) {
-      return;
-    }
-
-    seen.add(dedupeKey);
-    samples.push({ r, g, b });
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: true });
-    addSampleAt(x, height - 1, { preferBackground: true });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: true });
-    addSampleAt(width - 1, y, { preferBackground: true });
-  }
-
-  if (samples.length > 0) {
-    return samples;
-  }
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: false });
-    addSampleAt(x, height - 1, { preferBackground: false });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: false });
-    addSampleAt(width - 1, y, { preferBackground: false });
-  }
-
-  return samples;
-}
-
-function getMinColorDistance(pixelData, dataOffset, colorSamples) {
-  const r = pixelData[dataOffset];
-  const g = pixelData[dataOffset + 1];
-  const b = pixelData[dataOffset + 2];
-
-  let minDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < colorSamples.length; index += 1) {
-    const sample = colorSamples[index];
-    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
-    if (distance < minDistance) {
-      minDistance = distance;
-    }
-  }
-
-  return minDistance;
 }
 
 function drawLoading(ctx, width, height, time) {
@@ -1136,4 +1067,30 @@ function normalizeBattleZones(rawZones) {
       };
     })
     .filter((zone) => zone.w > 0 && zone.h > 0);
+}
+
+function normalizeCutsceneTriggers(rawTriggers) {
+  if (!Array.isArray(rawTriggers)) {
+    return [];
+  }
+
+  return rawTriggers
+    .map((trigger, index) => {
+      const x = clampNumber(Math.floor(Number(trigger?.x) || 0), 0, MAP_LAYOUT.cols - 1);
+      const y = clampNumber(Math.floor(Number(trigger?.y) || 0), 0, MAP_LAYOUT.rows - 1);
+      const cutsceneId =
+        String(trigger?.cutsceneId ?? "").trim() || String(trigger?.dialogId ?? "").trim();
+      if (!cutsceneId) {
+        return null;
+      }
+      return {
+        id: String(trigger?.id ?? `cutscene_trigger_${index + 1}`),
+        x,
+        y,
+        mode: String(trigger?.mode ?? "step").trim().toLowerCase() === "interact" ? "interact" : "step",
+        cutsceneId,
+        once: trigger?.once !== false,
+      };
+    })
+    .filter((trigger) => trigger !== null);
 }

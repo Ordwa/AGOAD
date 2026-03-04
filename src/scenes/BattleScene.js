@@ -31,7 +31,7 @@ export class BattleScene extends Scene {
     this.fightMenuIndex = 0;
     this.skillMenuIndex = 0;
     this.bagMenuIndex = 0;
-    this.skillDescriptionPopupOpen = false;
+    this.entryPopup = null;
 
     this.enemyDisplayHp = 0;
     this.playerDisplayHp = 0;
@@ -57,6 +57,7 @@ export class BattleScene extends Scene {
 
   onEnter(payload = {}) {
     if (payload.resume) {
+      this.entryPopup = null;
       this.bindPointerEvents();
       return;
     }
@@ -95,7 +96,7 @@ export class BattleScene extends Scene {
     this.fightMenuIndex = 0;
     this.skillMenuIndex = 0;
     this.bagMenuIndex = 0;
-    this.skillDescriptionPopupOpen = false;
+    this.entryPopup = null;
 
     this.currentMessage = "";
     this.messageQueue.length = 0;
@@ -202,9 +203,7 @@ export class BattleScene extends Scene {
     const layout = getBattleLayout(logicalHeight);
     this.layout = layout;
     if (this.phase === "messages") {
-      if (isInsideRect(point.x, point.y, layout.messageBox)) {
-        this.advanceMessage();
-      }
+      this.advanceMessage();
       return;
     }
 
@@ -225,6 +224,16 @@ export class BattleScene extends Scene {
 
     if (this.phase === "menu-fight" && isInsideRect(point.x, point.y, layout.messageBox)) {
       this.performAttack();
+      return;
+    }
+
+    if (this.phase === "menu-bag") {
+      this.handleBattleListPointerTap("bag", point);
+      return;
+    }
+
+    if (this.phase === "menu-skills") {
+      this.handleBattleListPointerTap("skills", point);
     }
   }
 
@@ -256,6 +265,178 @@ export class BattleScene extends Scene {
     }
 
     return { x: sceneX, y: sceneY };
+  }
+
+  handleBattleListPointerTap(listType, point) {
+    const entries = listType === "skills" ? this.getSkillMenuEntries() : this.getBattleInventoryEntries();
+    if (entries.length <= 0) {
+      this.entryPopup = null;
+      this.phase = "menu-main";
+      return;
+    }
+
+    const selectedIndex = listType === "skills" ? this.skillMenuIndex : this.bagMenuIndex;
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const listLayout = getBattleListLayout(layout.inventoryPanel, entries.length, selectedIndex);
+    const backRect = getBattleOverlayBackRect(layout.inventoryPanel);
+
+    if (isInsideRect(point.x, point.y, backRect)) {
+      this.entryPopup = null;
+      this.phase = "menu-main";
+      return;
+    }
+
+    if (this.entryPopup) {
+      this.handleEntryPopupPointerTap(point, listLayout);
+      return;
+    }
+
+    const hitIndex = getListEntryIndexAtPoint(point, listLayout, entries.length);
+    if (hitIndex < 0) {
+      return;
+    }
+
+    if (listType === "skills") {
+      this.skillMenuIndex = hitIndex;
+    } else {
+      this.bagMenuIndex = hitIndex;
+    }
+
+    this.openBattleEntryPopup(listType, entries[hitIndex]);
+  }
+
+  handleEntryPopupPointerTap(point, listLayout) {
+    const popupLayout = this.getEntryPopupLayout(listLayout);
+    if (!popupLayout || !this.entryPopup) {
+      return;
+    }
+
+    if (!isInsideRect(point.x, point.y, popupLayout.frameRect)) {
+      this.entryPopup = null;
+      return;
+    }
+
+    if (!this.entryPopup.canUse) {
+      this.entryPopup = null;
+      return;
+    }
+
+    if (isInsideRect(point.x, point.y, popupLayout.cancelRect)) {
+      this.entryPopup.confirmIndex = 1;
+      this.entryPopup = null;
+      return;
+    }
+
+    if (isInsideRect(point.x, point.y, popupLayout.confirmRect)) {
+      this.entryPopup.confirmIndex = 0;
+      this.confirmBattleEntryPopup();
+    }
+  }
+
+  getEntryPopupLayout(listLayout = null) {
+    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    const panel = layout.inventoryPanel;
+    const fallbackListLayout = getBattleListLayout(panel, 1, 0);
+    const resolvedListLayout = listLayout ?? fallbackListLayout;
+    const popupW = panel.w - 22;
+    const popupH = 78;
+    const popupX = panel.x + Math.floor((panel.w - popupW) * 0.5);
+    const popupY = clamp(
+      resolvedListLayout.y + Math.floor((resolvedListLayout.h - popupH) * 0.5),
+      panel.y + 34,
+      panel.y + panel.h - popupH - 10,
+    );
+    const buttonGap = 6;
+    const buttonW = Math.floor((popupW - 24 - buttonGap) * 0.5);
+    const buttonH = 16;
+    const buttonY = popupY + popupH - buttonH - 8;
+    const buttonX = popupX + 12;
+    return {
+      frameRect: { x: popupX, y: popupY, w: popupW, h: popupH },
+      confirmRect: { x: buttonX, y: buttonY, w: buttonW, h: buttonH },
+      cancelRect: { x: buttonX + buttonW + buttonGap, y: buttonY, w: buttonW, h: buttonH },
+      singleRect: { x: buttonX, y: buttonY, w: popupW - 24, h: buttonH },
+    };
+  }
+
+  openBattleEntryPopup(source, entry) {
+    if (!entry) {
+      return;
+    }
+
+    this.entryPopup = {
+      source,
+      entryId: String(entry.id ?? ""),
+      title: String(entry.label ?? "SELEZIONE"),
+      description: String(entry.description ?? "").trim(),
+      canUse: entry.usableInBattle !== false,
+      confirmIndex: 0,
+    };
+  }
+
+  updateEntryPopupInput(input) {
+    if (!this.entryPopup) {
+      return false;
+    }
+
+    if (input.wasPressed("back")) {
+      this.entryPopup = null;
+      return true;
+    }
+
+    if (!this.entryPopup.canUse) {
+      if (
+        input.wasPressed("confirm") ||
+        input.wasPressed("left") ||
+        input.wasPressed("right") ||
+        input.wasPressed("up") ||
+        input.wasPressed("down")
+      ) {
+        this.entryPopup = null;
+      }
+      return true;
+    }
+
+    if (input.wasPressed("left") || input.wasPressed("up")) {
+      this.entryPopup.confirmIndex = 0;
+      return true;
+    }
+
+    if (input.wasPressed("right") || input.wasPressed("down")) {
+      this.entryPopup.confirmIndex = 1;
+      return true;
+    }
+
+    if (input.wasPressed("confirm")) {
+      if (this.entryPopup.confirmIndex === 0) {
+        this.confirmBattleEntryPopup();
+      } else {
+        this.entryPopup = null;
+      }
+      return true;
+    }
+
+    return true;
+  }
+
+  confirmBattleEntryPopup() {
+    if (!this.entryPopup) {
+      return;
+    }
+
+    const popup = { ...this.entryPopup };
+    this.entryPopup = null;
+
+    if (!popup.canUse) {
+      return;
+    }
+
+    if (popup.source === "bag") {
+      this.useBattleItem(popup.entryId);
+      return;
+    }
+
+    this.performSpecialAction(popup.entryId);
   }
 
   ensurePlayerBattleFrames() {
@@ -342,7 +523,7 @@ export class BattleScene extends Scene {
   updateSkillsMenu(input) {
     const entries = this.getSkillMenuEntries();
     if (entries.length === 0) {
-      this.skillDescriptionPopupOpen = false;
+      this.entryPopup = null;
       this.phase = "menu-main";
       return;
     }
@@ -351,10 +532,7 @@ export class BattleScene extends Scene {
       this.skillMenuIndex = 0;
     }
 
-    if (this.skillDescriptionPopupOpen) {
-      if (input.wasPressed("left") || input.wasPressed("back")) {
-        this.skillDescriptionPopupOpen = false;
-      }
+    if (this.updateEntryPopupInput(input)) {
       return;
     }
 
@@ -368,28 +546,14 @@ export class BattleScene extends Scene {
       return;
     }
 
-    if (input.wasPressed("right")) {
+    if (input.wasPressed("confirm") || input.wasPressed("right")) {
       const selected = entries[this.skillMenuIndex];
-      if (selected && !selected.isBack) {
-        this.skillDescriptionPopupOpen = true;
-      }
-      return;
-    }
-
-    if (input.wasPressed("confirm")) {
-      const selected = entries[this.skillMenuIndex];
-      if (!selected || selected.isBack) {
-        this.skillDescriptionPopupOpen = false;
-        this.phase = "menu-main";
-        return;
-      }
-
-      this.performSpecialAction(selected.id);
+      this.openBattleEntryPopup("skills", selected);
       return;
     }
 
     if (input.wasPressed("back")) {
-      this.skillDescriptionPopupOpen = false;
+      this.entryPopup = null;
       this.phase = "menu-main";
     }
   }
@@ -405,7 +569,12 @@ export class BattleScene extends Scene {
       this.bagMenuIndex = 0;
     }
 
+    if (this.updateEntryPopupInput(input)) {
+      return;
+    }
+
     if (input.wasPressed("back")) {
+      this.entryPopup = null;
       this.phase = "menu-main";
       return;
     }
@@ -422,32 +591,28 @@ export class BattleScene extends Scene {
 
     if (input.wasPressed("confirm")) {
       const selected = entries[this.bagMenuIndex];
-      if (!selected || selected.isBack) {
-        this.phase = "menu-main";
-        return;
-      }
-
-      this.useBattleItem(selected.id);
+      this.openBattleEntryPopup("bag", selected);
     }
   }
 
   selectMainOption() {
+    this.entryPopup = null;
     if (this.mainMenuIndex === 0) {
-      this.phase = "menu-fight";
-      this.fightMenuIndex = 0;
+      this.performAttack();
       return;
     }
 
     if (this.mainMenuIndex === 1) {
       this.phase = "menu-bag";
       this.bagMenuIndex = 0;
+      this.entryPopup = null;
       return;
     }
 
     if (this.mainMenuIndex === 2) {
       this.phase = "menu-skills";
       this.skillMenuIndex = 0;
-      this.skillDescriptionPopupOpen = false;
+      this.entryPopup = null;
       return;
     }
 
@@ -462,7 +627,7 @@ export class BattleScene extends Scene {
     const player = this.game.state.player;
     const skillEntries = Object.values(this.game.state.skills ?? {});
     return skillEntries
-      .filter((skill) => skill && typeof skill === "object" && skill.usableInBattle !== false)
+      .filter((skill) => skill && typeof skill === "object")
       .map((skill) => ({
         id: String(skill.id ?? ""),
         label: String(skill.label ?? "SKILL").toUpperCase(),
@@ -470,44 +635,21 @@ export class BattleScene extends Scene {
         manaLeft: player.mana ?? 0,
         description: String(skill.description ?? ""),
         priority: Boolean(skill.priority),
+        usableInBattle: skill.usableInBattle !== false,
       }));
   }
 
   getSkillMenuEntries() {
-    const skills = this.getSkillOptions().map((skill) => ({
+    return this.getSkillOptions().map((skill) => ({
       ...skill,
-      isBack: false,
     }));
-
-    return [
-      ...skills,
-      {
-        id: "back",
-        label: "INDIETRO",
-        description: "",
-        manaCost: 0,
-        manaLeft: 0,
-        isBack: true,
-      },
-    ];
   }
 
   getBattleInventoryEntries() {
-    const items = Object.values(this.game.state.inventory).map((item) => ({
+    return Object.values(this.game.state.inventory).map((item) => ({
       ...item,
-      isBack: false,
+      usableInBattle: item?.usableInBattle !== false,
     }));
-
-    return [
-      ...items,
-      {
-        id: "back",
-        label: "INDIETRO",
-        description: "",
-        quantity: 0,
-        isBack: true,
-      },
-    ];
   }
 
   useBattleItem(itemId) {
@@ -562,6 +704,13 @@ export class BattleScene extends Scene {
     if (!selectedSkill) {
       this.queueMessages(["Abilita' non disponibile."], () => {
         this.phase = "menu-main";
+      });
+      return;
+    }
+
+    if (selectedSkill.usableInBattle === false) {
+      this.queueMessages(["Questa abilita' non puo' essere usata in battaglia."], () => {
+        this.phase = "menu-skills";
       });
       return;
     }
@@ -927,7 +1076,25 @@ export class BattleScene extends Scene {
   }
 
   queueMessages(messages, onDone = null) {
-    this.messageQueue = [...messages];
+    const sanitizedMessages = Array.isArray(messages)
+      ? messages
+          .map((message) => String(message ?? "").trim())
+          .filter((message) => message.length > 0)
+      : [];
+    if (sanitizedMessages.length <= 0) {
+      this.currentMessage = "";
+      this.messageQueue.length = 0;
+      this.onMessagesDone = null;
+      if (typeof onDone === "function") {
+        onDone();
+      } else {
+        this.phase = "menu-main";
+      }
+      return;
+    }
+
+    this.entryPopup = null;
+    this.messageQueue = [...sanitizedMessages];
     this.currentMessage = this.messageQueue.shift() ?? "";
     this.onMessagesDone = onDone;
     this.phase = "messages";
@@ -1431,8 +1598,6 @@ export class BattleScene extends Scene {
       this.drawFightMenu(ctx);
       return;
     }
-
-    this.drawFullMessageBox(ctx, "...", false);
   }
 
   drawFullMessageBox(ctx, text, showPrompt = false) {
@@ -1579,10 +1744,6 @@ export class BattleScene extends Scene {
   }
 
   getPromptText() {
-    if (this.phase === "menu-fight") {
-      return "Premi A per attaccare.";
-    }
-
     if (this.phase === "menu-skills") {
       return "Scegli un'abilita'.";
     }
@@ -1591,129 +1752,172 @@ export class BattleScene extends Scene {
   }
 
   drawBattleInventoryScreen(ctx) {
-    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
-    const panel = layout.inventoryPanel;
     const entries = this.getBattleInventoryEntries();
-    this.drawUiWindowBackground(ctx);
-    this.drawModalPanel(ctx, panel.x, panel.y, panel.w, panel.h);
-
-    ctx.fillStyle = "#f6ecd2";
-    ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText("BORSA", panel.x + 8, panel.y + 6);
-    ctx.font = "7px monospace";
-
-    const listTop = panel.y + 20;
-    const rowHeight = 12;
-    const maxVisible = Math.max(4, Math.floor((panel.h - 34) / rowHeight));
-    const windowStart = computeListWindowStart(entries.length, this.bagMenuIndex, maxVisible);
-    const visibleEntries = entries.slice(windowStart, windowStart + maxVisible);
-
-    visibleEntries.forEach((entry, localIndex) => {
-      const absoluteIndex = windowStart + localIndex;
-      const rowY = listTop + localIndex * rowHeight;
-      const selected = absoluteIndex === this.bagMenuIndex;
-      if (selected) {
-        ctx.fillStyle = "rgba(215, 154, 74, 0.22)";
-        ctx.fillRect(panel.x + 6, rowY - 1, panel.w - 12, rowHeight - 1);
-      }
-
-      ctx.fillStyle = "#f6ecd2";
-      const label = entry.isBack ? "INDIETRO" : truncateLabel(entry.label.toUpperCase(), 12);
-      ctx.fillText(label, panel.x + 10, rowY + 1);
-      if (!entry.isBack) {
-        ctx.textAlign = "right";
-        ctx.fillText(`x${entry.quantity}`, panel.x + 74, rowY + 1);
-        ctx.textAlign = "left";
-        ctx.fillStyle = "#d6c79f";
-        ctx.fillText(truncateLabel(entry.description, 28), panel.x + 80, rowY + 1);
-      }
+    this.drawBattleSelectionScreen(ctx, {
+      mode: "bag",
+      title: "BORSA",
+      entries,
+      selectedIndex: this.bagMenuIndex,
     });
-
-    ctx.fillStyle = "#d6c79f";
-    ctx.fillText("A usa  B indietro", panel.x + 8, panel.y + panel.h - 12);
   }
 
   drawBattleSkillsScreen(ctx) {
+    const entries = this.getSkillMenuEntries();
+    this.drawBattleSelectionScreen(ctx, {
+      mode: "skills",
+      title: "ABILITA'",
+      entries,
+      selectedIndex: this.skillMenuIndex,
+    });
+  }
+
+  drawBattleSelectionScreen(ctx, { mode, title, entries, selectedIndex }) {
     const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
     const panel = layout.inventoryPanel;
-    const entries = this.getSkillMenuEntries();
+    const listLayout = getBattleListLayout(panel, entries.length, selectedIndex);
     this.drawUiWindowBackground(ctx);
     this.drawModalPanel(ctx, panel.x, panel.y, panel.w, panel.h);
+    this.drawModalPanel(ctx, panel.x + 8, panel.y + 6, panel.w - 16, 16);
 
     ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
-    ctx.textBaseline = "top";
-    ctx.fillText("ABILITA'", panel.x + 8, panel.y + 6);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(title, panel.x + Math.round(panel.w * 0.5), panel.y + 14);
+
+    const backRect = getBattleOverlayBackRect(panel);
+    this.drawActionChip(ctx, "<-", backRect.x, backRect.y, backRect.w, backRect.h, false);
+
     ctx.font = "7px monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
 
-    const listTop = panel.y + 20;
-    const rowHeight = 12;
-    const maxVisible = Math.max(4, Math.floor((panel.h - 44) / rowHeight));
-    const windowStart = computeListWindowStart(entries.length, this.skillMenuIndex, maxVisible);
-    const visibleEntries = entries.slice(windowStart, windowStart + maxVisible);
-
+    const visibleEntries = entries.slice(listLayout.windowStart, listLayout.windowStart + listLayout.maxVisible);
     visibleEntries.forEach((entry, localIndex) => {
-      const absoluteIndex = windowStart + localIndex;
-      const rowY = listTop + localIndex * rowHeight;
-      const selected = absoluteIndex === this.skillMenuIndex;
-      if (selected) {
-        ctx.fillStyle = "rgba(215, 154, 74, 0.22)";
-        ctx.fillRect(panel.x + 6, rowY - 1, panel.w - 12, rowHeight - 1);
+      const absoluteIndex = listLayout.windowStart + localIndex;
+      const rowY = listLayout.y + localIndex * listLayout.rowHeight;
+      const rowH = listLayout.rowHeight - 3;
+      const rowX = listLayout.x;
+      const rowW = listLayout.w;
+      const selected = absoluteIndex === selectedIndex;
+      this.drawModalPanel(ctx, rowX, rowY, rowW, rowH);
+
+      if (!selected) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+        ctx.fillRect(rowX + 1, rowY + 1, rowW - 2, rowH - 2);
       }
+
+      if (selected) {
+        ctx.strokeStyle = "rgba(255, 219, 144, 0.95)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rowX + 1, rowY + 1, rowW - 2, rowH - 2);
+      }
+
+      const entryLabel = truncateLabel(entry.label, 16);
+      const statText =
+        mode === "skills"
+          ? `MP ${entry.manaCost ?? 0}`
+          : `x${Math.max(0, Number(entry.quantity) || 0)}`;
 
       ctx.fillStyle = "#f6ecd2";
-      if (entry.isBack) {
-        ctx.fillText("INDIETRO", panel.x + 10, rowY + 1);
-        return;
+      ctx.fillText(entryLabel, rowX + 8, rowY + 4);
+      if (statText) {
+        ctx.textAlign = "right";
+        ctx.fillText(statText, rowX + rowW - 8, rowY + 4);
+        ctx.textAlign = "left";
       }
 
-      const manaInfo = `${entry.manaCost}/${entry.manaLeft}`;
-      ctx.fillText(truncateLabel(entry.label, 13), panel.x + 10, rowY + 1);
-      ctx.textAlign = "right";
-      ctx.fillText(manaInfo, panel.x + 90, rowY + 1);
-      ctx.textAlign = "left";
-      ctx.fillStyle = "#d6c79f";
-      ctx.fillText(truncateLabel(entry.description, 24), panel.x + 96, rowY + 1);
+      const description = String(entry.description ?? "").trim();
+      if (description.length > 0) {
+        const lines = wrapText(description, 36).slice(0, 1);
+        ctx.fillStyle = "#d7c89e";
+        lines.forEach((line, lineIndex) => {
+          ctx.fillText(line, rowX + 8, rowY + 14 + lineIndex * 8);
+        });
+      }
+
+      if (entry.usableInBattle === false) {
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#f3b19f";
+        ctx.fillText("NON USABILE", rowX + rowW - 8, rowY + rowH - 9);
+        ctx.textAlign = "left";
+      }
     });
 
-    ctx.fillStyle = "#d6c79f";
-    ctx.fillText(
-      this.skillDescriptionPopupOpen ? "Sinistra: chiudi dettaglio" : "A usa  Destra dettaglio",
-      panel.x + 8,
-      panel.y + panel.h - 22,
-    );
-    ctx.fillText("B indietro", panel.x + 8, panel.y + panel.h - 12);
-
-    if (this.skillDescriptionPopupOpen) {
-      const selected = entries[this.skillMenuIndex];
-      if (selected && !selected.isBack) {
-        this.drawSkillDescriptionPopup(ctx, selected);
-      }
+    if (this.entryPopup) {
+      this.drawBattleEntryPopup(ctx, listLayout);
     }
   }
 
-  drawSkillDescriptionPopup(ctx, skillEntry) {
-    const layout = this.layout ?? getBattleLayout(ACTIVE_BATTLE_LOGICAL_HEIGHT);
-    const panel = layout.inventoryPanel;
-    const popupX = panel.x + 16;
-    const popupY = panel.y + 58;
-    const popupW = panel.w - 32;
-    const popupH = 50;
-
+  drawBattleEntryPopup(ctx, listLayout) {
+    if (!this.entryPopup) {
+      return;
+    }
+    const popupLayout = this.getEntryPopupLayout(listLayout);
+    if (!popupLayout) {
+      return;
+    }
+    const popup = this.entryPopup;
     ctx.fillStyle = "#00000099";
-    ctx.fillRect(0, 0, GAME_CONFIG.width, layout.logicalHeight);
-    this.drawModalPanel(ctx, popupX, popupY, popupW, popupH);
+    ctx.fillRect(0, 0, GAME_CONFIG.width, ACTIVE_BATTLE_LOGICAL_HEIGHT);
+    this.drawModalPanel(
+      ctx,
+      popupLayout.frameRect.x,
+      popupLayout.frameRect.y,
+      popupLayout.frameRect.w,
+      popupLayout.frameRect.h,
+    );
 
     ctx.fillStyle = "#f6ecd2";
     ctx.font = "8px monospace";
     ctx.textBaseline = "top";
-    ctx.fillText(skillEntry.label, popupX + 8, popupY + 6);
+    ctx.textAlign = "left";
+    ctx.fillText(popup.title, popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 6);
 
-    const lines = wrapText(skillEntry.description, 34);
-    lines.slice(0, 3).forEach((line, index) => {
-      ctx.fillText(line, popupX + 8, popupY + 18 + index * 9);
+    const detailText = popup.canUse
+      ? popup.description.length > 0
+        ? popup.description
+        : "Usare in battaglia?"
+      : popup.description.length > 0
+        ? `${popup.description}. Non usabile in battaglia.`
+        : "Questo elemento non puo' essere usato in battaglia";
+    const lines = wrapText(detailText, 40).slice(0, 3);
+    ctx.fillStyle = "#d7c89e";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 18 + index * 8);
     });
+
+    if (!popup.canUse) {
+      this.drawActionChip(
+        ctx,
+        "CHIUDI",
+        popupLayout.singleRect.x,
+        popupLayout.singleRect.y,
+        popupLayout.singleRect.w,
+        popupLayout.singleRect.h,
+        true,
+      );
+      return;
+    }
+
+    this.drawActionChip(
+      ctx,
+      "USA",
+      popupLayout.confirmRect.x,
+      popupLayout.confirmRect.y,
+      popupLayout.confirmRect.w,
+      popupLayout.confirmRect.h,
+      popup.confirmIndex === 0,
+    );
+    this.drawActionChip(
+      ctx,
+      "ANNULLA",
+      popupLayout.cancelRect.x,
+      popupLayout.cancelRect.y,
+      popupLayout.cancelRect.w,
+      popupLayout.cancelRect.h,
+      popup.confirmIndex === 1,
+    );
   }
 
   drawUiWindowBackground(ctx) {
@@ -1733,6 +1937,19 @@ export class BattleScene extends Scene {
     ctx.strokeStyle = "#40230e";
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+
+  drawActionChip(ctx, label, x, y, width, height, selected = false) {
+    this.drawModalPanel(ctx, x, y, width, height);
+    ctx.fillStyle = selected ? "rgba(31, 69, 110, 0.95)" : "rgba(14, 36, 61, 0.9)";
+    ctx.fillRect(x + 2, y + 2, width - 4, height - 4);
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(label ?? "OK"), x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
   drawDebugOverlay(ctx) {
@@ -1938,14 +2155,6 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
   }
   sourceContext.drawImage(sourceImage, 0, 0);
 
-  const frameCanvas = document.createElement("canvas");
-  frameCanvas.width = frameWidth;
-  frameCanvas.height = frameHeight;
-  const frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
-  if (!frameContext) {
-    return [];
-  }
-
   const safeFrameCount = clampNumber(Math.floor(frameCount ?? 1), 1, 32);
   const frames = [];
   for (let frameIndex = 0; frameIndex < safeFrameCount; frameIndex += 1) {
@@ -1954,8 +2163,16 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
       break;
     }
 
-    frameContext.clearRect(0, 0, frameWidth, frameHeight);
-    frameContext.drawImage(
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
+      continue;
+    }
+
+    outputContext.imageSmoothingEnabled = false;
+    outputContext.drawImage(
       sourceCanvas,
       sourceX,
       0,
@@ -1966,165 +2183,10 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
       frameWidth,
       frameHeight,
     );
-
-    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
-    maskFrameBackground(imageData.data, frameWidth, frameHeight);
-
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = frameWidth;
-    outputCanvas.height = frameHeight;
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      continue;
-    }
-
-    outputContext.putImageData(imageData, 0, 0);
     frames.push(outputCanvas);
   }
 
   return frames;
-}
-
-function maskFrameBackground(pixelData, width, height) {
-  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
-  if (backgroundSamples.length <= 0) {
-    return;
-  }
-
-  const backgroundMinDistance = 20;
-  const totalPixels = width * height;
-  const queue = new Uint32Array(totalPixels);
-  const visited = new Uint8Array(totalPixels);
-  let queueHead = 0;
-  let queueTail = 0;
-
-  const tryQueuePixel = (x, y) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) {
-      return;
-    }
-
-    const pixelIndex = y * width + x;
-    if (visited[pixelIndex]) {
-      return;
-    }
-
-    const dataOffset = pixelIndex * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      visited[pixelIndex] = 1;
-      return;
-    }
-
-    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
-    if (minDistance > backgroundMinDistance) {
-      return;
-    }
-
-    visited[pixelIndex] = 1;
-    queue[queueTail] = pixelIndex;
-    queueTail += 1;
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    tryQueuePixel(x, 0);
-    tryQueuePixel(x, height - 1);
-  }
-  for (let y = 0; y < height; y += 1) {
-    tryQueuePixel(0, y);
-    tryQueuePixel(width - 1, y);
-  }
-
-  while (queueHead < queueTail) {
-    const pixelIndex = queue[queueHead];
-    queueHead += 1;
-    const x = pixelIndex % width;
-    const y = (pixelIndex - x) / width;
-    const dataOffset = pixelIndex * 4;
-    pixelData[dataOffset + 3] = 0;
-
-    tryQueuePixel(x + 1, y);
-    tryQueuePixel(x - 1, y);
-    tryQueuePixel(x, y + 1);
-    tryQueuePixel(x, y - 1);
-  }
-}
-
-function collectBorderColorSamples(pixelData, width, height) {
-  const samples = [];
-  const seen = new Set();
-
-  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
-    const safeX = clampNumber(Math.floor(x), 0, width - 1);
-    const safeY = clampNumber(Math.floor(y), 0, height - 1);
-    const dataOffset = (safeY * width + safeX) * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      return;
-    }
-
-    const r = pixelData[dataOffset];
-    const g = pixelData[dataOffset + 1];
-    const b = pixelData[dataOffset + 2];
-
-    if (preferBackground) {
-      if (b < g + 8 || b < r + 12) {
-        return;
-      }
-      const brightness = (r + g + b) / 3;
-      if (brightness < 96) {
-        return;
-      }
-    }
-
-    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
-    if (seen.has(dedupeKey)) {
-      return;
-    }
-
-    seen.add(dedupeKey);
-    samples.push({ r, g, b });
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: true });
-    addSampleAt(x, height - 1, { preferBackground: true });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: true });
-    addSampleAt(width - 1, y, { preferBackground: true });
-  }
-
-  if (samples.length > 0) {
-    return samples;
-  }
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: false });
-    addSampleAt(x, height - 1, { preferBackground: false });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: false });
-    addSampleAt(width - 1, y, { preferBackground: false });
-  }
-
-  return samples;
-}
-
-function getMinColorDistance(pixelData, dataOffset, colorSamples) {
-  const r = pixelData[dataOffset];
-  const g = pixelData[dataOffset + 1];
-  const b = pixelData[dataOffset + 2];
-
-  let minDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < colorSamples.length; index += 1) {
-    const sample = colorSamples[index];
-    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
-    if (distance < minDistance) {
-      minDistance = distance;
-    }
-  }
-
-  return minDistance;
 }
 
 function clampNumber(value, min, max) {
@@ -2167,6 +2229,56 @@ function isPointInsideDiamond(x, y, centerX, centerY, halfW, halfH) {
   const normalizedX = Math.abs(x - centerX) / safeHalfW;
   const normalizedY = Math.abs(y - centerY) / safeHalfH;
   return normalizedX + normalizedY <= 1;
+}
+
+function getBattleListLayout(panel, totalEntries, selectedIndex) {
+  const rowHeight = 30;
+  const x = panel.x + 8;
+  const y = panel.y + 26;
+  const w = panel.w - 16;
+  const h = Math.max(24, panel.h - 56);
+  const maxVisible = Math.max(2, Math.floor(h / rowHeight));
+  const windowStart = computeListWindowStart(totalEntries, selectedIndex, maxVisible);
+  return {
+    x,
+    y,
+    w,
+    h,
+    rowHeight,
+    maxVisible,
+    windowStart,
+  };
+}
+
+function getBattleOverlayBackRect(panel) {
+  const width = 30;
+  const height = 30;
+  const x = panel.x + panel.w - width - 8;
+  const y = panel.y + 2;
+  return { x, y, w: width, h: height };
+}
+
+function getListEntryIndexAtPoint(point, listLayout, totalEntries) {
+  if (!point || !listLayout) {
+    return -1;
+  }
+
+  if (!isInsideRect(point.x, point.y, { x: listLayout.x, y: listLayout.y, w: listLayout.w, h: listLayout.h })) {
+    return -1;
+  }
+
+  const relativeY = point.y - listLayout.y;
+  const rowIndex = Math.floor(relativeY / listLayout.rowHeight);
+  if (rowIndex < 0 || rowIndex >= listLayout.maxVisible) {
+    return -1;
+  }
+
+  const absoluteIndex = listLayout.windowStart + rowIndex;
+  if (absoluteIndex < 0 || absoluteIndex >= totalEntries) {
+    return -1;
+  }
+
+  return absoluteIndex;
 }
 
 function computeListWindowStart(totalItems, selectedIndex, maxVisible) {

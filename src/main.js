@@ -6,6 +6,8 @@ const [
   { Game },
   { Input },
   { BattleScene },
+  { CutsceneScene },
+  { GmEditScene },
   { InventoryScene },
   { ProfileScene },
   { SkillScene },
@@ -20,6 +22,8 @@ const [
   importWithVersion("./core/Game.js"),
   importWithVersion("./core/Input.js"),
   importWithVersion("./scenes/BattleScene.js"),
+  importWithVersion("./scenes/CutsceneScene.js"),
+  importWithVersion("./scenes/GmEditScene.js"),
   importWithVersion("./scenes/InventoryScene.js"),
   importWithVersion("./scenes/ProfileScene.js"),
   importWithVersion("./scenes/SkillScene.js"),
@@ -74,6 +78,8 @@ game.registerScene("start", new StartScene(game));
 game.registerScene("settings", new SettingsScene(game));
 game.registerScene("world", new WorldScene(game));
 game.registerScene("battle", new BattleScene(game));
+game.registerScene("cutscene_overlay", new CutsceneScene(game));
+game.registerScene("gm_edit", new GmEditScene(game));
 game.registerScene("profile", new ProfileScene(game));
 game.registerScene("inventory", new InventoryScene(game));
 game.registerScene("skills", new SkillScene(game));

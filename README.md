@@ -12,6 +12,12 @@ node server/index.mjs
 
 Apri `http://localhost:8080`.
 
+### ColliMap (spawn simulator)
+
+- Locale: `http://localhost:8080/collimap.html`
+- GitHub Pages: `https://ordwa.github.io/AGOAD/collimap.html`
+- In gioco: `SETTINGS` -> `GM-EDIT` -> `ColliMap`
+
 ### Launcher Chrome locale (macOS)
 
 Per aprire il gioco in finestra app con dimensione iniziale iPhone 13:

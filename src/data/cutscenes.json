@@ -1,0 +1,36 @@
+{
+  "speakers": [
+    {
+      "id": "shaman",
+      "label": "Sciamano del villaggio",
+      "assetPath": "../assets/entity/cutscene/cutscene_elder.png",
+      "npcId": ""
+    }
+  ],
+  "cutscenes": [
+    {
+      "id": "intro",
+      "speakerId": "shaman",
+      "lines": [
+        "Ehi inutile sacco di merda!",
+        "Io sono Grik. Lo Sciamano.",
+        "Questo è il villaggio.",
+        "Non un dungeon. Non “loot gratis”. Casa nostra.",
+        "Gli eroi arrivano sempre uguali:",
+        "sorriso idiota, spada grossa, e “per la giustizia”. Poi bruciano tutto.",
+        "Tu invece non sei un cavaliere. Toglitelo dalla testa!",
+        "Sei un goblin. Fine.",
+        "Piccolo. Verde. Furbo.",
+        "E se non sei furbo, muori. Qui funziona così.",
+        "Gli altri ti chiamano mostro.",
+        "Tu chiamali pure “pezzi di merda” e vai avanti.",
+        "Non fare l’eroe.",
+        "Fai il vivo.",
+        "Ho visto fumo nero.",
+        "Problemi grossi.",
+        "Ora vai e cerca di aiutare i tuoi amici.",
+        "E non farti ammazzare subito, che mi fai fare brutta figura."
+      ]
+    }
+  ]
+}

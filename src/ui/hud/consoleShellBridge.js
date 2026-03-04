@@ -27,7 +27,7 @@ const DEFAULT_TAB_ACTIONS = Object.freeze({
     });
   },
   slot_b: ({ game }) => {
-    const activeScene = game.currentScene;
+    const activeScene = game.overlayScene ?? game.currentScene;
     if (activeScene && typeof activeScene.closeFromNavbar === "function") {
       activeScene.closeFromNavbar();
       return;
@@ -63,6 +63,9 @@ export function createConsoleShellBridge({
 
   const isHudEnabledForScene = (sceneName) => {
     const layout = resolveSceneNavbarLayout(sceneName, game);
+    if (game?.overlayScene) {
+      return layout.visible === true;
+    }
     return layout.visible === true && isHudVisibleInScene(sceneName);
   };
 
@@ -106,6 +109,8 @@ export function createConsoleShellBridge({
     },
   };
 
+  let lastLayoutKey = "";
+
   activeConsoleShell.updateCallbacks(callbacks);
   syncConsoleShellForScene(true);
 
@@ -132,13 +137,17 @@ export function createConsoleShellBridge({
 
   function syncConsoleShellForScene(force) {
     const sceneName = game.currentSceneName;
-    if (!force && sceneName === lastSceneName) {
+    const layoutKey = `${sceneName}|overlay:${game.overlaySceneName || ""}`;
+    if (!force && layoutKey === lastLayoutKey) {
       return;
     }
 
+    lastLayoutKey = layoutKey;
     lastSceneName = sceneName;
     const navbarLayout = resolveSceneNavbarLayout(sceneName, game);
-    const visible = navbarLayout.visible === true && isHudVisibleInScene(sceneName);
+    const visible = game?.overlayScene
+      ? navbarLayout.visible === true
+      : navbarLayout.visible === true && isHudVisibleInScene(sceneName);
     activeConsoleShell.setVisible(visible);
 
     if (!visible) {
@@ -173,6 +182,14 @@ function defaultSceneVisibility(sceneName) {
 }
 
 function resolveSceneNavbarLayout(sceneName, game) {
+  const overlayScene = game?.overlayScene;
+  if (overlayScene && typeof overlayScene.getNavbarLayout === "function") {
+    const overlayLayout = overlayScene.getNavbarLayout();
+    if (overlayLayout && typeof overlayLayout === "object") {
+      return overlayLayout;
+    }
+  }
+
   const baseLayout = resolveNavbarLayout(sceneName);
   const activeScene = game?.currentScene;
   if (activeScene && typeof activeScene.getNavbarLayout === "function") {

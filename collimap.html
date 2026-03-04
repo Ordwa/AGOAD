@@ -3,42 +3,47 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Collision Map Editor</title>
+  <title>ColliMap</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --panel-2: #1f2937;
-      --border: #334155;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #22c55e;
-      --accent-2: #38bdf8;
-      --danger: #ef4444;
-      --warn: #f59e0b;
-      --shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
-      --radius: 16px;
+      --bg: #0a0c10;
+      --panel: #12161d;
+      --panel-2: #171d27;
+      --border: #2e3746;
+      --text: #e6ebf2;
+      --muted: #9aa5b5;
+      --accent: #3e86ff;
+      --accent-2: #66d3c7;
+      --danger: #dd5d61;
+      --warn: #d8a24b;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      --radius: 10px;
     }
 
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: linear-gradient(180deg, #0b1220 0%, #111827 100%);
+      font-family: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background:
+        linear-gradient(0deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        #090c12;
+      background-size: 24px 24px, 24px 24px, auto;
       color: var(--text);
+      letter-spacing: 0.01em;
     }
 
     .app {
       height: 100vh;
       display: grid;
-      grid-template-columns: 380px minmax(0, 1fr);
-      gap: 16px;
-      padding: 16px;
+      grid-template-columns: 420px minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px;
     }
 
     .panel {
-      background: rgba(17, 24, 39, 0.95);
+      background: rgba(18, 22, 29, 0.96);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
@@ -67,7 +72,7 @@
 
     .topbar,
     .bottombar {
-      padding: 14px 16px;
+      padding: 10px 12px;
       border-bottom: 1px solid var(--border);
       display: flex;
       gap: 10px;
@@ -84,10 +89,8 @@
     .canvas-wrap {
       min-height: 0;
       overflow: auto;
-      padding: 16px;
-      background:
-        radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 35%),
-        linear-gradient(180deg, rgba(15, 23, 42, 0.3), rgba(15, 23, 42, 0.7));
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(11, 15, 22, 0.75), rgba(11, 15, 22, 0.92));
     }
 
     .canvas-stage {
@@ -98,9 +101,9 @@
     }
 
     canvas {
-      border-radius: 14px;
-      border: 1px solid #475569;
-      background: #0b1220;
+      border-radius: 8px;
+      border: 1px solid #3b4658;
+      background: #0a0f18;
       image-rendering: pixelated;
       box-shadow: var(--shadow);
       max-width: none;
@@ -108,15 +111,18 @@
 
     h1 {
       margin: 0;
-      font-size: 20px;
+      font-size: 18px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
       line-height: 1.2;
     }
 
     h2 {
       margin: 0 0 10px;
-      font-size: 14px;
+      font-size: 13px;
       color: #f8fafc;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
 
     .hint {
@@ -126,9 +132,9 @@
     }
 
     .card {
-      background: rgba(31, 41, 55, 0.8);
+      background: rgba(23, 29, 39, 0.9);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 8px;
       padding: 12px;
     }
 
@@ -153,11 +159,11 @@
     textarea,
     select {
       width: 100%;
-      background: #0f172a;
+      background: #0d121a;
       color: var(--text);
-      border: 1px solid #475569;
-      border-radius: 10px;
-      padding: 10px 12px;
+      border: 1px solid #3f4c61;
+      border-radius: 6px;
+      padding: 9px 11px;
       font: inherit;
       outline: none;
     }
@@ -187,40 +193,40 @@
 
     button,
     .file-btn {
-      border: 1px solid #475569;
-      background: #0f172a;
+      border: 1px solid #43536b;
+      background: #111826;
       color: var(--text);
-      border-radius: 10px;
+      border-radius: 6px;
       padding: 10px 12px;
+      min-height: 42px;
       font: inherit;
       cursor: pointer;
-      transition: 0.18s ease;
-      white-space: nowrap;
+      transition: 0.16s ease;
+      white-space: normal;
+      line-height: 1.25;
+      text-align: center;
     }
 
     button:hover,
     .file-btn:hover {
       transform: translateY(-1px);
-      border-color: #64748b;
-      background: #162033;
+      border-color: #6e7e97;
+      background: #152034;
     }
 
     button.primary {
-      background: linear-gradient(180deg, #22c55e, #16a34a);
-      border-color: #16a34a;
-      color: white;
+      background: #224474;
+      border-color: #2e5d99;
     }
 
     button.secondary {
-      background: linear-gradient(180deg, #38bdf8, #0284c7);
-      border-color: #0284c7;
-      color: white;
+      background: #194c5e;
+      border-color: #1f6378;
     }
 
     button.warn {
-      background: linear-gradient(180deg, #f59e0b, #d97706);
-      border-color: #d97706;
-      color: white;
+      background: #5f4520;
+      border-color: #7d5e2d;
     }
 
     button.ghost.active {
@@ -272,9 +278,9 @@
 
     .status {
       padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #475569;
-      background: #0f172a;
+      border-radius: 6px;
+      border: 1px solid #43536b;
+      background: #0d121a;
       font-size: 12px;
       color: var(--muted);
     }
@@ -323,7 +329,7 @@
     <aside class="panel sidebar">
       <div class="sidebar-inner">
         <div>
-          <h1>Collision Map Editor</h1>
+          <h1>ColliMap</h1>
           <div class="hint" style="margin-top:8px;">
             Carica <strong>mappa immagine</strong> e <strong>JSON opzionale</strong>. Se il JSON non esiste,
             puoi generarlo da zero e scaricarlo già pronto.
@@ -348,6 +354,30 @@
           </div>
           <div class="hint" style="margin-top:10px;">
             Se carichi solo l'immagine, la UI crea una base JSON usando tileSize, righe e colonne impostate qui sotto.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>1B. Config gioco (diretto)</h2>
+          <div class="grid-2">
+            <label>
+              Mappa progetto
+              <select id="projectMapSelect">
+                <option value="">(nessuna mappa)</option>
+              </select>
+            </label>
+            <label>
+              Azione elenco
+              <button id="refreshProjectMapsBtn" type="button">Aggiorna mappe</button>
+            </label>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button id="loadProjectMapBtn" class="primary">Carica da progetto</button>
+            <button id="saveProjectMapBtn" class="secondary">Salva nel progetto</button>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            Questi pulsanti modificano direttamente la config mappa del gioco via API
+            (<code>/api/collimap/*</code>). In assenza API resta disponibile il flusso file manuale.
           </div>
         </section>
 
@@ -556,6 +586,10 @@
       zoomValue: document.getElementById('zoomValue'),
       canvasWrap: document.getElementById('canvasWrap'),
       canvas: document.getElementById('mapCanvas'),
+      projectMapSelect: document.getElementById('projectMapSelect'),
+      refreshProjectMapsBtn: document.getElementById('refreshProjectMapsBtn'),
+      loadProjectMapBtn: document.getElementById('loadProjectMapBtn'),
+      saveProjectMapBtn: document.getElementById('saveProjectMapBtn'),
       newJsonBtn: document.getElementById('newJsonBtn'),
       exportBtn: document.getElementById('exportBtn'),
       inferBtn: document.getElementById('inferBtn'),
@@ -613,11 +647,14 @@
       hover: null,
       mouseDown: false,
       importedRoot: {},
-      hasImportedJson: false
+      hasImportedJson: false,
+      projectMaps: [],
+      selectedProjectMapId: ''
     };
 
     const history = [];
     const redoStack = [];
+    const PROJECT_API_TIMEOUT_MS = 8000;
 
     function deepClone(obj) {
       return JSON.parse(JSON.stringify(obj));
@@ -762,6 +799,234 @@
     function setStatus(message, tone = '') {
       el.status.textContent = message;
       el.status.className = 'status' + (tone ? ` ${tone}` : '');
+    }
+
+    function setProjectConfigControlsEnabled(enabled) {
+      const isEnabled = Boolean(enabled);
+      el.projectMapSelect.disabled = !isEnabled;
+      el.loadProjectMapBtn.disabled = !isEnabled;
+      el.saveProjectMapBtn.disabled = !isEnabled;
+    }
+
+    function renderProjectMapSelect(preferredId = '') {
+      const targetId = String(preferredId || state.selectedProjectMapId || '').trim();
+      const previousValue = String(el.projectMapSelect.value || '').trim();
+      const effectiveId = targetId || previousValue;
+      const options = state.projectMaps;
+
+      el.projectMapSelect.innerHTML = '';
+      if (!Array.isArray(options) || options.length <= 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '(nessuna mappa)';
+        el.projectMapSelect.appendChild(option);
+        el.projectMapSelect.value = '';
+        state.selectedProjectMapId = '';
+        setProjectConfigControlsEnabled(false);
+        return;
+      }
+
+      options.forEach((entry) => {
+        const option = document.createElement('option');
+        option.value = entry.id;
+        option.textContent = entry.id;
+        el.projectMapSelect.appendChild(option);
+      });
+
+      const hasTarget = options.some((entry) => entry.id === effectiveId);
+      el.projectMapSelect.value = hasTarget ? effectiveId : options[0].id;
+      state.selectedProjectMapId = el.projectMapSelect.value;
+      setProjectConfigControlsEnabled(true);
+    }
+
+    function getSelectedProjectMapEntry() {
+      const selectedId = String(el.projectMapSelect.value || state.selectedProjectMapId || '').trim();
+      if (!selectedId) {
+        return null;
+      }
+
+      return state.projectMaps.find((entry) => entry.id === selectedId) || null;
+    }
+
+    async function fetchProjectJson(url, options = {}) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), PROJECT_API_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            Accept: 'application/json',
+            ...(options.headers || {})
+          },
+          signal: controller.signal
+        });
+        const text = await response.text();
+        let parsed = null;
+        if (text.trim().length > 0) {
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = null;
+          }
+        }
+
+        if (!response.ok) {
+          const errorMessage =
+            (parsed && typeof parsed.error === 'string' && parsed.error.trim()) ||
+            `Errore API (${response.status}).`;
+          throw new Error(errorMessage);
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+          throw new Error('Risposta API non valida.');
+        }
+
+        return parsed;
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          throw new Error('Timeout API progetto.');
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    function resolveProjectAssetPath(definitionPath, assetPath) {
+      const rawDefinition = String(definitionPath || '').trim();
+      const rawAsset = String(assetPath || '').trim();
+      if (!rawDefinition || !rawAsset) {
+        return '';
+      }
+
+      try {
+        const manifestBase = new URL('/src/maps/maps.json', window.location.origin);
+        const definitionUrl = new URL(rawDefinition, manifestBase);
+        const assetUrl = new URL(rawAsset, definitionUrl);
+        return assetUrl.pathname + assetUrl.search + assetUrl.hash;
+      } catch {
+        return '';
+      }
+    }
+
+    function releaseCurrentImageUrl() {
+      if (typeof state.imageUrl === 'string' && state.imageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(state.imageUrl);
+      }
+      state.imageUrl = '';
+    }
+
+    async function loadImageFromProjectPath(assetPath) {
+      const targetPath = String(assetPath || '').trim();
+      if (!targetPath) {
+        return false;
+      }
+
+      return new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => {
+          releaseCurrentImageUrl();
+          state.image = image;
+          state.imageUrl = targetPath;
+          state.imageFileName = targetPath.split('/').pop() || 'map.png';
+          render();
+          resolve(true);
+        };
+        image.onerror = () => resolve(false);
+        image.src = targetPath;
+      });
+    }
+
+    async function refreshProjectMaps(options = {}) {
+      const { silent = false, preferredId = '' } = options;
+      try {
+        const payload = await fetchProjectJson('/api/collimap/manifest');
+        const manifestMaps = Array.isArray(payload.maps) ? payload.maps : [];
+        const normalized = manifestMaps
+          .map((entry) => ({
+            id: String(entry?.id || '').trim(),
+            definition: String(entry?.definition || '').trim()
+          }))
+          .filter((entry) => entry.id.length > 0 && entry.definition.length > 0);
+
+        if (normalized.length <= 0) {
+          throw new Error('Manifest mappe vuoto.');
+        }
+
+        state.projectMaps = normalized;
+        renderProjectMapSelect(preferredId);
+        if (!silent) {
+          setStatus(`Config progetto aggiornata: ${normalized.length} mappe.`, 'success');
+        }
+      } catch (error) {
+        state.projectMaps = [];
+        renderProjectMapSelect();
+        if (!silent) {
+          setStatus(
+            `API progetto non disponibile: ${error.message || 'usa import/export file manuale.'}`,
+            'error',
+          );
+        }
+      }
+    }
+
+    async function loadProjectMap() {
+      const entry = getSelectedProjectMapEntry();
+      if (!entry) {
+        setStatus('Seleziona una mappa progetto valida.', 'error');
+        return;
+      }
+
+      try {
+        const payload = await fetchProjectJson(`/api/collimap/map?id=${encodeURIComponent(entry.id)}`);
+        if (!payload.map || typeof payload.map !== 'object') {
+          throw new Error('Config mappa non valida.');
+        }
+
+        populateFromJson(payload.map);
+        state.selectedProjectMapId = entry.id;
+        renderProjectMapSelect(entry.id);
+
+        const resolvedAssetPath = resolveProjectAssetPath(
+          payload.definition || entry.definition,
+          payload.map.asset || state.asset,
+        );
+        if (resolvedAssetPath) {
+          const imageLoaded = await loadImageFromProjectPath(resolvedAssetPath);
+          if (imageLoaded) {
+            setStatus(`Config mappa "${entry.id}" caricata dal progetto.`, 'success');
+            return;
+          }
+        }
+
+        setStatus(`Config mappa "${entry.id}" caricata dal progetto.`, 'success');
+      } catch (error) {
+        setStatus(`Errore caricamento config progetto: ${error.message}`, 'error');
+      }
+    }
+
+    async function saveProjectMap() {
+      const entry = getSelectedProjectMapEntry();
+      if (!entry) {
+        setStatus('Seleziona una mappa progetto valida.', 'error');
+        return;
+      }
+
+      try {
+        const mapData = buildJson();
+        await fetchProjectJson(`/api/collimap/map?id=${encodeURIComponent(entry.id)}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            map: mapData
+          })
+        });
+        setStatus(`Config mappa "${entry.id}" salvata nel progetto.`, 'success');
+      } catch (error) {
+        setStatus(`Errore salvataggio config progetto: ${error.message}`, 'error');
+      }
     }
 
 
@@ -1265,7 +1530,7 @@
 
     async function loadImageFile(file) {
       if (!file) return;
-      if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
+      releaseCurrentImageUrl();
       const url = URL.createObjectURL(file);
       const image = new Image();
       image.onload = () => {
@@ -1447,6 +1712,12 @@
 
     el.imageInput.addEventListener('change', event => loadImageFile(event.target.files[0]));
     el.jsonInput.addEventListener('change', event => loadJsonFile(event.target.files[0]));
+    el.projectMapSelect.addEventListener('change', () => {
+      state.selectedProjectMapId = String(el.projectMapSelect.value || '').trim();
+    });
+    el.refreshProjectMapsBtn.addEventListener('click', () => refreshProjectMaps());
+    el.loadProjectMapBtn.addEventListener('click', loadProjectMap);
+    el.saveProjectMapBtn.addEventListener('click', saveProjectMap);
     el.newJsonBtn.addEventListener('click', createNewJsonFromCurrentInputs);
     el.exportBtn.addEventListener('click', exportJson);
     el.inferBtn.addEventListener('click', () => {
@@ -1555,7 +1826,7 @@
       });
     });
 
-    function boot() {
+    async function boot() {
       state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
       syncStateToInputs();
       syncRowsEditor();
@@ -1563,7 +1834,9 @@
       render();
       setTool('blocked');
       updateSimulationButton();
-      setStatus('Pronto. Carica immagine e JSON, oppure crea un nuovo JSON da zero.');
+      setProjectConfigControlsEnabled(false);
+      await refreshProjectMaps({ silent: true });
+      setStatus('ColliMap pronto. Carica file oppure usa la config progetto diretta.');
     }
 
     boot();

@@ -1372,14 +1372,6 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
   }
   sourceContext.drawImage(sourceImage, 0, 0);
 
-  const frameCanvas = document.createElement("canvas");
-  frameCanvas.width = frameWidth;
-  frameCanvas.height = frameHeight;
-  const frameContext = frameCanvas.getContext("2d");
-  if (!frameContext) {
-    return [];
-  }
-
   const frames = [];
   for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
     const sourceX = frameIndex * frameWidth;
@@ -1387,8 +1379,16 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
       break;
     }
 
-    frameContext.clearRect(0, 0, frameWidth, frameHeight);
-    frameContext.drawImage(
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = frameWidth;
+    outputCanvas.height = frameHeight;
+    const outputContext = outputCanvas.getContext("2d");
+    if (!outputContext) {
+      continue;
+    }
+
+    outputContext.imageSmoothingEnabled = false;
+    outputContext.drawImage(
       sourceCanvas,
       sourceX,
       0,
@@ -1399,165 +1399,10 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
       frameWidth,
       frameHeight,
     );
-
-    const imageData = frameContext.getImageData(0, 0, frameWidth, frameHeight);
-    maskFrameBackground(imageData.data, frameWidth, frameHeight);
-
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = frameWidth;
-    outputCanvas.height = frameHeight;
-    const outputContext = outputCanvas.getContext("2d");
-    if (!outputContext) {
-      continue;
-    }
-
-    outputContext.putImageData(imageData, 0, 0);
     frames.push(outputCanvas);
   }
 
   return frames;
-}
-
-function maskFrameBackground(pixelData, width, height) {
-  const backgroundSamples = collectBorderColorSamples(pixelData, width, height);
-  if (backgroundSamples.length <= 0) {
-    return;
-  }
-
-  const backgroundMinDistance = 20;
-  const totalPixels = width * height;
-  const queue = new Uint32Array(totalPixels);
-  const visited = new Uint8Array(totalPixels);
-  let queueHead = 0;
-  let queueTail = 0;
-
-  const tryQueuePixel = (x, y) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) {
-      return;
-    }
-
-    const pixelIndex = y * width + x;
-    if (visited[pixelIndex]) {
-      return;
-    }
-
-    const dataOffset = pixelIndex * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      visited[pixelIndex] = 1;
-      return;
-    }
-
-    const minDistance = getMinColorDistance(pixelData, dataOffset, backgroundSamples);
-    if (minDistance > backgroundMinDistance) {
-      return;
-    }
-
-    visited[pixelIndex] = 1;
-    queue[queueTail] = pixelIndex;
-    queueTail += 1;
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    tryQueuePixel(x, 0);
-    tryQueuePixel(x, height - 1);
-  }
-  for (let y = 0; y < height; y += 1) {
-    tryQueuePixel(0, y);
-    tryQueuePixel(width - 1, y);
-  }
-
-  while (queueHead < queueTail) {
-    const pixelIndex = queue[queueHead];
-    queueHead += 1;
-    const x = pixelIndex % width;
-    const y = (pixelIndex - x) / width;
-    const dataOffset = pixelIndex * 4;
-    pixelData[dataOffset + 3] = 0;
-
-    tryQueuePixel(x + 1, y);
-    tryQueuePixel(x - 1, y);
-    tryQueuePixel(x, y + 1);
-    tryQueuePixel(x, y - 1);
-  }
-}
-
-function collectBorderColorSamples(pixelData, width, height) {
-  const samples = [];
-  const seen = new Set();
-
-  const addSampleAt = (x, y, { preferBackground = true } = {}) => {
-    const safeX = clampNumber(Math.floor(x), 0, width - 1);
-    const safeY = clampNumber(Math.floor(y), 0, height - 1);
-    const dataOffset = (safeY * width + safeX) * 4;
-    const alpha = pixelData[dataOffset + 3];
-    if (alpha <= 0) {
-      return;
-    }
-
-    const r = pixelData[dataOffset];
-    const g = pixelData[dataOffset + 1];
-    const b = pixelData[dataOffset + 2];
-
-    if (preferBackground) {
-      if (b < g + 8 || b < r + 12) {
-        return;
-      }
-      const brightness = (r + g + b) / 3;
-      if (brightness < 96) {
-        return;
-      }
-    }
-
-    const dedupeKey = `${r >> 3}:${g >> 3}:${b >> 3}`;
-    if (seen.has(dedupeKey)) {
-      return;
-    }
-
-    seen.add(dedupeKey);
-    samples.push({ r, g, b });
-  };
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: true });
-    addSampleAt(x, height - 1, { preferBackground: true });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: true });
-    addSampleAt(width - 1, y, { preferBackground: true });
-  }
-
-  if (samples.length > 0) {
-    return samples;
-  }
-
-  for (let x = 0; x < width; x += 1) {
-    addSampleAt(x, 0, { preferBackground: false });
-    addSampleAt(x, height - 1, { preferBackground: false });
-  }
-  for (let y = 0; y < height; y += 1) {
-    addSampleAt(0, y, { preferBackground: false });
-    addSampleAt(width - 1, y, { preferBackground: false });
-  }
-
-  return samples;
-}
-
-function getMinColorDistance(pixelData, dataOffset, colorSamples) {
-  const r = pixelData[dataOffset];
-  const g = pixelData[dataOffset + 1];
-  const b = pixelData[dataOffset + 2];
-
-  let minDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < colorSamples.length; index += 1) {
-    const sample = colorSamples[index];
-    const distance = Math.abs(r - sample.r) + Math.abs(g - sample.g) + Math.abs(b - sample.b);
-    if (distance < minDistance) {
-      minDistance = distance;
-    }
-  }
-
-  return minDistance;
 }
 
 function clampNumber(value, min, max) {

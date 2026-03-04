@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cutscene Tool</title>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --panel: #12161d;
+      --panel-2: #171d27;
+      --border: #2e3746;
+      --text: #e6ebf2;
+      --muted: #9aa5b5;
+      --accent: #3e86ff;
+      --accent-2: #66d3c7;
+      --danger: #dd5d61;
+      --warn: #d8a24b;
+      --ok: #53b879;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background:
+        linear-gradient(0deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        #090c12;
+      background-size: 24px 24px, 24px 24px, auto;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(360px, 420px) minmax(0, 1fr);
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .panel {
+      background: rgba(18, 22, 29, 0.96);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-inner {
+      padding: 16px;
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-height: 0;
+    }
+
+    .topbar,
+    .bottombar {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .bottombar {
+      border-bottom: 0;
+      border-top: 1px solid var(--border);
+      justify-content: space-between;
+    }
+
+    .canvas-wrap {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(11, 15, 22, 0.75), rgba(11, 15, 22, 0.92));
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: #f8fafc;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: rgba(23, 29, 39, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 10px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      background: #0d121a;
+      color: var(--text);
+      border: 1px solid #3f4c61;
+      border-radius: 6px;
+      padding: 9px 11px;
+      font: inherit;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 160px;
+      line-height: 1.45;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button,
+    .file-btn {
+      border: 1px solid #43536b;
+      background: #111826;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 10px 12px;
+      min-height: 42px;
+      font: inherit;
+      cursor: pointer;
+      transition: 0.16s ease;
+      white-space: normal;
+      line-height: 1.25;
+      text-align: center;
+    }
+
+    button:hover,
+    .file-btn:hover {
+      transform: translateY(-1px);
+      border-color: #6e7e97;
+      background: #152034;
+    }
+
+    button.primary {
+      background: #224474;
+      border-color: #2e5d99;
+    }
+
+    button.secondary {
+      background: #194c5e;
+      border-color: #1f6378;
+    }
+
+    button.warn {
+      background: #5f4520;
+      border-color: #7d5e2d;
+    }
+
+    button.danger {
+      background: #62262b;
+      border-color: #7d353b;
+    }
+
+    button:disabled,
+    .file-btn:has(input:disabled) {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #41506a;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 11px;
+      color: #dce7f7;
+      background: #0f172a;
+      gap: 6px;
+    }
+
+    .chip.ok {
+      border-color: rgba(83, 184, 121, 0.7);
+      color: #ccf5db;
+    }
+
+    .chip.warn {
+      border-color: rgba(216, 162, 75, 0.7);
+      color: #fae8c2;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 20px;
+    }
+
+    .status.ok { color: #c8f0d6; }
+    .status.error { color: #f7c4c8; }
+
+    .dialog-preview {
+      border: 1px dashed #4a596e;
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(9, 13, 20, 0.8);
+      min-height: 130px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    .dialog-preview .speaker {
+      font-size: 12px;
+      color: #f9e8c1;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .dialog-preview .line {
+      font-size: 12px;
+      color: #dfe8f4;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .asset-preview {
+      width: 84px;
+      height: 84px;
+      border: 1px solid #46566d;
+      border-radius: 8px;
+      background: #0c1119;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .asset-preview img {
+      max-width: 100%;
+      max-height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      color: #cfe0f9;
+      background: #0d1522;
+      border: 1px solid #37485f;
+      border-radius: 6px;
+      padding: 6px 8px;
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 1060px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+      }
+
+      .sidebar,
+      .main {
+        min-height: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="panel sidebar">
+      <div class="sidebar-inner">
+        <div class="card">
+          <h2>Contesto</h2>
+          <div class="hint">
+            Gestisci in modo centralizzato speaker e dialoghi delle cutscene.
+            L'<strong>ID dialogo</strong> e' il trigger da usare nel gioco (esempio: <code>intro</code>).
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Dati Progetto</h2>
+          <div class="row">
+            <button id="btnLoadConfig" class="primary">Carica Config Progetto</button>
+            <button id="btnSaveConfig" class="secondary">Salva Config Progetto</button>
+          </div>
+          <div class="row" style="margin-top: 8px;">
+            <button id="btnExportJson">Esporta JSON</button>
+            <label class="file-btn">Importa JSON
+              <input id="importJsonInput" type="file" accept=".json,application/json" />
+            </label>
+          </div>
+          <div class="status" id="globalStatus"></div>
+        </div>
+
+        <div class="card">
+          <h2>Stato API</h2>
+          <div class="row">
+            <span id="apiConfigChip" class="chip warn">Config API: N/D</span>
+            <span id="apiUploadChip" class="chip warn">Upload API: N/D</span>
+          </div>
+          <div class="hint" style="margin-top: 8px;">
+            Se il server API non e' disponibile, il tool salva in memoria locale del browser.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="panel main">
+      <div class="topbar">
+        <h1>Cutscene Tool</h1>
+      </div>
+
+      <div class="canvas-wrap">
+        <div class="card" style="margin-bottom: 14px;">
+          <h2>Speaker</h2>
+          <div class="grid-2">
+            <label>
+              Speaker esistente
+              <select id="speakerSelect"></select>
+            </label>
+            <label>
+              NPC configurato in gioco
+              <select id="speakerNpcSelect"></select>
+            </label>
+          </div>
+
+          <div class="grid-2" style="margin-top: 10px;">
+            <label>
+              ID Speaker
+              <input id="speakerIdInput" type="text" placeholder="es. elder" />
+            </label>
+            <label>
+              Label Speaker
+              <input id="speakerLabelInput" type="text" placeholder="es. ANZIANO" />
+            </label>
+          </div>
+
+          <div class="grid-2" style="margin-top: 10px; align-items: start;">
+            <div>
+              <label>
+                Asset path speaker
+                <input id="speakerAssetPathInput" type="text" placeholder="../assets/entity/....png" />
+              </label>
+              <div class="row" style="margin-top: 8px;">
+                <label class="file-btn">Seleziona PNG
+                  <input id="speakerPngInput" type="file" accept="image/png" />
+                </label>
+                <button id="btnUploadSpeakerPng" class="secondary">Upload PNG</button>
+              </div>
+            </div>
+            <div>
+              <div class="asset-preview">
+                <img id="speakerPreviewImage" alt="preview speaker" />
+              </div>
+              <div class="status" id="speakerStatus"></div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top: 10px;">
+            <button id="btnNewSpeaker">Nuovo Speaker</button>
+            <button id="btnSaveSpeaker" class="primary">Salva Speaker</button>
+            <button id="btnDeleteSpeaker" class="danger">Elimina Speaker</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Dialogo Cutscene</h2>
+          <div class="grid-2">
+            <label>
+              Dialogo esistente
+              <select id="dialogSelect"></select>
+            </label>
+            <label>
+              Speaker del dialogo
+              <select id="dialogSpeakerSelect"></select>
+            </label>
+          </div>
+
+          <div class="grid-2" style="margin-top: 10px;">
+            <label>
+              ID Dialogo (trigger)
+              <input id="dialogIdInput" type="text" placeholder="es. intro" />
+            </label>
+            <div>
+              <div class="hint" style="margin-top: 22px;">
+                Usa questo ID nel gioco per lanciare la cutscene (es. payload.dialogId = "intro").
+              </div>
+            </div>
+          </div>
+
+          <label style="margin-top: 10px;">
+            Testo dialogo (una riga per linea)
+            <textarea id="dialogLinesInput" placeholder="Riga 1&#10;Riga 2&#10;Riga 3"></textarea>
+          </label>
+
+          <div class="row" style="margin-top: 10px;">
+            <button id="btnNewDialog">Nuovo Dialogo</button>
+            <button id="btnSaveDialog" class="primary">Salva Dialogo</button>
+            <button id="btnDeleteDialog" class="danger">Elimina Dialogo</button>
+          </div>
+
+          <div style="margin-top: 12px;" class="dialog-preview" id="dialogPreview">
+            <div class="speaker" id="previewSpeaker">NARRATORE</div>
+            <div class="line" id="previewLines">Nessuna linea dialogo.</div>
+          </div>
+          <div class="status" id="dialogStatus"></div>
+        </div>
+      </div>
+
+      <div class="bottombar">
+        <div class="hint">Cutscene caricate: <strong id="countCutscenes">0</strong></div>
+        <div class="hint">Speaker configurati: <strong id="countSpeakers">0</strong></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_CONFIG = Object.freeze({
+      speakers: [
+        {
+          id: "narrator",
+          label: "NARRATORE",
+          assetPath: "../assets/entity/cutscene/cutscene_elder.png",
+          npcId: "",
+        },
+      ],
+      cutscenes: [
+        {
+          id: "intro",
+          speakerId: "narrator",
+          lines: ["Benvenuto nel mondo di gioco."],
+        },
+      ],
+    });
+    const LOCAL_CUTSCENE_CONFIG_STORAGE_KEY = "agoad_cutscenes_config_v1";
+    const CUTSCENE_CONFIG_BASE_URL = new URL("./src/data/cutscenes.json", window.location.href);
+
+    const state = {
+      config: cloneConfig(DEFAULT_CONFIG),
+      npcOptions: [],
+      selectedSpeakerId: "",
+      selectedDialogId: "",
+      speakerEditOriginId: "",
+      dialogEditOriginId: "",
+      apiConfigAvailable: false,
+      apiUploadAvailable: false,
+      localConfigAvailable: false,
+      selectedSpeakerUploadFile: null,
+      previewRevision: 0,
+    };
+
+    const elements = {
+      globalStatus: document.getElementById("globalStatus"),
+      speakerStatus: document.getElementById("speakerStatus"),
+      dialogStatus: document.getElementById("dialogStatus"),
+      apiConfigChip: document.getElementById("apiConfigChip"),
+      apiUploadChip: document.getElementById("apiUploadChip"),
+
+      btnLoadConfig: document.getElementById("btnLoadConfig"),
+      btnSaveConfig: document.getElementById("btnSaveConfig"),
+      btnExportJson: document.getElementById("btnExportJson"),
+      importJsonInput: document.getElementById("importJsonInput"),
+
+      speakerSelect: document.getElementById("speakerSelect"),
+      speakerNpcSelect: document.getElementById("speakerNpcSelect"),
+      speakerIdInput: document.getElementById("speakerIdInput"),
+      speakerLabelInput: document.getElementById("speakerLabelInput"),
+      speakerAssetPathInput: document.getElementById("speakerAssetPathInput"),
+      speakerPngInput: document.getElementById("speakerPngInput"),
+      btnUploadSpeakerPng: document.getElementById("btnUploadSpeakerPng"),
+      btnNewSpeaker: document.getElementById("btnNewSpeaker"),
+      btnSaveSpeaker: document.getElementById("btnSaveSpeaker"),
+      btnDeleteSpeaker: document.getElementById("btnDeleteSpeaker"),
+      speakerPreviewImage: document.getElementById("speakerPreviewImage"),
+
+      dialogSelect: document.getElementById("dialogSelect"),
+      dialogSpeakerSelect: document.getElementById("dialogSpeakerSelect"),
+      dialogIdInput: document.getElementById("dialogIdInput"),
+      dialogLinesInput: document.getElementById("dialogLinesInput"),
+      btnNewDialog: document.getElementById("btnNewDialog"),
+      btnSaveDialog: document.getElementById("btnSaveDialog"),
+      btnDeleteDialog: document.getElementById("btnDeleteDialog"),
+      previewSpeaker: document.getElementById("previewSpeaker"),
+      previewLines: document.getElementById("previewLines"),
+
+      countCutscenes: document.getElementById("countCutscenes"),
+      countSpeakers: document.getElementById("countSpeakers"),
+    };
+
+    bindEvents();
+    initialize();
+
+    async function initialize() {
+      await loadNpcOptions();
+      const loaded = await loadProjectConfig();
+      if (!loaded) {
+        setGlobalStatus("Config progetto non caricata.", "error");
+      }
+      await checkApiAvailability();
+      refreshAllUi();
+    }
+
+    function bindEvents() {
+      elements.btnLoadConfig.addEventListener("click", async () => {
+        const loaded = await loadProjectConfig();
+        if (loaded) {
+          setGlobalStatus("Config cutscene caricata dal progetto.", "ok");
+          refreshAllUi();
+        }
+      });
+
+      elements.btnSaveConfig.addEventListener("click", async () => {
+        const saved = await saveProjectConfig();
+        if (saved) {
+          setGlobalStatus("Config cutscene salvata nel progetto.", "ok");
+        }
+      });
+
+      elements.btnExportJson.addEventListener("click", () => {
+        exportConfigJson();
+      });
+
+      elements.importJsonInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) {
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          state.config = normalizeConfig(parsed);
+          state.selectedSpeakerId = "";
+          state.selectedDialogId = "";
+          state.speakerEditOriginId = "";
+          state.dialogEditOriginId = "";
+          saveLocalConfigToStorage(state.config);
+          refreshAllUi();
+          setGlobalStatus("Config importata dal file JSON.", "ok");
+        } catch {
+          setGlobalStatus("Import JSON fallito: file non valido.", "error");
+        } finally {
+          event.target.value = "";
+        }
+      });
+
+      elements.speakerSelect.addEventListener("change", () => {
+        state.selectedSpeakerId = String(elements.speakerSelect.value || "");
+        applySpeakerSelectionToForm();
+      });
+
+      elements.btnNewSpeaker.addEventListener("click", () => {
+        state.selectedSpeakerId = "";
+        state.speakerEditOriginId = "";
+        clearSpeakerForm();
+        setSpeakerStatus("Nuovo speaker pronto.", "ok");
+      });
+
+      elements.btnSaveSpeaker.addEventListener("click", () => {
+        saveSpeakerFromForm();
+      });
+
+      elements.btnDeleteSpeaker.addEventListener("click", () => {
+        deleteCurrentSpeaker();
+      });
+
+      elements.speakerNpcSelect.addEventListener("change", () => {
+        const npcId = String(elements.speakerNpcSelect.value || "");
+        const npc = state.npcOptions.find((entry) => entry.id === npcId);
+        if (!npc) {
+          return;
+        }
+        elements.speakerLabelInput.value = npc.label;
+        if (!elements.speakerIdInput.value.trim()) {
+          elements.speakerIdInput.value = sanitizeId(npc.id);
+        }
+      });
+
+      elements.speakerPngInput.addEventListener("change", async (event) => {
+        state.selectedSpeakerUploadFile = event.target.files?.[0] ?? null;
+        if (state.selectedSpeakerUploadFile) {
+          const previewDataUrl = await readFileAsDataUrl(state.selectedSpeakerUploadFile);
+          if (previewDataUrl) {
+            updateSpeakerPreview(previewDataUrl);
+          }
+          setSpeakerStatus(`File selezionato: ${state.selectedSpeakerUploadFile.name}`, "ok");
+        }
+      });
+
+      elements.btnUploadSpeakerPng.addEventListener("click", async () => {
+        await uploadSpeakerPng();
+      });
+
+      elements.speakerAssetPathInput.addEventListener("input", () => {
+        updateSpeakerPreview(elements.speakerAssetPathInput.value.trim());
+      });
+
+      elements.dialogSelect.addEventListener("change", () => {
+        state.selectedDialogId = String(elements.dialogSelect.value || "");
+        applyDialogSelectionToForm();
+      });
+
+      elements.btnNewDialog.addEventListener("click", () => {
+        state.selectedDialogId = "";
+        state.dialogEditOriginId = "";
+        clearDialogForm();
+        setDialogStatus("Nuovo dialogo pronto.", "ok");
+      });
+
+      elements.btnSaveDialog.addEventListener("click", () => {
+        saveDialogFromForm();
+      });
+
+      elements.btnDeleteDialog.addEventListener("click", () => {
+        deleteCurrentDialog();
+      });
+
+      elements.dialogLinesInput.addEventListener("input", () => {
+        renderDialogPreview();
+      });
+
+      elements.dialogSpeakerSelect.addEventListener("change", () => {
+        renderDialogPreview();
+      });
+    }
+
+    async function checkApiAvailability() {
+      try {
+        await fetchProjectJson("/api/cutscene-editor/config");
+        state.apiConfigAvailable = true;
+        state.apiUploadAvailable = true;
+      } catch {
+        state.apiConfigAvailable = false;
+        state.apiUploadAvailable = false;
+      }
+      renderApiChips();
+    }
+
+    function renderApiChips() {
+      const configState = state.apiConfigAvailable ? "OK" : state.localConfigAvailable ? "LOCAL" : "OFF";
+      const uploadState = state.apiUploadAvailable ? "OK" : state.localConfigAvailable ? "LOCAL" : "OFF";
+
+      elements.apiConfigChip.textContent = `Config API: ${configState}`;
+      elements.apiConfigChip.className =
+        `chip ${state.apiConfigAvailable || state.localConfigAvailable ? "ok" : "warn"}`;
+
+      elements.apiUploadChip.textContent = `Upload API: ${uploadState}`;
+      elements.apiUploadChip.className =
+        `chip ${state.apiUploadAvailable || state.localConfigAvailable ? "ok" : "warn"}`;
+    }
+
+    async function loadProjectConfig() {
+      try {
+        const payload = await fetchProjectJson("/api/cutscene-editor/config");
+        const config = normalizeConfig(payload?.config);
+        state.config = config;
+        saveLocalConfigToStorage(config);
+        state.selectedSpeakerId = "";
+        state.selectedDialogId = "";
+        state.speakerEditOriginId = "";
+        state.dialogEditOriginId = "";
+        state.apiConfigAvailable = true;
+        state.apiUploadAvailable = true;
+        state.localConfigAvailable = true;
+        renderApiChips();
+        return true;
+      } catch {
+        const localConfig = loadLocalConfigFromStorage();
+        if (localConfig) {
+          state.config = normalizeConfig(localConfig);
+          state.localConfigAvailable = true;
+          state.apiConfigAvailable = false;
+          state.apiUploadAvailable = false;
+          renderApiChips();
+          setGlobalStatus("Config caricata da memoria locale.", "ok");
+          return true;
+        }
+
+        try {
+          const fallback = await fetchProjectJson("./src/data/cutscenes.json", { skipApiCheck: true });
+          state.config = normalizeConfig(fallback);
+          state.localConfigAvailable = false;
+          state.apiConfigAvailable = false;
+          state.apiUploadAvailable = false;
+          renderApiChips();
+          return true;
+        } catch {
+          state.localConfigAvailable = false;
+          state.apiConfigAvailable = false;
+          state.apiUploadAvailable = false;
+          renderApiChips();
+          return false;
+        }
+      }
+    }
+
+    async function saveProjectConfig() {
+      const configPayload = normalizeConfig(state.config);
+
+      try {
+        await fetchProjectJson("/api/cutscene-editor/config", {
+          method: "PUT",
+          body: JSON.stringify({ config: configPayload }),
+        });
+        saveLocalConfigToStorage(configPayload);
+        state.localConfigAvailable = true;
+        state.apiConfigAvailable = true;
+        state.apiUploadAvailable = true;
+        renderApiChips();
+        return true;
+      } catch {
+        saveLocalConfigToStorage(configPayload);
+        state.localConfigAvailable = true;
+        state.apiConfigAvailable = false;
+        state.apiUploadAvailable = false;
+        renderApiChips();
+        setGlobalStatus("API non disponibile: config salvata localmente.", "ok");
+        return true;
+      }
+    }
+
+    async function loadNpcOptions() {
+      try {
+        const payload = await fetchProjectJson("/api/cutscene-editor/npcs", { skipApiCheck: true });
+        const npcs = Array.isArray(payload?.npcs) ? payload.npcs : [];
+        state.npcOptions = npcs
+          .map((npc) => ({
+            id: String(npc?.id ?? "").trim(),
+            label: String(npc?.name ?? npc?.label ?? "").trim(),
+          }))
+          .filter((npc) => npc.id.length > 0)
+          .map((npc) => ({
+            ...npc,
+            label: npc.label || npc.id,
+          }));
+      } catch {
+        state.npcOptions = [];
+      }
+    }
+
+    async function uploadSpeakerPng() {
+      const file = state.selectedSpeakerUploadFile;
+      if (!file) {
+        setSpeakerStatus("Seleziona prima un file PNG.", "error");
+        return;
+      }
+
+      if (file.type !== "image/png") {
+        setSpeakerStatus("Formato non valido: serve un PNG.", "error");
+        return;
+      }
+
+      const dataUrl = await readFileAsDataUrl(file);
+      if (!dataUrl) {
+        setSpeakerStatus("Impossibile leggere il file PNG.", "error");
+        return;
+      }
+
+      try {
+        const payload = await fetchProjectJson("/api/cutscene-editor/upload-speaker-png", {
+          method: "POST",
+          body: JSON.stringify({
+            fileName: file.name,
+            dataUrl,
+          }),
+        });
+
+        const savedPath = String(payload?.assetPath ?? "").trim();
+        if (!savedPath) {
+          throw new Error("assetPath mancante");
+        }
+        applySpeakerAssetPath(savedPath, { bumpPreviewCache: true });
+        setSpeakerStatus(`PNG caricato: ${savedPath}`, "ok");
+        state.apiUploadAvailable = true;
+        state.apiConfigAvailable = true;
+        renderApiChips();
+      } catch {
+        applySpeakerAssetPath(dataUrl);
+        state.apiUploadAvailable = false;
+        state.apiConfigAvailable = false;
+        state.localConfigAvailable = true;
+        renderApiChips();
+        setSpeakerStatus("Upload API non disponibile: usato PNG locale (DataURL).", "ok");
+      }
+    }
+
+    function saveSpeakerFromForm() {
+      const rawId = String(elements.speakerIdInput.value || "").trim();
+      const speakerId = sanitizeId(rawId);
+      const label = String(elements.speakerLabelInput.value || "").trim();
+      const assetPath = String(elements.speakerAssetPathInput.value || "").trim();
+      const npcId = String(elements.speakerNpcSelect.value || "").trim();
+
+      if (!speakerId) {
+        setSpeakerStatus("ID speaker non valido.", "error");
+        return;
+      }
+
+      const nextSpeaker = {
+        id: speakerId,
+        label: label || speakerId.toUpperCase(),
+        assetPath: assetPath || "../assets/entity/cutscene/cutscene_elder.png",
+        npcId,
+      };
+
+      const speakers = [...state.config.speakers];
+      const originId = state.speakerEditOriginId || state.selectedSpeakerId;
+      const originIndex = speakers.findIndex((speaker) => speaker.id === originId);
+      if (originIndex >= 0) {
+        speakers.splice(originIndex, 1, nextSpeaker);
+      } else {
+        const existingIndex = speakers.findIndex((speaker) => speaker.id === speakerId);
+        if (existingIndex >= 0) {
+          speakers.splice(existingIndex, 1, nextSpeaker);
+        } else {
+          speakers.push(nextSpeaker);
+        }
+      }
+
+      if (originId && originId !== speakerId) {
+        state.config.cutscenes = state.config.cutscenes.map((cutscene) =>
+          cutscene.speakerId === originId
+            ? { ...cutscene, speakerId }
+            : cutscene,
+        );
+      }
+
+      state.config.speakers = speakers.sort((a, b) => a.id.localeCompare(b.id));
+      state.selectedSpeakerId = speakerId;
+      state.speakerEditOriginId = speakerId;
+      saveLocalConfigToStorage(state.config);
+      refreshAllUi();
+      setSpeakerStatus(`Speaker '${speakerId}' salvato.`, "ok");
+    }
+
+    function deleteCurrentSpeaker() {
+      const selectedId = state.speakerEditOriginId || state.selectedSpeakerId || sanitizeId(elements.speakerIdInput.value);
+      if (!selectedId) {
+        setSpeakerStatus("Nessuno speaker selezionato.", "error");
+        return;
+      }
+
+      const beforeCount = state.config.speakers.length;
+      state.config.speakers = state.config.speakers.filter((speaker) => speaker.id !== selectedId);
+      if (state.config.speakers.length === beforeCount) {
+        setSpeakerStatus("Speaker non trovato.", "error");
+        return;
+      }
+
+      state.config.cutscenes = state.config.cutscenes.map((cutscene) =>
+        cutscene.speakerId === selectedId
+          ? { ...cutscene, speakerId: "" }
+          : cutscene,
+      );
+
+      state.selectedSpeakerId = "";
+      state.speakerEditOriginId = "";
+      clearSpeakerForm();
+      saveLocalConfigToStorage(state.config);
+      refreshAllUi();
+      setSpeakerStatus(`Speaker '${selectedId}' eliminato.`, "ok");
+    }
+
+    function saveDialogFromForm() {
+      const rawId = String(elements.dialogIdInput.value || "").trim();
+      const dialogId = sanitizeDialogId(rawId);
+      if (!dialogId) {
+        setDialogStatus("ID dialogo non valido.", "error");
+        return;
+      }
+
+      const speakerId = String(elements.dialogSpeakerSelect.value || "").trim();
+      const lines = String(elements.dialogLinesInput.value || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+      if (lines.length <= 0) {
+        setDialogStatus("Inserisci almeno una riga dialogo.", "error");
+        return;
+      }
+
+      const nextDialog = {
+        id: dialogId,
+        speakerId,
+        lines,
+      };
+
+      const cutscenes = [...state.config.cutscenes];
+      const originId = state.dialogEditOriginId || state.selectedDialogId;
+      const originIndex = cutscenes.findIndex((entry) => entry.id === originId);
+      if (originIndex >= 0) {
+        cutscenes.splice(originIndex, 1, nextDialog);
+      } else {
+        const existingIndex = cutscenes.findIndex((entry) => entry.id === dialogId);
+        if (existingIndex >= 0) {
+          cutscenes.splice(existingIndex, 1, nextDialog);
+        } else {
+          cutscenes.push(nextDialog);
+        }
+      }
+
+      state.config.cutscenes = cutscenes.sort((a, b) => a.id.localeCompare(b.id));
+      state.selectedDialogId = dialogId;
+      state.dialogEditOriginId = dialogId;
+      saveLocalConfigToStorage(state.config);
+      refreshAllUi();
+      setDialogStatus(`Dialogo '${dialogId}' salvato.`, "ok");
+    }
+
+    function deleteCurrentDialog() {
+      const selectedId = state.dialogEditOriginId || state.selectedDialogId || sanitizeDialogId(elements.dialogIdInput.value);
+      if (!selectedId) {
+        setDialogStatus("Nessun dialogo selezionato.", "error");
+        return;
+      }
+
+      const beforeCount = state.config.cutscenes.length;
+      state.config.cutscenes = state.config.cutscenes.filter((entry) => entry.id !== selectedId);
+      if (state.config.cutscenes.length === beforeCount) {
+        setDialogStatus("Dialogo non trovato.", "error");
+        return;
+      }
+
+      state.selectedDialogId = "";
+      state.dialogEditOriginId = "";
+      clearDialogForm();
+      saveLocalConfigToStorage(state.config);
+      refreshAllUi();
+      setDialogStatus(`Dialogo '${selectedId}' eliminato.`, "ok");
+    }
+
+    function refreshAllUi() {
+      state.config = normalizeConfig(state.config);
+      refreshSpeakerSelects();
+      refreshDialogSelects();
+      applySpeakerSelectionToForm();
+      applyDialogSelectionToForm();
+      updateCounters();
+      renderDialogPreview();
+    }
+
+    function refreshSpeakerSelects() {
+      const speakers = state.config.speakers;
+      const validSelected = speakers.some((speaker) => speaker.id === state.selectedSpeakerId)
+        ? state.selectedSpeakerId
+        : "";
+      state.selectedSpeakerId = validSelected;
+
+      fillSelect(elements.speakerSelect, [
+        { value: "", label: "-- Nuovo speaker --" },
+        ...speakers.map((speaker) => ({ value: speaker.id, label: `${speaker.id} · ${speaker.label}` })),
+      ], state.selectedSpeakerId);
+
+      fillSelect(elements.dialogSpeakerSelect, [
+        { value: "", label: "-- Nessuno / Narratore --" },
+        ...speakers.map((speaker) => ({ value: speaker.id, label: `${speaker.id} · ${speaker.label}` })),
+      ], elements.dialogSpeakerSelect.value);
+
+      fillSelect(elements.speakerNpcSelect, [
+        { value: "", label: "-- Nessun NPC --" },
+        ...state.npcOptions.map((npc) => ({ value: npc.id, label: `${npc.id} · ${npc.label}` })),
+      ], elements.speakerNpcSelect.value);
+    }
+
+    function refreshDialogSelects() {
+      const dialogs = state.config.cutscenes;
+      const validSelected = dialogs.some((dialog) => dialog.id === state.selectedDialogId)
+        ? state.selectedDialogId
+        : "";
+      state.selectedDialogId = validSelected;
+
+      fillSelect(elements.dialogSelect, [
+        { value: "", label: "-- Nuovo dialogo --" },
+        ...dialogs.map((dialog) => ({ value: dialog.id, label: dialog.id })),
+      ], state.selectedDialogId);
+    }
+
+    function applySpeakerSelectionToForm() {
+      const selectedId = state.selectedSpeakerId;
+      const speaker = state.config.speakers.find((entry) => entry.id === selectedId) || null;
+
+      if (!speaker) {
+        clearSpeakerForm();
+        return;
+      }
+
+      state.speakerEditOriginId = speaker.id;
+      elements.speakerIdInput.value = speaker.id;
+      elements.speakerLabelInput.value = speaker.label;
+      elements.speakerAssetPathInput.value = speaker.assetPath;
+      elements.speakerNpcSelect.value = speaker.npcId || "";
+      updateSpeakerPreview(speaker.assetPath);
+    }
+
+    function applyDialogSelectionToForm() {
+      const selectedId = state.selectedDialogId;
+      const dialog = state.config.cutscenes.find((entry) => entry.id === selectedId) || null;
+
+      if (!dialog) {
+        clearDialogForm();
+        renderDialogPreview();
+        return;
+      }
+
+      state.dialogEditOriginId = dialog.id;
+      elements.dialogIdInput.value = dialog.id;
+      elements.dialogSpeakerSelect.value = dialog.speakerId || "";
+      elements.dialogLinesInput.value = Array.isArray(dialog.lines) ? dialog.lines.join("\n") : "";
+      renderDialogPreview();
+    }
+
+    function clearSpeakerForm() {
+      elements.speakerIdInput.value = "";
+      elements.speakerLabelInput.value = "";
+      elements.speakerAssetPathInput.value = "";
+      elements.speakerNpcSelect.value = "";
+      updateSpeakerPreview("");
+    }
+
+    function clearDialogForm() {
+      elements.dialogIdInput.value = "";
+      elements.dialogSpeakerSelect.value = "";
+      elements.dialogLinesInput.value = "";
+    }
+
+    function applySpeakerAssetPath(assetPath, { bumpPreviewCache = false } = {}) {
+      const safePath = String(assetPath || "").trim();
+      elements.speakerAssetPathInput.value = safePath;
+      updateSpeakerPreview(safePath, { bumpCache: bumpPreviewCache });
+      const speakerId = sanitizeId(elements.speakerIdInput.value);
+      if (!speakerId) {
+        return;
+      }
+
+      const speakers = [...state.config.speakers];
+      const label = String(elements.speakerLabelInput.value || "").trim() || speakerId.toUpperCase();
+      const npcId = String(elements.speakerNpcSelect.value || "").trim();
+      const nextSpeaker = {
+        id: speakerId,
+        label,
+        assetPath: safePath || "../assets/entity/cutscene/cutscene_elder.png",
+        npcId,
+      };
+      const existingIndex = speakers.findIndex((speaker) => speaker.id === speakerId);
+      if (existingIndex >= 0) {
+        speakers.splice(existingIndex, 1, nextSpeaker);
+      } else {
+        speakers.push(nextSpeaker);
+      }
+      state.config.speakers = speakers.sort((a, b) => a.id.localeCompare(b.id));
+      state.selectedSpeakerId = speakerId;
+      state.speakerEditOriginId = speakerId;
+      saveLocalConfigToStorage(state.config);
+      refreshSpeakerSelects();
+      applySpeakerSelectionToForm();
+      renderDialogPreview();
+    }
+
+    function updateSpeakerPreview(assetPath, { bumpCache = false } = {}) {
+      const safePath = String(assetPath || "").trim();
+      if (!safePath) {
+        elements.speakerPreviewImage.removeAttribute("src");
+        return;
+      }
+
+      if (bumpCache) {
+        state.previewRevision += 1;
+      }
+
+      const resolvedSrc = resolveSpeakerPreviewSrc(safePath, state.previewRevision);
+      elements.speakerPreviewImage.src = resolvedSrc;
+    }
+
+    function renderDialogPreview() {
+      const speakerId = String(elements.dialogSpeakerSelect.value || "").trim();
+      const speaker = state.config.speakers.find((entry) => entry.id === speakerId) || null;
+      const speakerLabel = speaker?.label || "NARRATORE";
+
+      const lines = String(elements.dialogLinesInput.value || "")
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\[update_label\]/gi, "").trim())
+        .filter((line) => line.length > 0);
+
+      elements.previewSpeaker.textContent = speakerLabel;
+      elements.previewLines.textContent = lines.length > 0 ? lines.join("\n") : "Nessuna linea dialogo.";
+    }
+
+    function updateCounters() {
+      elements.countSpeakers.textContent = String(state.config.speakers.length);
+      elements.countCutscenes.textContent = String(state.config.cutscenes.length);
+    }
+
+    function exportConfigJson() {
+      const config = normalizeConfig(state.config);
+      const pretty = `${JSON.stringify(config, null, 2)}\n`;
+      const blob = new Blob([pretty], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "cutscenes.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setGlobalStatus("JSON esportato.", "ok");
+    }
+
+    function normalizeConfig(rawConfig) {
+      const config = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+      const rawSpeakers = Array.isArray(config.speakers) ? config.speakers : [];
+      const rawCutscenes = Array.isArray(config.cutscenes) ? config.cutscenes : [];
+
+      const seenSpeakerIds = new Set();
+      const speakers = rawSpeakers
+        .map((speaker) => normalizeSpeaker(speaker))
+        .filter((speaker) => {
+          if (!speaker || seenSpeakerIds.has(speaker.id)) {
+            return false;
+          }
+          seenSpeakerIds.add(speaker.id);
+          return true;
+        });
+
+      if (speakers.length <= 0) {
+        speakers.push({
+          id: "narrator",
+          label: "NARRATORE",
+          assetPath: "../assets/entity/cutscene/cutscene_elder.png",
+          npcId: "",
+        });
+      }
+
+      const seenCutsceneIds = new Set();
+      const cutscenes = rawCutscenes
+        .map((cutscene) => normalizeCutscene(cutscene))
+        .filter((cutscene) => {
+          if (!cutscene || seenCutsceneIds.has(cutscene.id)) {
+            return false;
+          }
+          seenCutsceneIds.add(cutscene.id);
+          return true;
+        });
+
+      return {
+        speakers: speakers.sort((a, b) => a.id.localeCompare(b.id)),
+        cutscenes: cutscenes.sort((a, b) => a.id.localeCompare(b.id)),
+      };
+    }
+
+    function normalizeSpeaker(rawSpeaker) {
+      if (!rawSpeaker || typeof rawSpeaker !== "object") {
+        return null;
+      }
+
+      const id = sanitizeId(rawSpeaker.id);
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        label: String(rawSpeaker.label || rawSpeaker.name || id).trim() || id.toUpperCase(),
+        assetPath:
+          String(rawSpeaker.assetPath || "").trim() ||
+          "../assets/entity/cutscene/cutscene_elder.png",
+        npcId: String(rawSpeaker.npcId || "").trim(),
+      };
+    }
+
+    function normalizeCutscene(rawCutscene) {
+      if (!rawCutscene || typeof rawCutscene !== "object") {
+        return null;
+      }
+
+      const id = sanitizeDialogId(rawCutscene.id);
+      if (!id) {
+        return null;
+      }
+
+      const lines = Array.isArray(rawCutscene.lines)
+        ? rawCutscene.lines.map((line) => String(line || "").trim()).filter((line) => line.length > 0)
+        : [];
+      if (lines.length <= 0) {
+        return null;
+      }
+
+      return {
+        id,
+        speakerId: sanitizeId(rawCutscene.speakerId),
+        lines,
+      };
+    }
+
+    function sanitizeId(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "");
+    }
+
+    function sanitizeDialogId(value) {
+      return String(value || "")
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9_-]/g, "");
+    }
+
+    function resolveSpeakerPreviewSrc(assetPath, revision = 0) {
+      const safePath = String(assetPath || "").trim();
+      if (!safePath) {
+        return "";
+      }
+
+      if (/^(data:|blob:|https?:\/\/|\/\/)/i.test(safePath)) {
+        return safePath;
+      }
+
+      try {
+        const resolvedUrl = new URL(safePath, CUTSCENE_CONFIG_BASE_URL);
+        if (revision > 0) {
+          resolvedUrl.searchParams.set("preview", String(revision));
+        }
+        return resolvedUrl.toString();
+      } catch {
+        return safePath;
+      }
+    }
+
+    function fillSelect(select, options, selectedValue = "") {
+      select.innerHTML = "";
+      options.forEach((option) => {
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.textContent = option.label;
+        if (String(option.value) === String(selectedValue || "")) {
+          el.selected = true;
+        }
+        select.appendChild(el);
+      });
+    }
+
+    function cloneConfig(config) {
+      return JSON.parse(JSON.stringify(config));
+    }
+
+    function loadLocalConfigFromStorage() {
+      if (typeof window === "undefined" || !window.localStorage) {
+        return null;
+      }
+
+      try {
+        const raw = window.localStorage.getItem(LOCAL_CUTSCENE_CONFIG_STORAGE_KEY);
+        if (!raw) {
+          return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") {
+          return null;
+        }
+        return normalizeConfig(parsed);
+      } catch {
+        return null;
+      }
+    }
+
+    function saveLocalConfigToStorage(config) {
+      if (typeof window === "undefined" || !window.localStorage) {
+        return false;
+      }
+
+      try {
+        const normalized = normalizeConfig(config);
+        window.localStorage.setItem(
+          LOCAL_CUTSCENE_CONFIG_STORAGE_KEY,
+          JSON.stringify(normalized),
+        );
+        state.localConfigAvailable = true;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function fetchProjectJson(url, init = {}) {
+      const response = await fetch(url, {
+        cache: "no-store",
+        credentials: "same-origin",
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(init.headers || {}),
+        },
+      });
+
+      if (!response.ok) {
+        let message = `${response.status}`;
+        try {
+          const payload = await response.json();
+          if (payload && typeof payload.error === "string") {
+            message = payload.error;
+          }
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+
+      if (response.status === 204) {
+        return {};
+      }
+
+      const isJson = String(response.headers.get("content-type") || "").includes("application/json");
+      if (!isJson) {
+        const text = await response.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error("Risposta non JSON");
+        }
+      }
+
+      return response.json();
+    }
+
+    function setGlobalStatus(message, type = "") {
+      elements.globalStatus.className = `status ${type}`.trim();
+      elements.globalStatus.textContent = String(message || "");
+    }
+
+    function setSpeakerStatus(message, type = "") {
+      elements.speakerStatus.className = `status ${type}`.trim();
+      elements.speakerStatus.textContent = String(message || "");
+    }
+
+    function setDialogStatus(message, type = "") {
+      elements.dialogStatus.className = `status ${type}`.trim();
+      elements.dialogStatus.textContent = String(message || "");
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(file);
+      });
+    }
+  </script>
+</body>
+</html>

@@ -104,4 +104,5 @@ export const HUD_SCENE_TUTORIALS = Object.freeze({
   profile: "Gestisci statistiche, inventario e progressione personaggio.",
   inventory: "Controlla oggetti, consumabili e materiali disponibili.",
   skills: "Consulta abilita', costi MP e descrizioni delle tecniche apprese.",
+  gm_edit: "Tool avanzati GM con accesso rapido a ColliMap e Cutscene Tool.",
 });

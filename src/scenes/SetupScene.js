@@ -2,6 +2,7 @@ import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG } from "../data/constants.js";
 
 const MAX_NAME_LENGTH = 12;
+const SETUP_TAP_MAX_DISTANCE = 12;
 
 export class SetupScene extends Scene {
   constructor(game) {
@@ -12,6 +13,13 @@ export class SetupScene extends Scene {
     this.timer = 0;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
     this.titleBannerImage = createUiImage("../assets/UI/UI_title_banner.png");
+
+    this.pointerEventsBound = false;
+    this.activePointerId = null;
+    this.pointerStart = null;
+    this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onPointerCancel = this.onPointerCancel.bind(this);
   }
 
   onEnter() {
@@ -22,10 +30,14 @@ export class SetupScene extends Scene {
     this.infoText = "";
     this.timer = 0;
     this.game.input.setTextCapture(true);
+    this.bindPointerEvents();
   }
 
   onExit() {
     this.game.input.setTextCapture(false);
+    this.unbindPointerEvents();
+    this.pointerStart = null;
+    this.activePointerId = null;
   }
 
   update(dt, input) {
@@ -60,30 +72,11 @@ export class SetupScene extends Scene {
     }
 
     if (input.wasPressed("confirm")) {
-      const trimmed = this.nameBuffer.trim();
-      if (trimmed.length === 0) {
-        this.infoText = "Inserisci un nome per continuare.";
-        return;
-      }
-
-      this.nameBuffer = trimmed;
-      this.game.state.player.name = this.nameBuffer;
-      this.game.syncPlayerClassData();
-      this.game.changeScene("world", {
-        resetToSpawn: true,
-        safeSteps: 5,
-        saveAfterEnter: true,
-        message: `${this.nameBuffer} il GOBLIN e' pronto all'avventura.`,
-      });
+      this.submitName();
     }
 
     if (input.wasPressed("back")) {
-      if (this.nameBuffer.length === 0) {
-        this.game.changeScene("start");
-        return;
-      }
-
-      this.nameBuffer = this.nameBuffer.slice(0, -1);
+      this.handleBackAction();
     }
   }
 
@@ -102,7 +95,157 @@ export class SetupScene extends Scene {
     this.drawBackground(ctx, canvasWidth, canvasHeight);
     this.drawTitle(ctx, layout);
     this.drawNamePanel(ctx, layout);
+    this.drawActionButtons(ctx, layout);
     ctx.restore();
+  }
+
+  submitName() {
+    const trimmed = this.nameBuffer.trim();
+    if (trimmed.length === 0) {
+      this.infoText = "Inserisci un nome per continuare.";
+      return;
+    }
+
+    this.nameBuffer = trimmed;
+    this.game.state.player.name = this.nameBuffer;
+    this.game.syncPlayerClassData();
+    this.game.changeScene("world", {
+      resetToSpawn: true,
+      safeSteps: 5,
+      saveAfterEnter: true,
+      dialogId: "intro",
+      message: `${this.nameBuffer} il GOBLIN e' pronto all'avventura.`,
+    });
+  }
+
+  handleBackAction() {
+    if (this.nameBuffer.length === 0) {
+      this.game.changeScene("start");
+      return;
+    }
+
+    this.nameBuffer = this.nameBuffer.slice(0, -1);
+  }
+
+  bindPointerEvents() {
+    if (this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = true;
+  }
+
+  unbindPointerEvents() {
+    if (!this.pointerEventsBound) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      this.pointerEventsBound = false;
+      return;
+    }
+
+    canvas.removeEventListener("pointerdown", this.onPointerDown);
+    canvas.removeEventListener("pointerup", this.onPointerUp);
+    canvas.removeEventListener("pointercancel", this.onPointerCancel);
+    this.pointerEventsBound = false;
+  }
+
+  onPointerDown(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    this.activePointerId = event.pointerId;
+    this.pointerStart = { x: event.clientX, y: event.clientY };
+    this.game.canvas.setPointerCapture?.(event.pointerId);
+  }
+
+  onPointerUp(event) {
+    if (this.activePointerId !== event.pointerId || !this.pointerStart) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const deltaX = event.clientX - this.pointerStart.x;
+    const deltaY = event.clientY - this.pointerStart.y;
+    const moved = Math.hypot(deltaX, deltaY) > SETUP_TAP_MAX_DISTANCE;
+
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+
+    if (moved) {
+      return;
+    }
+
+    const point = this.resolvePointerCanvasPoint(event);
+    if (!point) {
+      return;
+    }
+
+    this.handleTap(point);
+  }
+
+  onPointerCancel(event) {
+    if (this.activePointerId !== event.pointerId) {
+      return;
+    }
+
+    this.pointerStart = null;
+    this.activePointerId = null;
+    this.game.canvas.releasePointerCapture?.(event.pointerId);
+  }
+
+  resolvePointerCanvasPoint(event) {
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) {
+      return null;
+    }
+
+    return { x, y };
+  }
+
+  handleTap(point) {
+    if (!this.areCoreUiAssetsReady()) {
+      return;
+    }
+
+    const canvas = this.game?.canvas;
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+    const layout = getSetupLayout(canvas.width, canvas.height);
+    const buttons = layout.actionButtons;
+    if (pointInRect(point, buttons.back)) {
+      this.handleBackAction();
+      return;
+    }
+    if (pointInRect(point, buttons.confirm)) {
+      this.submitName();
+    }
   }
 
   getCoreUiImages() {
@@ -229,12 +372,23 @@ export class SetupScene extends Scene {
       ctx.fillStyle = "#ffd2d6";
       ctx.font = `${Math.round(clampNumber(layout.nameRect.h * 0.14, 9, 24))}px monospace`;
       ctx.textBaseline = "top";
+      const infoY = Math.min(
+        layout.actionButtons.back.y - Math.round(clampNumber(layout.nameRect.h * 0.2, 14, 30)),
+        fieldRect.y + fieldRect.h + Math.round(clampNumber(layout.nameRect.h * 0.05, 4, 10)),
+      );
       ctx.fillText(
         this.infoText,
         layout.nameRect.x + Math.round(clampNumber(layout.nameRect.w * 0.05, 10, 34)),
-        layout.nameRect.y + layout.nameRect.h - Math.round(clampNumber(layout.nameRect.h * 0.24, 16, 44)),
+        infoY,
       );
     }
+  }
+
+  drawActionButtons(ctx, layout) {
+    const backRect = layout.actionButtons.back;
+    const confirmRect = layout.actionButtons.confirm;
+    this.drawSetupOptionRow(ctx, backRect, "INDIETRO", false);
+    this.drawSetupOptionRow(ctx, confirmRect, "AVANTI", true);
   }
 
   drawClassPanel(ctx, layout) {
@@ -402,25 +556,60 @@ function getSetupLayout(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_C
   };
 
   const fieldInsetX = Math.round(clampNumber(nameRect.w * 0.045, 10, 34));
-  const fieldInsetY = Math.round(clampNumber(nameRect.h * 0.38, 30, 92));
+  const fieldInsetY = Math.round(clampNumber(nameRect.h * 0.2, 16, 58));
   const fieldW = nameRect.w - fieldInsetX * 2;
-  const fieldH = Math.round(clampNumber(nameRect.h * 0.38, 30, 110));
+
+  const actionGap = Math.round(clampNumber(nameRect.w * 0.02, 6, 10));
+  const actionHeight = Math.round(clampNumber(nameRect.h * 0.36, 30, 64));
+  const actionWidth = Math.floor((fieldW - actionGap) * 0.5);
+  const actionY = nameRect.y + nameRect.h - actionHeight - Math.round(clampNumber(nameRect.h * 0.05, 4, 10));
+  const actionStartX = nameRect.x + fieldInsetX;
+  const maxFieldH = Math.max(24, actionY - (nameRect.y + fieldInsetY) - 8);
+  const fieldH = Math.round(clampNumber(nameRect.h * 0.36, 28, maxFieldH));
   const nameFieldRect = {
     x: nameRect.x + fieldInsetX,
     y: nameRect.y + fieldInsetY,
     w: fieldW,
     h: fieldH,
   };
+  const actionButtons = {
+    back: {
+      x: actionStartX,
+      y: actionY,
+      w: actionWidth,
+      h: actionHeight,
+    },
+    confirm: {
+      x: actionStartX + actionWidth + actionGap,
+      y: actionY,
+      w: actionWidth,
+      h: actionHeight,
+    },
+  };
 
   return {
     bannerRect,
     nameRect,
     nameFieldRect,
+    actionButtons,
   };
 }
 
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function pointInRect(point, rect) {
+  if (!point || !rect) {
+    return false;
+  }
+
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.w &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.h
+  );
 }
 
 function getHomeBannerRect(surfaceWidth = GAME_CONFIG.width, surfaceHeight = GAME_CONFIG.height) {

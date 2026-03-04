@@ -1,8 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +30,11 @@ const GITHUB_BRANCH = String(process.env.GITHUB_BRANCH || "main");
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || "");
 const GIT_PLAYERS_PREFIX = String(process.env.GIT_PLAYERS_PREFIX || "server-data/players");
 const GIT_GAME_DATA_PATH = String(process.env.GIT_GAME_DATA_PATH || "server-data/game-data.json");
+const MAPS_ROOT_DIR = path.resolve(PROJECT_ROOT, "src/maps");
+const MAPS_MANIFEST_PATH = path.resolve(MAPS_ROOT_DIR, "maps.json");
+const CUTSCENE_CONFIG_PATH = path.resolve(PROJECT_ROOT, "src/data/cutscenes.json");
+const NPCS_DATA_MODULE_PATH = path.resolve(PROJECT_ROOT, "src/data/npcs.js");
+const ENTITY_ASSETS_ROOT_DIR = path.resolve(PROJECT_ROOT, "src/assets/entity/cutscene");
 
 const MIME_BY_EXT = {
   ".html": "text/html; charset=utf-8",
@@ -377,13 +382,14 @@ function createOAuthState() {
 }
 
 async function readJsonBody(req) {
+  const maxBodyBytes = 12 * 1024 * 1024;
   const chunks = [];
   let length = 0;
   for await (const chunk of req) {
     const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     chunks.push(part);
     length += part.length;
-    if (length > 1024 * 1024) {
+    if (length > maxBodyBytes) {
       throw new Error("Body troppo grande.");
     }
   }
@@ -572,12 +578,356 @@ function getSessionUserFromRequest(req) {
   return readSessionToken(token);
 }
 
+function readJsonFileOrThrow(filePath, label) {
+  if (!existsSync(filePath)) {
+    throw new Error(`${label} non trovato.`);
+  }
+
+  const raw = readFileSync(filePath, "utf8");
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error();
+    }
+    return parsed;
+  } catch {
+    throw new Error(`${label} non valido.`);
+  }
+}
+
+function readCollimapManifest() {
+  return readJsonFileOrThrow(MAPS_MANIFEST_PATH, "Manifest mappe");
+}
+
+function normalizeCollimapMapEntries(manifest) {
+  const entries = Array.isArray(manifest?.maps) ? manifest.maps : [];
+  return entries
+    .map((entry) => ({
+      id: String(entry?.id || "").trim(),
+      definition: String(entry?.definition || "").trim(),
+    }))
+    .filter((entry) => entry.id.length > 0 && entry.definition.length > 0);
+}
+
+function resolveCollimapDefinitionPath(definitionPath) {
+  const resolved = path.resolve(path.dirname(MAPS_MANIFEST_PATH), String(definitionPath || ""));
+  const mapsRootWithSeparator = `${MAPS_ROOT_DIR}${path.sep}`;
+  if (!resolved.startsWith(mapsRootWithSeparator)) {
+    throw new Error("Path definition mappa non valido.");
+  }
+  return resolved;
+}
+
+function getCollimapMapEntryById(mapId) {
+  const safeMapId = String(mapId || "").trim();
+  if (safeMapId.length === 0) {
+    throw new Error("Parametro 'id' mappa mancante.");
+  }
+
+  const manifest = readCollimapManifest();
+  const entries = normalizeCollimapMapEntries(manifest);
+  const selected = entries.find((entry) => entry.id === safeMapId);
+  if (!selected) {
+    throw new Error(`Mappa '${safeMapId}' non trovata nel manifest.`);
+  }
+
+  return {
+    manifest,
+    entries,
+    entry: selected,
+    definitionPath: resolveCollimapDefinitionPath(selected.definition),
+  };
+}
+
+function readCollimapMapConfig(mapId) {
+  const selected = getCollimapMapEntryById(mapId);
+  const map = readJsonFileOrThrow(selected.definitionPath, `Config mappa '${selected.entry.id}'`);
+  return {
+    ...selected,
+    map,
+  };
+}
+
+function saveCollimapMapConfig(mapId, nextMap) {
+  if (!nextMap || typeof nextMap !== "object" || Array.isArray(nextMap)) {
+    throw new Error("Payload mappa non valido.");
+  }
+
+  const selected = getCollimapMapEntryById(mapId);
+  const prettyJson = `${JSON.stringify(nextMap, null, 2)}\n`;
+  writeFileSync(selected.definitionPath, prettyJson, "utf8");
+  return selected;
+}
+
+function readCutsceneToolConfig() {
+  const config = readJsonFileOrThrow(CUTSCENE_CONFIG_PATH, "Config cutscene");
+  return normalizeCutsceneToolConfig(config);
+}
+
+function normalizeCutsceneToolConfig(rawConfig) {
+  const config = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  const rawSpeakers = Array.isArray(config.speakers) ? config.speakers : [];
+  const rawCutscenes = Array.isArray(config.cutscenes) ? config.cutscenes : [];
+
+  const speakers = [];
+  const speakerIds = new Set();
+  rawSpeakers.forEach((rawSpeaker) => {
+    if (!rawSpeaker || typeof rawSpeaker !== "object") {
+      return;
+    }
+
+    const id = String(rawSpeaker.id || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "");
+    if (id.length === 0 || speakerIds.has(id)) {
+      return;
+    }
+    speakerIds.add(id);
+
+    speakers.push({
+      id,
+      label: String(rawSpeaker.label || rawSpeaker.name || id).trim() || id.toUpperCase(),
+      assetPath:
+        String(rawSpeaker.assetPath || "").trim() ||
+        "../assets/entity/cutscene/cutscene_elder.png",
+      npcId: String(rawSpeaker.npcId || "").trim(),
+    });
+  });
+
+  const cutscenes = [];
+  const cutsceneIds = new Set();
+  rawCutscenes.forEach((rawCutscene) => {
+    if (!rawCutscene || typeof rawCutscene !== "object") {
+      return;
+    }
+
+    const id = String(rawCutscene.id || "")
+      .trim()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+    if (id.length === 0 || cutsceneIds.has(id)) {
+      return;
+    }
+
+    const lines = Array.isArray(rawCutscene.lines)
+      ? rawCutscene.lines
+          .map((line) => String(line || "").trim())
+          .filter((line) => line.length > 0)
+      : [];
+    if (lines.length <= 0) {
+      return;
+    }
+
+    cutsceneIds.add(id);
+    cutscenes.push({
+      id,
+      speakerId: String(rawCutscene.speakerId || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, ""),
+      lines,
+    });
+  });
+
+  return { speakers, cutscenes };
+}
+
+function saveCutsceneToolConfig(nextConfig) {
+  if (!nextConfig || typeof nextConfig !== "object" || Array.isArray(nextConfig)) {
+    throw new Error("Payload config cutscene non valido.");
+  }
+
+  const normalized = normalizeCutsceneToolConfig(nextConfig);
+  const prettyJson = `${JSON.stringify(normalized, null, 2)}\n`;
+  writeFileSync(CUTSCENE_CONFIG_PATH, prettyJson, "utf8");
+  return normalized;
+}
+
+async function readWorldNpcSpeakers() {
+  if (!existsSync(NPCS_DATA_MODULE_PATH)) {
+    return [];
+  }
+
+  const moduleUrl = pathToFileURL(NPCS_DATA_MODULE_PATH);
+  moduleUrl.searchParams.set("ts", String(Date.now()));
+  const npcModule = await import(moduleUrl.toString());
+  const rawNpcs = Array.isArray(npcModule?.WORLD_NPCS) ? npcModule.WORLD_NPCS : [];
+
+  return rawNpcs
+    .map((npc) => ({
+      id: String(npc?.id || "").trim(),
+      name: String(npc?.name || npc?.label || npc?.id || "").trim(),
+    }))
+    .filter((npc) => npc.id.length > 0);
+}
+
+function sanitizeSpeakerAssetFileName(fileName) {
+  const baseName = String(fileName || "speaker.png")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "_");
+  const ensuredExt = baseName.endsWith(".png") ? baseName : `${baseName}.png`;
+  const cleaned = ensuredExt.replace(/_+/g, "_");
+  const finalName = cleaned.startsWith(".") ? `speaker${cleaned}` : cleaned;
+  return finalName.length > 0 ? finalName : `speaker_${Date.now()}.png`;
+}
+
+function parsePngDataUrl(dataUrl) {
+  const raw = String(dataUrl || "").trim();
+  const match = raw.match(/^data:image\/png;base64,([a-zA-Z0-9+/=\s]+)$/);
+  if (!match) {
+    throw new Error("Data URL PNG non valido.");
+  }
+
+  const base64Payload = String(match[1] || "").replace(/\s+/g, "");
+  const buffer = Buffer.from(base64Payload, "base64");
+  if (!buffer || buffer.length <= 0) {
+    throw new Error("PNG vuoto.");
+  }
+  if (buffer.length > 6 * 1024 * 1024) {
+    throw new Error("PNG troppo grande (max 6MB).");
+  }
+
+  return buffer;
+}
+
+function saveCutsceneSpeakerPng(fileName, dataUrl) {
+  mkdirSync(ENTITY_ASSETS_ROOT_DIR, { recursive: true });
+  const safeName = sanitizeSpeakerAssetFileName(fileName);
+  const targetPath = path.resolve(ENTITY_ASSETS_ROOT_DIR, safeName);
+  const entityRootWithSeparator = `${ENTITY_ASSETS_ROOT_DIR}${path.sep}`;
+  if (!targetPath.startsWith(entityRootWithSeparator)) {
+    throw new Error("Nome file PNG non valido.");
+  }
+
+  const pngBuffer = parsePngDataUrl(dataUrl);
+  writeFileSync(targetPath, pngBuffer);
+  return {
+    fileName: safeName,
+    absolutePath: targetPath,
+    assetPath: `../assets/entity/cutscene/${safeName}`,
+  };
+}
+
 async function handleApi(req, res, urlObject) {
   const method = req.method || "GET";
   const pathname = urlObject.pathname || "";
 
   if (method === "GET" && pathname === "/api/health") {
     json(res, 200, { ok: true });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/collimap/manifest") {
+    try {
+      const manifest = readCollimapManifest();
+      const entries = normalizeCollimapMapEntries(manifest);
+      json(res, 200, {
+        ok: true,
+        defaultMapId: String(manifest?.defaultMapId || "").trim(),
+        maps: entries,
+      });
+    } catch (error) {
+      json(res, 500, {
+        error: error instanceof Error ? error.message : "Impossibile leggere il manifest mappe.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/collimap/map") {
+    try {
+      const mapId = urlObject.searchParams.get("id");
+      const selected = readCollimapMapConfig(mapId);
+      json(res, 200, {
+        ok: true,
+        id: selected.entry.id,
+        definition: selected.entry.definition,
+        map: selected.map,
+      });
+    } catch (error) {
+      json(res, 400, {
+        error: error instanceof Error ? error.message : "Impossibile leggere la config mappa.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "PUT" && pathname === "/api/collimap/map") {
+    try {
+      const mapId = urlObject.searchParams.get("id");
+      const body = await readJsonBody(req);
+      const mapPayload =
+        body && typeof body.map === "object" && body.map !== null && !Array.isArray(body.map)
+          ? body.map
+          : body;
+      const selected = saveCollimapMapConfig(mapId, mapPayload);
+      json(res, 200, {
+        ok: true,
+        id: selected.entry.id,
+        definition: selected.entry.definition,
+      });
+    } catch (error) {
+      json(res, 400, {
+        error: error instanceof Error ? error.message : "Impossibile salvare la config mappa.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/cutscene-editor/config") {
+    try {
+      const config = readCutsceneToolConfig();
+      json(res, 200, { ok: true, config });
+    } catch (error) {
+      json(res, 500, {
+        error: error instanceof Error ? error.message : "Impossibile leggere config cutscene.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "PUT" && pathname === "/api/cutscene-editor/config") {
+    try {
+      const body = await readJsonBody(req);
+      const payload = body && typeof body.config === "object" && body.config ? body.config : body;
+      const config = saveCutsceneToolConfig(payload);
+      json(res, 200, { ok: true, config });
+    } catch (error) {
+      json(res, 400, {
+        error: error instanceof Error ? error.message : "Impossibile salvare config cutscene.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/cutscene-editor/npcs") {
+    try {
+      const npcs = await readWorldNpcSpeakers();
+      json(res, 200, { ok: true, npcs });
+    } catch (error) {
+      json(res, 500, {
+        error: error instanceof Error ? error.message : "Impossibile leggere NPC.",
+      });
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/cutscene-editor/upload-speaker-png") {
+    try {
+      const body = await readJsonBody(req);
+      const uploaded = saveCutsceneSpeakerPng(body?.fileName, body?.dataUrl);
+      json(res, 200, {
+        ok: true,
+        fileName: uploaded.fileName,
+        assetPath: uploaded.assetPath,
+      });
+    } catch (error) {
+      json(res, 400, {
+        error: error instanceof Error ? error.message : "Upload PNG speaker fallito.",
+      });
+    }
     return true;
   }
 
