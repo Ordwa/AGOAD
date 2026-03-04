@@ -119,12 +119,7 @@ export class SetupScene extends Scene {
   }
 
   handleBackAction() {
-    if (this.nameBuffer.length === 0) {
-      this.game.changeScene("start");
-      return;
-    }
-
-    this.nameBuffer = this.nameBuffer.slice(0, -1);
+    this.game.changeScene("start");
   }
 
   bindPointerEvents() {

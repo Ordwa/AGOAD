@@ -18,12 +18,14 @@ const SETTINGS_THEME = Object.freeze({
   toggleOn: "#6fd17e",
 });
 
-const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode", "logout"]);
+const ROW_KEYS = Object.freeze(["sound", "music", "gm_edit", "debug_mode", "logout", "clear_data"]);
 const SETTINGS_ROW_HEIGHT = 31;
 const SETTINGS_ROW_START_Y = 24;
 const SETTINGS_ACTION_CONTROL = Object.freeze({ x: 186, yOffset: 7, w: 64, h: 16 });
 const SETTINGS_SLIDER_CONTROL = Object.freeze({ x: 126, yOffset: 8, w: 124, h: 14 });
 const MAX_GM_PASSWORD_LENGTH = 20;
+let ACTIVE_SETTINGS_LOGICAL_HEIGHT = GAME_CONFIG.height;
+let ACTIVE_SETTINGS_ROW_START_Y = SETTINGS_ROW_START_Y;
 
 export class SettingsScene extends Scene {
   constructor(game) {
@@ -33,6 +35,7 @@ export class SettingsScene extends Scene {
     this.selectedIndex = 0;
     this.gmEditStatus = "";
     this.actionBusy = false;
+    this.clearDataPopup = null;
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
 
     this.pointerEventsBound = false;
@@ -49,6 +52,7 @@ export class SettingsScene extends Scene {
     this.selectedIndex = 0;
     this.gmEditStatus = "";
     this.actionBusy = false;
+    this.clearDataPopup = null;
     this.bindPointerEvents();
   }
 
@@ -56,6 +60,7 @@ export class SettingsScene extends Scene {
     this.unbindPointerEvents();
     this.pointerStart = null;
     this.activePointerId = null;
+    this.clearDataPopup = null;
   }
 
   getNavbarLayout() {
@@ -172,12 +177,14 @@ export class SettingsScene extends Scene {
 
     const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
     const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    const scale = Math.max(0.01, Math.min(canvas.width / GAME_CONFIG.width, canvas.height / GAME_CONFIG.height));
+    const logicalHeight = computeSettingsLogicalHeight(canvas.width, canvas.height);
+    ACTIVE_SETTINGS_ROW_START_Y = computeSettingsRowStartY(logicalHeight);
+    const scale = Math.max(0.01, Math.min(canvas.width / GAME_CONFIG.width, canvas.height / logicalHeight));
     const offsetX = (canvas.width - GAME_CONFIG.width * scale) * 0.5;
-    const offsetY = (canvas.height - GAME_CONFIG.height * scale) * 0.5;
+    const offsetY = (canvas.height - logicalHeight * scale) * 0.5;
     const sceneX = (canvasX - offsetX) / scale;
     const sceneY = (canvasY - offsetY) / scale;
-    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > GAME_CONFIG.height) {
+    if (sceneX < 0 || sceneY < 0 || sceneX > GAME_CONFIG.width || sceneY > logicalHeight) {
       return null;
     }
 
@@ -185,6 +192,11 @@ export class SettingsScene extends Scene {
   }
 
   handleSettingsTap(point) {
+    if (this.clearDataPopup) {
+      this.handleClearDataPopupTap(point);
+      return;
+    }
+
     const rowRects = getSettingsRowRects();
     for (let rowIndex = 0; rowIndex < rowRects.length; rowIndex += 1) {
       const row = rowRects[rowIndex];
@@ -200,6 +212,11 @@ export class SettingsScene extends Scene {
 
       if (row.id === "logout") {
         this.startLogoutFlow();
+        return;
+      }
+
+      if (row.id === "clear_data") {
+        this.openClearDataPopup();
         return;
       }
 
@@ -230,6 +247,11 @@ export class SettingsScene extends Scene {
   }
 
   update(_dt, input) {
+    if (this.clearDataPopup) {
+      this.updateClearDataPopup(input);
+      return;
+    }
+
     if (input.wasPressed("back")) {
       this.closeScene();
       return;
@@ -282,6 +304,13 @@ export class SettingsScene extends Scene {
       return;
     }
 
+    if (selectedKey === "clear_data") {
+      if (input.wasPressed("confirm")) {
+        this.openClearDataPopup();
+      }
+      return;
+    }
+
     if (selectedKey === "debug_mode") {
       if (input.wasPressed("left") || input.wasPressed("right") || input.wasPressed("confirm")) {
         this.game.toggleDebugOverlay();
@@ -292,24 +321,30 @@ export class SettingsScene extends Scene {
   render(ctx) {
     const canvasWidth = this.game.canvas.width;
     const canvasHeight = this.game.canvas.height;
+    ACTIVE_SETTINGS_LOGICAL_HEIGHT = computeSettingsLogicalHeight(canvasWidth, canvasHeight);
+    ACTIVE_SETTINGS_ROW_START_Y = computeSettingsRowStartY(ACTIVE_SETTINGS_LOGICAL_HEIGHT);
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.drawBackground(ctx, canvasWidth, canvasHeight);
 
-    const scale = Math.max(0.01, Math.min(canvasWidth / GAME_CONFIG.width, canvasHeight / GAME_CONFIG.height));
+    const scale = Math.max(
+      0.01,
+      Math.min(canvasWidth / GAME_CONFIG.width, canvasHeight / ACTIVE_SETTINGS_LOGICAL_HEIGHT),
+    );
     const offsetX = Math.floor((canvasWidth - GAME_CONFIG.width * scale) * 0.5);
-    const offsetY = Math.floor((canvasHeight - GAME_CONFIG.height * scale) * 0.5);
+    const offsetY = Math.floor((canvasHeight - ACTIVE_SETTINGS_LOGICAL_HEIGHT * scale) * 0.5);
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    const basePanelY = 26;
-    const basePanelHeight = GAME_CONFIG.height - basePanelY - 6;
-    const panelHeight = basePanelHeight * 2;
-    const panelY = basePanelY - Math.floor((panelHeight - basePanelHeight) * 0.5);
+    const panelPaddingY = 8;
+    const rowsHeight = ROW_KEYS.length * SETTINGS_ROW_HEIGHT;
+    const panelY = Math.max(6, ACTIVE_SETTINGS_ROW_START_Y - panelPaddingY);
+    const panelHeight = rowsHeight + panelPaddingY * 2;
     this.drawPanel(ctx, 6, panelY, GAME_CONFIG.width - 12, panelHeight, { selected: true });
     this.drawRows(ctx);
     this.drawStatus(ctx);
+    this.drawClearDataPopup(ctx);
     ctx.restore();
   }
 
@@ -389,6 +424,118 @@ export class SettingsScene extends Scene {
       });
   }
 
+  startClearDataFlow() {
+    if (this.actionBusy) {
+      return;
+    }
+
+    this.clearDataPopup = null;
+    this.actionBusy = true;
+    this.gmEditStatus = "Cancellazione dati in corso...";
+    this.game
+      .clearProfileProgress()
+      .then((result) => {
+        if (!result.ok) {
+          this.gmEditStatus = result.error ?? "Cancellazione dati fallita.";
+          return;
+        }
+
+        this.game.changeScene("start", { startMode: "main" });
+      })
+      .catch((error) => {
+        this.gmEditStatus = error instanceof Error ? error.message : "Cancellazione dati fallita.";
+      })
+      .finally(() => {
+        this.actionBusy = false;
+      });
+  }
+
+  openClearDataPopup() {
+    if (this.actionBusy) {
+      return;
+    }
+
+    this.clearDataPopup = {
+      confirmIndex: 1,
+    };
+  }
+
+  updateClearDataPopup(input) {
+    if (!this.clearDataPopup) {
+      return;
+    }
+
+    if (input.wasPressed("back")) {
+      this.clearDataPopup = null;
+      return;
+    }
+
+    if (input.wasPressed("left") || input.wasPressed("up")) {
+      this.clearDataPopup.confirmIndex = 0;
+      return;
+    }
+
+    if (input.wasPressed("right") || input.wasPressed("down")) {
+      this.clearDataPopup.confirmIndex = 1;
+      return;
+    }
+
+    if (!input.wasPressed("confirm")) {
+      return;
+    }
+
+    if (this.clearDataPopup.confirmIndex === 0) {
+      this.startClearDataFlow();
+      return;
+    }
+
+    this.clearDataPopup = null;
+  }
+
+  getClearDataPopupLayout() {
+    const popupW = GAME_CONFIG.width - 40;
+    const popupH = 78;
+    const popupX = Math.floor((GAME_CONFIG.width - popupW) * 0.5);
+    const popupY = Math.floor((ACTIVE_SETTINGS_LOGICAL_HEIGHT - popupH) * 0.5);
+    const buttonGap = 6;
+    const buttonW = Math.floor((popupW - 24 - buttonGap) * 0.5);
+    const buttonH = 16;
+    const buttonY = popupY + popupH - buttonH - 8;
+    const buttonX = popupX + 12;
+    return {
+      frameRect: { x: popupX, y: popupY, w: popupW, h: popupH },
+      confirmRect: { x: buttonX, y: buttonY, w: buttonW, h: buttonH },
+      cancelRect: { x: buttonX + buttonW + buttonGap, y: buttonY, w: buttonW, h: buttonH },
+    };
+  }
+
+  handleClearDataPopupTap(point) {
+    if (!this.clearDataPopup) {
+      return;
+    }
+
+    const popupLayout = this.getClearDataPopupLayout();
+    if (!popupLayout) {
+      return;
+    }
+
+    if (!pointInRect(point, popupLayout.frameRect)) {
+      this.clearDataPopup = null;
+      return;
+    }
+
+    if (pointInRect(point, popupLayout.cancelRect)) {
+      this.clearDataPopup.confirmIndex = 1;
+      this.clearDataPopup = null;
+      return;
+    }
+
+    if (pointInRect(point, popupLayout.confirmRect)) {
+      this.clearDataPopup.confirmIndex = 0;
+      this.startClearDataFlow();
+    }
+  }
+
   drawRows(ctx) {
     const rows = [
       { id: "sound", label: "SOUND", value: this.game.getSoundLevel() },
@@ -396,10 +543,11 @@ export class SettingsScene extends Scene {
       { id: "gm_edit", label: "GM-EDIT", valueLabel: "APRI" },
       { id: "debug_mode", label: "DEBUG MODE", value: this.game.getDebugOverlayEnabled() ? 1 : 0 },
       { id: "logout", label: "LOGOUT", valueLabel: "ESCI" },
+      { id: "clear_data", label: "CANCELLA DATI", valueLabel: "ELIMINA" },
     ];
 
     const rowHeight = SETTINGS_ROW_HEIGHT;
-    const startY = SETTINGS_ROW_START_Y;
+    const startY = ACTIVE_SETTINGS_ROW_START_Y;
     rows.forEach((row, rowIndex) => {
       const y = startY + rowIndex * rowHeight;
       this.drawPanel(ctx, 12, y, GAME_CONFIG.width - 24, rowHeight - 2, {
@@ -440,10 +588,10 @@ export class SettingsScene extends Scene {
         return;
       }
 
-      if (row.id === "logout") {
+      if (row.id === "logout" || row.id === "clear_data") {
         this.drawActionChip(
           ctx,
-          row.valueLabel ?? "ESCI",
+          row.valueLabel ?? "APRI",
           valueRect.x,
           valueRect.y,
           valueRect.w,
@@ -513,7 +661,7 @@ export class SettingsScene extends Scene {
     }
 
     const boxX = 12;
-    const boxY = 6;
+    const boxY = Math.max(6, ACTIVE_SETTINGS_ROW_START_Y - 18);
     const boxW = GAME_CONFIG.width - 24;
     const boxH = 16;
     this.drawPanel(ctx, boxX, boxY, boxW, boxH, { inset: true });
@@ -526,6 +674,85 @@ export class SettingsScene extends Scene {
     const clippedMessage =
       message.length > maxChars ? `${message.slice(0, Math.max(0, maxChars - 3))}...` : message;
     ctx.fillText(clippedMessage, boxX + Math.floor(boxW * 0.5), boxY + Math.floor(boxH * 0.5) + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+  }
+
+  drawClearDataPopup(ctx) {
+    if (!this.clearDataPopup) {
+      return;
+    }
+
+    const popupLayout = this.getClearDataPopupLayout();
+    if (!popupLayout) {
+      return;
+    }
+
+    ctx.fillStyle = "#00000099";
+    ctx.fillRect(0, 0, GAME_CONFIG.width, ACTIVE_SETTINGS_LOGICAL_HEIGHT);
+    this.drawBattleStylePanel(
+      ctx,
+      popupLayout.frameRect.x,
+      popupLayout.frameRect.y,
+      popupLayout.frameRect.w,
+      popupLayout.frameRect.h,
+    );
+
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "8px monospace";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText("CANCELLA DATI", popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 6);
+
+    const lines = wrapText("Questa azione elimina tutti i progressi. Confermi?", 40).slice(0, 3);
+    ctx.fillStyle = "#d7c89e";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 18 + index * 8);
+    });
+
+    this.drawBattleStyleActionChip(
+      ctx,
+      "ELIMINA",
+      popupLayout.confirmRect.x,
+      popupLayout.confirmRect.y,
+      popupLayout.confirmRect.w,
+      popupLayout.confirmRect.h,
+      this.clearDataPopup.confirmIndex === 0,
+    );
+    this.drawBattleStyleActionChip(
+      ctx,
+      "ANNULLA",
+      popupLayout.cancelRect.x,
+      popupLayout.cancelRect.y,
+      popupLayout.cancelRect.w,
+      popupLayout.cancelRect.h,
+      this.clearDataPopup.confirmIndex === 1,
+    );
+  }
+
+  drawBattleStylePanel(ctx, x, y, w, h) {
+    const gradient = ctx.createLinearGradient(x, y, x, y + h);
+    gradient.addColorStop(0, "rgba(30, 48, 76, 0.95)");
+    gradient.addColorStop(1, "rgba(12, 24, 42, 0.95)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#d79a4a";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = "#40230e";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+
+  drawBattleStyleActionChip(ctx, label, x, y, width, height, selected = false) {
+    this.drawBattleStylePanel(ctx, x, y, width, height);
+    ctx.fillStyle = selected ? "rgba(31, 69, 110, 0.95)" : "rgba(14, 36, 61, 0.9)";
+    ctx.fillRect(x + 2, y + 2, width - 4, height - 4);
+    ctx.fillStyle = "#f6ecd2";
+    ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(label ?? "OK"), x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
   }
@@ -627,7 +854,7 @@ function strokeRoundedRect(ctx, x, y, w, h, radius) {
 
 function getSettingsRowRects() {
   const rowHeight = SETTINGS_ROW_HEIGHT;
-  const startY = SETTINGS_ROW_START_Y;
+  const startY = ACTIVE_SETTINGS_ROW_START_Y;
   const rows = [];
 
   for (let index = 0; index < ROW_KEYS.length; index += 1) {
@@ -680,4 +907,42 @@ function clamp(value, min, max) {
     return min;
   }
   return Math.max(min, Math.min(max, value));
+}
+
+function computeSettingsLogicalHeight(canvasWidth, canvasHeight) {
+  const safeWidth = Math.max(1, Number(canvasWidth) || GAME_CONFIG.width);
+  const safeHeight = Math.max(1, Number(canvasHeight) || GAME_CONFIG.height);
+  return Math.max(GAME_CONFIG.height, Math.round((safeHeight * GAME_CONFIG.width) / safeWidth));
+}
+
+function computeSettingsRowStartY(logicalHeight) {
+  const safeHeight = Math.max(GAME_CONFIG.height, Number(logicalHeight) || GAME_CONFIG.height);
+  const rowsHeight = ROW_KEYS.length * SETTINGS_ROW_HEIGHT;
+  return Math.max(SETTINGS_ROW_START_Y, Math.floor((safeHeight - rowsHeight) * 0.5));
+}
+
+function wrapText(text, maxCharsPerLine) {
+  const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= 0) {
+    return [""];
+  }
+
+  const words = normalized.split(" ");
+  const lines = [];
+  let currentLine = "";
+  words.forEach((word) => {
+    const candidate = currentLine.length > 0 ? `${currentLine} ${word}` : word;
+    if (candidate.length > maxCharsPerLine && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = word;
+      return;
+    }
+    currentLine = candidate;
+  });
+
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return lines;
 }

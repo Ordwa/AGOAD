@@ -12,6 +12,7 @@ import {
 } from "../data/map.js";
 
 const MOVE_DURATION_SECONDS = 0.2;
+const BLOCKED_WALK_ANIMATION_HOLD_SECONDS = 0.14;
 const CAMERA_VIEW_HEIGHT_RATIO = 0.5;
 const CAMERA_ZOOM_MIN = 1.45;
 const CAMERA_ZOOM_MAX = 3.8;
@@ -102,6 +103,7 @@ export class WorldScene extends Scene {
       lastHorizontalDirection:
         normalizeFacing(DEFAULT_SPAWN.facing) === "left" ? "left" : "right",
       move: null,
+      blockedWalkUntil: 0,
     };
     this.turnBufferDirection = "";
 
@@ -368,6 +370,8 @@ export class WorldScene extends Scene {
         this.player.lastHorizontalDirection === "left" ? "left" : "right";
     }
     this.player.move = null;
+    this.player.blockedWalkUntil = 0;
+    this.player.blockedWalkUntil = 0;
 
     if (stateWorld && typeof stateWorld === "object") {
       stateWorld.playerX = this.player.tileX;
@@ -413,10 +417,12 @@ export class WorldScene extends Scene {
     this.syncFacingOnly(direction);
 
     if (!isInsideMap(nextTileX, nextTileY, WORLD_MAP)) {
+      this.startBlockedWalkAnimation(direction);
       return false;
     }
 
     if (!this.isWalkableAndFree(nextTileX, nextTileY)) {
+      this.startBlockedWalkAnimation(direction);
       return false;
     }
 
@@ -435,7 +441,15 @@ export class WorldScene extends Scene {
       targetWorldX: tileToWorldX(nextTileX),
       targetWorldY: tileToWorldY(nextTileY),
     };
+    this.player.blockedWalkUntil = 0;
     return true;
+  }
+
+  startBlockedWalkAnimation(direction) {
+    if (direction === "left" || direction === "right") {
+      this.player.lastHorizontalDirection = direction;
+    }
+    this.player.blockedWalkUntil = this.time + BLOCKED_WALK_ANIMATION_HOLD_SECONDS;
   }
 
   isWalkableAndFree(tileX, tileY) {
@@ -604,6 +618,7 @@ export class WorldScene extends Scene {
     this.worldMessage.ttl = 0;
     this.turnBufferDirection = "";
     this.player.move = null;
+    this.player.blockedWalkUntil = 0;
     try {
       this.game.openOverlayScene("cutscene_overlay", {
         dialogId: safeCutsceneId,
@@ -655,7 +670,7 @@ export class WorldScene extends Scene {
 
   getCurrentPlayerAnimationKey() {
     const horizontalDirection = this.player.lastHorizontalDirection === "left" ? "left" : "right";
-    if (this.player.move) {
+    if (this.player.move || this.time < this.player.blockedWalkUntil) {
       return horizontalDirection === "left" ? PLAYER_ANIMATION_WALK_LEFT : PLAYER_ANIMATION_WALK_RIGHT;
     }
 
