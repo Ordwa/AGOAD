@@ -1,5 +1,5 @@
 import { Scene } from "../core/Scene.js";
-import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
+import { GAME_CONFIG } from "../data/constants.js";
 
 const PROFILE_THEME = Object.freeze({
   panelTop: "rgba(30, 48, 76, 0.9)",
@@ -903,224 +903,14 @@ export class ProfileScene extends Scene {
     return Object.values(this.game.state.inventory);
   }
 
-  useSelectedInventoryItem(item) {
-    if (!item) {
-      return;
-    }
-
-    const player = this.game.state.player;
-
-    if (item.id === "life_potion") {
-      if (item.quantity <= 0) {
-        this.showInventoryNotice("Nessuna Life Potion disponibile.");
-        return;
-      }
-
-      if (player.hp >= player.maxHp) {
-        this.showInventoryNotice("HP gia' al massimo.");
-        return;
-      }
-
-      player.hp = Math.min(player.maxHp, player.hp + PLAYER_CONFIG.healAmount);
-      item.quantity -= 1;
-      this.showInventoryNotice("Usi una Life Potion.");
-      return;
-    }
-
-    if (item.id === "mana_potion") {
-      if (item.quantity <= 0) {
-        this.showInventoryNotice("Nessuna Mana Potion disponibile.");
-        return;
-      }
-
-      if ((player.mana ?? 0) >= player.maxMana) {
-        this.showInventoryNotice("MP gia' al massimo.");
-        return;
-      }
-
-      player.mana = Math.min(player.maxMana, (player.mana ?? 0) + PLAYER_CONFIG.manaPotionAmount);
-      item.quantity -= 1;
-      this.showInventoryNotice("Usi una Mana Potion.");
-      return;
-    }
-
-    if (item.id === "amulet") {
-      const lastRestPoint = this.game.state.progress.lastRestPoint;
-      if (!lastRestPoint) {
-        this.showInventoryNotice("Nessun letto registrato.");
-        return;
-      }
-
-      this.game.changeScene("world", {
-        resetToLastRest: true,
-        safeSteps: 5,
-        message: "L'Amulet ti riporta all'ultimo letto.",
-      });
-      return;
-    }
-
-    this.showInventoryNotice("Oggetto non utilizzabile ora.");
-  }
-
   requestUseSelectedInventoryItem(item) {
-    const evaluation = this.evaluateInventoryItemUse(item);
-    if (!evaluation.canUse) {
-      this.showInventoryNotice(evaluation.message);
-      return;
-    }
-
-    this.openUseConfirmPopup({
-      source: "item",
-      title: item.label,
-      detail: evaluation.confirmText,
-      actionType: USE_CONFIRM_ACTION,
-      onConfirm: () => {
-        this.useSelectedInventoryItem(item);
-      },
-    });
+    void item;
+    this.showInventoryNotice("Oggetti non disponibili in questa scena.");
   }
 
   requestUseSelectedSkill(skill) {
-    const evaluation = this.evaluateSkillUse(skill);
-    if (!evaluation.canUse) {
-      this.showInventoryNotice(evaluation.message);
-      return;
-    }
-
-    this.openUseConfirmPopup({
-      source: "skill",
-      title: skill.label,
-      detail: evaluation.confirmText,
-      actionType: USE_CONFIRM_ACTION,
-      onConfirm: () => {
-        this.useSelectedSkill(skill);
-      },
-    });
-  }
-
-  evaluateInventoryItemUse(item) {
-    if (!item || typeof item !== "object") {
-      return { canUse: false, message: "Oggetto non disponibile.", confirmText: "" };
-    }
-
-    const player = this.game.state.player;
-    if (item.id === "life_potion") {
-      if ((item.quantity ?? 0) <= 0) {
-        return { canUse: false, message: "Nessuna Life Potion disponibile.", confirmText: "" };
-      }
-      if ((player.hp ?? 0) >= (player.maxHp ?? 0)) {
-        return { canUse: false, message: "HP gia' al massimo.", confirmText: "" };
-      }
-      return {
-        canUse: true,
-        message: "",
-        confirmText: `Recupera ${PLAYER_CONFIG.healAmount} HP. Confermi l'uso?`,
-      };
-    }
-
-    if (item.id === "mana_potion") {
-      if ((item.quantity ?? 0) <= 0) {
-        return { canUse: false, message: "Nessuna Mana Potion disponibile.", confirmText: "" };
-      }
-      if ((player.mana ?? 0) >= (player.maxMana ?? 0)) {
-        return { canUse: false, message: "MP gia' al massimo.", confirmText: "" };
-      }
-      return {
-        canUse: true,
-        message: "",
-        confirmText: `Recupera ${PLAYER_CONFIG.manaPotionAmount} MP. Confermi l'uso?`,
-      };
-    }
-
-    if (item.id === "amulet") {
-      if (!this.game.state.progress?.lastRestPoint) {
-        return { canUse: false, message: "Nessun letto registrato.", confirmText: "" };
-      }
-      return {
-        canUse: true,
-        message: "",
-        confirmText: "Ti riporta all'ultimo letto. Confermi l'uso?",
-      };
-    }
-
-    return {
-      canUse: false,
-      message: "Oggetto non utilizzabile ora.",
-      confirmText: "",
-    };
-  }
-
-  evaluateSkillUse(skill) {
-    if (!skill || typeof skill !== "object") {
-      return { canUse: false, message: "Abilita' non disponibile.", confirmText: "" };
-    }
-
-    const player = this.game.state.player;
-    const manaCost = Math.max(0, Number(skill.manaCost) || 0);
-    if (!skill.usableOutsideBattle) {
-      return {
-        canUse: false,
-        message: "Abilita' non utilizzabile fuori dal combattimento.",
-        confirmText: "",
-      };
-    }
-
-    if ((player.mana ?? 0) < manaCost) {
-      return {
-        canUse: false,
-        message: "MP insufficienti.",
-        confirmText: "",
-      };
-    }
-
-    if ((skill.effect === "heal" || skill.id === "arcane_heal") && (player.hp ?? 0) >= (player.maxHp ?? 0)) {
-      return {
-        canUse: false,
-        message: "HP gia' al massimo.",
-        confirmText: "",
-      };
-    }
-
-    if (skill.effect === "heal" || skill.id === "arcane_heal") {
-      return {
-        canUse: true,
-        message: "",
-        confirmText: `Consuma ${manaCost} MP e recupera ${PLAYER_CONFIG.healAmount} HP. Confermi l'uso?`,
-      };
-    }
-
-    return {
-      canUse: false,
-      message: "Abilita' non utilizzabile ora.",
-      confirmText: "",
-    };
-  }
-
-  useSelectedSkill(skill) {
-    const evaluation = this.evaluateSkillUse(skill);
-    if (!evaluation.canUse) {
-      this.showInventoryNotice(evaluation.message);
-      return;
-    }
-
-    const player = this.game.state.player;
-    const manaCost = Math.max(0, Number(skill.manaCost) || 0);
-    if ((player.mana ?? 0) < manaCost) {
-      this.showInventoryNotice("MP insufficienti.");
-      return;
-    }
-
-    if (manaCost > 0) {
-      player.mana = Math.max(0, (player.mana ?? 0) - manaCost);
-    }
-
-    if (skill.effect === "heal" || skill.id === "arcane_heal") {
-      player.hp = Math.min(player.maxHp, (player.hp ?? 0) + PLAYER_CONFIG.healAmount);
-      this.showInventoryNotice(`Usi ${skill.label}.`);
-      return;
-    }
-
-    this.showInventoryNotice("Abilita' non utilizzabile ora.");
+    void skill;
+    this.showInventoryNotice("Abilita' non disponibili in questa scena.");
   }
 
   openUseConfirmPopup({ source = "", title = "", detail = "", actionType = USE_CONFIRM_ACTION, onConfirm = null } = {}) {
@@ -1129,7 +919,7 @@ export class ProfileScene extends Scene {
       title: String(title || "").trim() || "CONFERMA",
       detail: String(detail || "").trim(),
       actionType,
-      confirmIndex: 1,
+      confirmIndex: 0,
       onConfirm: typeof onConfirm === "function" ? onConfirm : null,
     };
   }
