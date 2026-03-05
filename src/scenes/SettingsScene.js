@@ -1,6 +1,5 @@
 import { Scene } from "../core/Scene.js";
 import { GAME_CONFIG } from "../data/constants.js";
-import { verifyGmEditPassword } from "../utils/security.js";
 
 const SETTINGS_THEME = Object.freeze({
   panelTop: "rgba(30, 48, 76, 0.9)",
@@ -23,7 +22,6 @@ const SETTINGS_ROW_HEIGHT = 31;
 const SETTINGS_ROW_START_Y = 24;
 const SETTINGS_ACTION_CONTROL = Object.freeze({ x: 186, yOffset: 7, w: 64, h: 16 });
 const SETTINGS_SLIDER_CONTROL = Object.freeze({ x: 126, yOffset: 8, w: 124, h: 14 });
-const MAX_GM_PASSWORD_LENGTH = 20;
 let ACTIVE_SETTINGS_LOGICAL_HEIGHT = GAME_CONFIG.height;
 let ACTIVE_SETTINGS_ROW_START_Y = SETTINGS_ROW_START_Y;
 
@@ -352,51 +350,18 @@ export class SettingsScene extends Scene {
     this.game.changeScene(this.returnScene, this.returnPayload);
   }
 
-  async openGmEdit() {
+  openGmEdit() {
     if (this.actionBusy) {
       return;
     }
-    if (typeof window === "undefined" || typeof window.prompt !== "function") {
-      this.gmEditStatus = "GM-EDIT non disponibile qui.";
-      return;
-    }
-
-    this.actionBusy = true;
-    const rawPassword = window.prompt("Inserisci password GM-EDIT", "");
-    if (rawPassword === null) {
-      this.gmEditStatus = "";
-      this.actionBusy = false;
-      return;
-    }
-
-    const password = String(rawPassword ?? "").slice(0, MAX_GM_PASSWORD_LENGTH).trim();
-    if (password.length === 0) {
-      this.gmEditStatus = "Password richiesta.";
-      this.actionBusy = false;
-      return;
-    }
-
-    this.gmEditStatus = "Verifica in corso...";
-    try {
-      const isValid = await verifyGmEditPassword(password);
-      if (!isValid) {
-        this.gmEditStatus = "Password errata.";
-        this.actionBusy = false;
-        return;
-      }
-      this.gmEditStatus = "Accesso GM-EDIT autorizzato.";
-      this.game.changeScene("gm_edit", {
-        returnScene: "settings",
-        returnPayload: {
-          returnScene: this.returnScene,
-          returnPayload: this.returnPayload,
-        },
-      });
-    } catch {
-      this.gmEditStatus = "Verifica non disponibile.";
-    } finally {
-      this.actionBusy = false;
-    }
+    this.gmEditStatus = "";
+    this.game.changeScene("gm_edit", {
+      returnScene: "settings",
+      returnPayload: {
+        returnScene: this.returnScene,
+        returnPayload: this.returnPayload,
+      },
+    });
   }
 
   startLogoutFlow() {

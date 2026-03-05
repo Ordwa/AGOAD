@@ -252,15 +252,18 @@ export class GmEditScene extends Scene {
 
     const targetUrl = new URL("./collimap.html", window.location.href).toString();
     try {
-      const popup = typeof window.open === "function"
-        ? window.open(targetUrl, "_blank", "noopener,noreferrer")
-        : null;
+      const popup = typeof window.open === "function" ? window.open(targetUrl, "_blank") : null;
 
       if (!popup) {
-        this.statusMessage = "Popup bloccato: consenti popup per aprire ColliMap.";
+        this.statusMessage = "Impossibile aprire ColliMap. Verifica le impostazioni popup del browser.";
         return;
       }
 
+      try {
+        popup.opener = null;
+      } catch {
+        // no-op
+      }
       if (typeof popup.focus === "function") {
         popup.focus();
       }
@@ -278,15 +281,18 @@ export class GmEditScene extends Scene {
 
     const targetUrl = new URL("./cutscene-tool.html", window.location.href).toString();
     try {
-      const popup = typeof window.open === "function"
-        ? window.open(targetUrl, "_blank", "noopener,noreferrer")
-        : null;
+      const popup = typeof window.open === "function" ? window.open(targetUrl, "_blank") : null;
 
       if (!popup) {
-        this.statusMessage = "Popup bloccato: consenti popup per aprire Cutscene Tool.";
+        this.statusMessage = "Impossibile aprire Cutscene Tool. Verifica le impostazioni popup del browser.";
         return;
       }
 
+      try {
+        popup.opener = null;
+      } catch {
+        // no-op
+      }
       if (typeof popup.focus === "function") {
         popup.focus();
       }
@@ -379,11 +385,22 @@ export class GmEditScene extends Scene {
       return;
     }
 
+    const boxX = 12;
+    const boxY = 6;
+    const boxW = GAME_CONFIG.width - 24;
+    const boxH = 16;
+    this.drawPanel(ctx, boxX, boxY, boxW, boxH, { inset: true });
+
     ctx.fillStyle = GM_EDIT_THEME.textSecondary;
     ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const maxChars = Math.max(14, Math.floor((boxW - 12) / 4.6));
+    const clippedMessage =
+      message.length > maxChars ? `${message.slice(0, Math.max(0, maxChars - 3))}...` : message;
+    ctx.fillText(clippedMessage, boxX + Math.floor(boxW * 0.5), boxY + Math.floor(boxH * 0.5) + 1);
     ctx.textAlign = "left";
-    ctx.textBaseline = "bottom";
-    ctx.fillText(message, 12, GAME_CONFIG.height - 2);
+    ctx.textBaseline = "top";
   }
 
   drawPanel(ctx, x, y, w, h, { inset = false } = {}) {
