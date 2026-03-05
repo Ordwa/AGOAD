@@ -21,6 +21,7 @@ const INVENTORY_PANEL_SKILLS = "skills";
 const VIEW_PROFILE = "profile";
 const VIEW_INVENTORY = "inventory";
 const VIEW_SKILLS = "skills";
+const USE_CONFIRM_ACTION = "use";
 const PROFILE_TOP_Y = 62;
 const PROFILE_INFO_HEIGHT = 64;
 const PROFILE_PROGRESS_HEIGHT = PROFILE_INFO_HEIGHT;
@@ -53,6 +54,7 @@ export class ProfileScene extends Scene {
     this.skillIndex = 0;
     this.inventoryPanel = INVENTORY_PANEL_ITEMS;
     this.inventoryNotice = "";
+    this.useConfirmPopup = null;
     this.inventoryScrollY = {
       [INVENTORY_PANEL_ITEMS]: 0,
       [INVENTORY_PANEL_SKILLS]: 0,
@@ -85,6 +87,7 @@ export class ProfileScene extends Scene {
     this.skillIndex = 0;
     this.inventoryPanel = resolveListPanelForView(this.view, payload.panel);
     this.inventoryNotice = "";
+    this.useConfirmPopup = null;
     this.inventoryScrollY[INVENTORY_PANEL_ITEMS] = 0;
     this.inventoryScrollY[INVENTORY_PANEL_SKILLS] = 0;
     this.pointerLastScenePoint = null;
@@ -103,11 +106,17 @@ export class ProfileScene extends Scene {
     this.pointerDidMove = false;
     this.pointerDragMode = "";
     this.pointerDragAccumulator = 0;
+    this.useConfirmPopup = null;
   }
 
   update(dt, input) {
     this.time += dt;
     this.ensurePlayerIdleFrames();
+
+    if (this.useConfirmPopup && isListViewValue(this.view)) {
+      this.updateUseConfirmPopup(input);
+      return;
+    }
 
     if (input.wasPressed("profile")) {
       if (this.view === VIEW_PROFILE) {
@@ -325,6 +334,9 @@ export class ProfileScene extends Scene {
     } else {
       this.drawInventorySkillsPanel(ctx, layout);
     }
+
+    this.drawInventoryNotice(ctx, layout);
+    this.drawUseConfirmPopup(ctx, layout);
   }
 
   updateInventoryInput(input) {
@@ -360,9 +372,7 @@ export class ProfileScene extends Scene {
       if (input.wasPressed("confirm")) {
         const selectedSkill = skills[this.skillIndex];
         if (selectedSkill) {
-          this.showInventoryNotice(
-            `${selectedSkill.label} | MP ${selectedSkill.manaCost ?? 0}`,
-          );
+          this.requestUseSelectedSkill(selectedSkill);
         }
         return true;
       }
@@ -395,7 +405,7 @@ export class ProfileScene extends Scene {
     }
 
     if (input.wasPressed("confirm")) {
-      this.useSelectedInventoryItem(inventoryItems[this.inventoryIndex]);
+      this.requestUseSelectedInventoryItem(inventoryItems[this.inventoryIndex]);
       return true;
     }
 
@@ -496,6 +506,7 @@ export class ProfileScene extends Scene {
     const layout = getInventoryLayout({ showTabs: false });
     this.inventoryPanel = activePanel;
     this.pointerDragMode =
+      !this.useConfirmPopup &&
       this.pointerLastScenePoint &&
       pointInRect(this.pointerLastScenePoint, getInventoryListRect(activePanel, layout))
         ? "list"
@@ -606,20 +617,48 @@ export class ProfileScene extends Scene {
   }
 
   handleInventoryTap(point) {
+    if (this.useConfirmPopup) {
+      this.handleUseConfirmPopupTap(point);
+      return;
+    }
+
     const layout = getInventoryLayout({ showTabs: false });
-    if (!layout.showTabs) {
+    if (!isListViewValue(this.view)) {
       return;
     }
 
-    const tabRects = getInventoryTabRects(layout);
-    if (pointInRect(point, tabRects.items)) {
-      this.switchInventoryPanel(INVENTORY_PANEL_ITEMS);
+    const activePanel = this.getActiveListPanel();
+    this.inventoryPanel = activePanel;
+    const rowLayout = getInventoryRowsLayout(activePanel, layout);
+    if (!pointInRect(point, getInventoryListRect(activePanel, layout))) {
       return;
     }
 
-    if (pointInRect(point, tabRects.skills)) {
-      this.switchInventoryPanel(INVENTORY_PANEL_SKILLS);
+    const entries =
+      activePanel === INVENTORY_PANEL_SKILLS ? this.getPlayerSkills() : this.getInventoryItems();
+    if (entries.length <= 0) {
+      this.showInventoryNotice(
+        activePanel === INVENTORY_PANEL_SKILLS ? "Nessuna abilita' disponibile." : "Inventario vuoto.",
+      );
+      return;
     }
+
+    const localY = point.y - rowLayout.y + this.getInventoryScroll(activePanel);
+    const nextIndex = Math.floor(localY / Math.max(1, rowLayout.rowHeight));
+    if (nextIndex < 0 || nextIndex >= entries.length) {
+      return;
+    }
+
+    if (activePanel === INVENTORY_PANEL_SKILLS) {
+      this.skillIndex = nextIndex;
+      this.ensureSelectionVisible(activePanel, nextIndex);
+      this.requestUseSelectedSkill(entries[nextIndex]);
+      return;
+    }
+
+    this.inventoryIndex = nextIndex;
+    this.ensureSelectionVisible(activePanel, nextIndex);
+    this.requestUseSelectedInventoryItem(entries[nextIndex]);
   }
 
   resolveScenePointFromPointer(event) {
@@ -851,6 +890,12 @@ export class ProfileScene extends Scene {
         label: String(skill.label ?? "ABILITA'"),
         description: String(skill.description ?? ""),
         manaCost: Math.max(0, Number(skill.manaCost) || 0),
+        usableInBattle: skill.usableInBattle !== false,
+        usableOutsideBattle:
+          skill.usableOutsideBattle === true ||
+          String(skill.effect ?? "").trim().toLowerCase() === "heal" ||
+          String(skill.id ?? "").trim().toLowerCase() === "arcane_heal",
+        effect: String(skill.effect ?? "").trim().toLowerCase(),
       }));
   }
 
@@ -917,8 +962,359 @@ export class ProfileScene extends Scene {
     this.showInventoryNotice("Oggetto non utilizzabile ora.");
   }
 
+  requestUseSelectedInventoryItem(item) {
+    const evaluation = this.evaluateInventoryItemUse(item);
+    if (!evaluation.canUse) {
+      this.showInventoryNotice(evaluation.message);
+      return;
+    }
+
+    this.openUseConfirmPopup({
+      source: "item",
+      title: item.label,
+      detail: evaluation.confirmText,
+      actionType: USE_CONFIRM_ACTION,
+      onConfirm: () => {
+        this.useSelectedInventoryItem(item);
+      },
+    });
+  }
+
+  requestUseSelectedSkill(skill) {
+    const evaluation = this.evaluateSkillUse(skill);
+    if (!evaluation.canUse) {
+      this.showInventoryNotice(evaluation.message);
+      return;
+    }
+
+    this.openUseConfirmPopup({
+      source: "skill",
+      title: skill.label,
+      detail: evaluation.confirmText,
+      actionType: USE_CONFIRM_ACTION,
+      onConfirm: () => {
+        this.useSelectedSkill(skill);
+      },
+    });
+  }
+
+  evaluateInventoryItemUse(item) {
+    if (!item || typeof item !== "object") {
+      return { canUse: false, message: "Oggetto non disponibile.", confirmText: "" };
+    }
+
+    const player = this.game.state.player;
+    if (item.id === "life_potion") {
+      if ((item.quantity ?? 0) <= 0) {
+        return { canUse: false, message: "Nessuna Life Potion disponibile.", confirmText: "" };
+      }
+      if ((player.hp ?? 0) >= (player.maxHp ?? 0)) {
+        return { canUse: false, message: "HP gia' al massimo.", confirmText: "" };
+      }
+      return {
+        canUse: true,
+        message: "",
+        confirmText: `Recupera ${PLAYER_CONFIG.healAmount} HP. Confermi l'uso?`,
+      };
+    }
+
+    if (item.id === "mana_potion") {
+      if ((item.quantity ?? 0) <= 0) {
+        return { canUse: false, message: "Nessuna Mana Potion disponibile.", confirmText: "" };
+      }
+      if ((player.mana ?? 0) >= (player.maxMana ?? 0)) {
+        return { canUse: false, message: "MP gia' al massimo.", confirmText: "" };
+      }
+      return {
+        canUse: true,
+        message: "",
+        confirmText: `Recupera ${PLAYER_CONFIG.manaPotionAmount} MP. Confermi l'uso?`,
+      };
+    }
+
+    if (item.id === "amulet") {
+      if (!this.game.state.progress?.lastRestPoint) {
+        return { canUse: false, message: "Nessun letto registrato.", confirmText: "" };
+      }
+      return {
+        canUse: true,
+        message: "",
+        confirmText: "Ti riporta all'ultimo letto. Confermi l'uso?",
+      };
+    }
+
+    return {
+      canUse: false,
+      message: "Oggetto non utilizzabile ora.",
+      confirmText: "",
+    };
+  }
+
+  evaluateSkillUse(skill) {
+    if (!skill || typeof skill !== "object") {
+      return { canUse: false, message: "Abilita' non disponibile.", confirmText: "" };
+    }
+
+    const player = this.game.state.player;
+    const manaCost = Math.max(0, Number(skill.manaCost) || 0);
+    if (!skill.usableOutsideBattle) {
+      return {
+        canUse: false,
+        message: "Abilita' non utilizzabile fuori dal combattimento.",
+        confirmText: "",
+      };
+    }
+
+    if ((player.mana ?? 0) < manaCost) {
+      return {
+        canUse: false,
+        message: "MP insufficienti.",
+        confirmText: "",
+      };
+    }
+
+    if ((skill.effect === "heal" || skill.id === "arcane_heal") && (player.hp ?? 0) >= (player.maxHp ?? 0)) {
+      return {
+        canUse: false,
+        message: "HP gia' al massimo.",
+        confirmText: "",
+      };
+    }
+
+    if (skill.effect === "heal" || skill.id === "arcane_heal") {
+      return {
+        canUse: true,
+        message: "",
+        confirmText: `Consuma ${manaCost} MP e recupera ${PLAYER_CONFIG.healAmount} HP. Confermi l'uso?`,
+      };
+    }
+
+    return {
+      canUse: false,
+      message: "Abilita' non utilizzabile ora.",
+      confirmText: "",
+    };
+  }
+
+  useSelectedSkill(skill) {
+    const evaluation = this.evaluateSkillUse(skill);
+    if (!evaluation.canUse) {
+      this.showInventoryNotice(evaluation.message);
+      return;
+    }
+
+    const player = this.game.state.player;
+    const manaCost = Math.max(0, Number(skill.manaCost) || 0);
+    if ((player.mana ?? 0) < manaCost) {
+      this.showInventoryNotice("MP insufficienti.");
+      return;
+    }
+
+    if (manaCost > 0) {
+      player.mana = Math.max(0, (player.mana ?? 0) - manaCost);
+    }
+
+    if (skill.effect === "heal" || skill.id === "arcane_heal") {
+      player.hp = Math.min(player.maxHp, (player.hp ?? 0) + PLAYER_CONFIG.healAmount);
+      this.showInventoryNotice(`Usi ${skill.label}.`);
+      return;
+    }
+
+    this.showInventoryNotice("Abilita' non utilizzabile ora.");
+  }
+
+  openUseConfirmPopup({ source = "", title = "", detail = "", actionType = USE_CONFIRM_ACTION, onConfirm = null } = {}) {
+    this.useConfirmPopup = {
+      source,
+      title: String(title || "").trim() || "CONFERMA",
+      detail: String(detail || "").trim(),
+      actionType,
+      confirmIndex: 1,
+      onConfirm: typeof onConfirm === "function" ? onConfirm : null,
+    };
+  }
+
+  closeUseConfirmPopup() {
+    this.useConfirmPopup = null;
+  }
+
+  updateUseConfirmPopup(input) {
+    if (!this.useConfirmPopup) {
+      return;
+    }
+
+    if (input.wasPressed("back")) {
+      this.closeUseConfirmPopup();
+      return;
+    }
+
+    if (input.wasPressed("left") || input.wasPressed("up")) {
+      this.useConfirmPopup.confirmIndex = 0;
+      return;
+    }
+
+    if (input.wasPressed("right") || input.wasPressed("down")) {
+      this.useConfirmPopup.confirmIndex = 1;
+      return;
+    }
+
+    if (!input.wasPressed("confirm")) {
+      return;
+    }
+
+    if (this.useConfirmPopup.confirmIndex === 0) {
+      this.executeUseConfirmPopup();
+      return;
+    }
+
+    this.closeUseConfirmPopup();
+  }
+
+  executeUseConfirmPopup() {
+    if (!this.useConfirmPopup) {
+      return;
+    }
+
+    const onConfirm = this.useConfirmPopup.onConfirm;
+    this.useConfirmPopup = null;
+    if (typeof onConfirm === "function") {
+      onConfirm();
+    }
+  }
+
+  getUseConfirmPopupLayout(layout = getInventoryLayout({ showTabs: false })) {
+    const panel = layout.container;
+    const popupW = Math.max(90, panel.w - 22);
+    const popupH = 78;
+    const popupX = panel.x + Math.floor((panel.w - popupW) * 0.5);
+    const popupY = clampNumber(
+      layout.list.y + Math.floor((layout.list.h - popupH) * 0.5),
+      panel.y + 10,
+      panel.y + panel.h - popupH - 8,
+    );
+    const buttonGap = 6;
+    const buttonW = Math.floor((popupW - 24 - buttonGap) * 0.5);
+    const buttonH = 16;
+    const buttonY = popupY + popupH - buttonH - 8;
+    const buttonX = popupX + 12;
+    return {
+      frameRect: { x: popupX, y: popupY, w: popupW, h: popupH },
+      confirmRect: { x: buttonX, y: buttonY, w: buttonW, h: buttonH },
+      cancelRect: { x: buttonX + buttonW + buttonGap, y: buttonY, w: buttonW, h: buttonH },
+    };
+  }
+
+  handleUseConfirmPopupTap(point) {
+    if (!this.useConfirmPopup) {
+      return;
+    }
+
+    const popupLayout = this.getUseConfirmPopupLayout();
+    if (!pointInRect(point, popupLayout.frameRect)) {
+      this.closeUseConfirmPopup();
+      return;
+    }
+
+    if (pointInRect(point, popupLayout.cancelRect)) {
+      this.useConfirmPopup.confirmIndex = 1;
+      this.closeUseConfirmPopup();
+      return;
+    }
+
+    if (pointInRect(point, popupLayout.confirmRect)) {
+      this.useConfirmPopup.confirmIndex = 0;
+      this.executeUseConfirmPopup();
+    }
+  }
+
   showInventoryNotice(message) {
-    this.inventoryNotice = message;
+    this.inventoryNotice = String(message ?? "").trim();
+  }
+
+  drawInventoryNotice(ctx, layout = getInventoryLayout({ showTabs: false })) {
+    const message = String(this.inventoryNotice ?? "").trim();
+    if (!message) {
+      return;
+    }
+
+    const boxX = 12;
+    const boxY = Math.max(22, layout.container.y - 18);
+    const boxW = GAME_CONFIG.width - 24;
+    const boxH = 16;
+    this.drawPanel(ctx, boxX, boxY, boxW, boxH, { inset: true });
+
+    ctx.fillStyle = PROFILE_THEME.notice;
+    ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const maxChars = Math.max(14, Math.floor((boxW - 12) / 4.6));
+    const clippedMessage =
+      message.length > maxChars ? `${message.slice(0, Math.max(0, maxChars - 3))}...` : message;
+    ctx.fillText(clippedMessage, boxX + Math.floor(boxW * 0.5), boxY + Math.floor(boxH * 0.5) + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+  }
+
+  drawUseConfirmPopup(ctx, layout = getInventoryLayout({ showTabs: false })) {
+    if (!this.useConfirmPopup) {
+      return;
+    }
+
+    const popupLayout = this.getUseConfirmPopupLayout(layout);
+    const popup = this.useConfirmPopup;
+    ctx.fillStyle = "#00000099";
+    ctx.fillRect(0, 0, GAME_CONFIG.width, ACTIVE_UI_LOGICAL_HEIGHT);
+    this.drawPanel(
+      ctx,
+      popupLayout.frameRect.x,
+      popupLayout.frameRect.y,
+      popupLayout.frameRect.w,
+      popupLayout.frameRect.h,
+    );
+
+    ctx.fillStyle = PROFILE_THEME.textPrimary;
+    ctx.font = "8px monospace";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(truncate(popup.title, 20), popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 6);
+
+    const lines = splitTextIntoLines(sanitizeDescriptionText(popup.detail), 40, 3);
+    ctx.fillStyle = PROFILE_THEME.textSecondary;
+    lines.forEach((line, index) => {
+      ctx.fillText(line, popupLayout.frameRect.x + 8, popupLayout.frameRect.y + 18 + index * 8);
+    });
+
+    this.drawPopupActionChip(
+      ctx,
+      popup.actionType === USE_CONFIRM_ACTION ? "USA" : "OK",
+      popupLayout.confirmRect.x,
+      popupLayout.confirmRect.y,
+      popupLayout.confirmRect.w,
+      popupLayout.confirmRect.h,
+      popup.confirmIndex === 0,
+    );
+    this.drawPopupActionChip(
+      ctx,
+      "ANNULLA",
+      popupLayout.cancelRect.x,
+      popupLayout.cancelRect.y,
+      popupLayout.cancelRect.w,
+      popupLayout.cancelRect.h,
+      popup.confirmIndex === 1,
+    );
+  }
+
+  drawPopupActionChip(ctx, label, x, y, width, height, selected = false) {
+    this.drawPanel(ctx, x, y, width, height, { inset: true });
+    ctx.fillStyle = selected ? "rgba(31, 69, 110, 0.95)" : "rgba(14, 36, 61, 0.9)";
+    fillRoundedRect(ctx, x + 3, y + 3, width - 6, height - 6, 4);
+    ctx.fillStyle = PROFILE_THEME.textPrimary;
+    ctx.font = "7px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(label ?? "OK"), x + Math.round(width * 0.5), y + Math.round(height * 0.5) + 1);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
   }
 
   closeScene() {
