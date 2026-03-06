@@ -42,6 +42,7 @@ export class BattleScene extends Scene {
     this.uiBackgroundImage = createUiImage("../assets/UI/UI_background.png");
     this.playerBattleSpriteImage = createUiImage("../assets/entity/character_animation_idle_r.png");
     this.playerBattleFrames = [];
+    this.playerBattleFrameCount = PLAYER_IDLE_FRAME_COUNT;
     this.playerBattleFramesReady = false;
     this.worldMapBackdropImage = createUiImage(WORLD_MAP_ASSET_PATH);
     this.encounterTileX = null;
@@ -449,15 +450,17 @@ export class BattleScene extends Scene {
       return;
     }
 
-    const frameWidth = Math.max(1, Math.floor((image.naturalWidth || image.width) / PLAYER_IDLE_FRAME_COUNT));
+    const frameCount = resolveSpriteSheetFrameCount(image, PLAYER_IDLE_FRAME_COUNT);
+    const frameWidth = Math.max(1, Math.floor((image.naturalWidth || image.width) / frameCount));
     const frameHeight = Math.max(1, image.naturalHeight || image.height);
     const frames = buildMaskedSpriteFrames(image, {
       frameWidth,
       frameHeight,
-      frameCount: PLAYER_IDLE_FRAME_COUNT,
+      frameCount,
     });
     if (frames.length > 0) {
       this.playerBattleFrames = frames;
+      this.playerBattleFrameCount = frameCount;
       this.playerBattleFramesReady = true;
     }
   }
@@ -1414,7 +1417,7 @@ export class BattleScene extends Scene {
       38,
     );
     let targetWidth = targetHeight;
-    const frameIndex = Math.floor(this.floatTimer * PLAYER_IDLE_FPS) % PLAYER_IDLE_FRAME_COUNT;
+    const frameIndex = Math.floor(this.floatTimer * PLAYER_IDLE_FPS) % Math.max(1, this.playerBattleFrameCount);
 
     if (maskedFrames.length > 0) {
       const frame = maskedFrames[frameIndex % maskedFrames.length];
@@ -1429,7 +1432,7 @@ export class BattleScene extends Scene {
     }
 
     if (sourceImage && sourceImage.complete && sourceImage.naturalWidth > 0) {
-      const frameWidth = Math.max(1, Math.floor(sourceImage.naturalWidth / PLAYER_IDLE_FRAME_COUNT));
+      const frameWidth = Math.max(1, Math.floor(sourceImage.naturalWidth / Math.max(1, this.playerBattleFrameCount)));
       const frameHeight = Math.max(1, sourceImage.naturalHeight);
       const sourceX = frameIndex * frameWidth;
       targetWidth = Math.max(16, Math.round(targetHeight * (frameWidth / frameHeight)));
@@ -2128,6 +2131,17 @@ function drawImageCover(ctx, image, targetX, targetY, targetW, targetH) {
   const offsetX = targetX + (targetW - drawW) / 2;
   const offsetY = targetY + (targetH - drawH) / 2;
   ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+}
+
+function resolveSpriteSheetFrameCount(image, fallbackFrameCount = 1) {
+  const safeFallback = clampNumber(Math.floor(Number(fallbackFrameCount) || 1), 1, 32);
+  const width = Number(image?.naturalWidth || image?.width || 0);
+  const height = Number(image?.naturalHeight || image?.height || 0);
+  if (width <= 0 || height <= 0) {
+    return safeFallback;
+  }
+  const guessedFrameCount = clampNumber(Math.ceil(width / Math.max(1, height)), 1, 32);
+  return clampNumber(Math.min(safeFallback, guessedFrameCount), 1, 32);
 }
 
 function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCount } = {}) {

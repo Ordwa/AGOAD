@@ -63,6 +63,7 @@ export class ProfileScene extends Scene {
     this.goldenCoinImage = createUiImage("../assets/UI/UI_golden_coin.png");
     this.playerIdleImage = createUiImage("../assets/entity/character_animation_idle_r.png");
     this.playerIdleFrames = [];
+    this.playerIdleFrameCount = 4;
     this.playerIdleFramesReady = false;
 
     this.pointerEventsBound = false;
@@ -1224,7 +1225,7 @@ export class ProfileScene extends Scene {
 
   drawPlayerIdleSprite(ctx, { x, y, maxHeight = 34 } = {}) {
     const fallbackImage = this.playerIdleImage;
-    const frameCount = Math.max(1, this.playerIdleFrames.length || 4);
+    const frameCount = Math.max(1, this.playerIdleFrames.length || this.playerIdleFrameCount || 4);
     const frameIndex = Math.floor(this.time * 6) % frameCount;
     const maskedFrame = this.playerIdleFrames[frameIndex] ?? null;
 
@@ -1243,7 +1244,7 @@ export class ProfileScene extends Scene {
         return;
       }
       sourceImage = fallbackImage;
-      sourceWidth = Math.max(1, Math.floor(fallbackImage.naturalWidth / 4));
+      sourceWidth = Math.max(1, Math.floor(fallbackImage.naturalWidth / frameCount));
       sourceHeight = Math.max(1, fallbackImage.naturalHeight);
       sourceX = frameIndex * sourceWidth;
     }
@@ -1271,7 +1272,7 @@ export class ProfileScene extends Scene {
       return;
     }
 
-    const frameCount = 4;
+    const frameCount = resolveSpriteSheetFrameCount(this.playerIdleImage, 4);
     const frameWidth = Math.max(1, Math.floor((this.playerIdleImage.naturalWidth || this.playerIdleImage.width) / frameCount));
     const frameHeight = Math.max(1, this.playerIdleImage.naturalHeight || this.playerIdleImage.height);
     this.playerIdleFrames = buildMaskedSpriteFrames(this.playerIdleImage, {
@@ -1279,6 +1280,7 @@ export class ProfileScene extends Scene {
       frameHeight,
       frameCount,
     });
+    this.playerIdleFrameCount = frameCount;
     this.playerIdleFramesReady = true;
   }
 
@@ -1589,6 +1591,17 @@ function buildMaskedSpriteFrames(sourceImage, { frameWidth, frameHeight, frameCo
   }
 
   return frames;
+}
+
+function resolveSpriteSheetFrameCount(image, fallbackFrameCount = 1) {
+  const safeFallback = clampNumber(Math.floor(Number(fallbackFrameCount) || 1), 1, 32);
+  const width = Number(image?.naturalWidth || image?.width || 0);
+  const height = Number(image?.naturalHeight || image?.height || 0);
+  if (width <= 0 || height <= 0) {
+    return safeFallback;
+  }
+  const guessedFrameCount = clampNumber(Math.ceil(width / Math.max(1, height)), 1, 32);
+  return clampNumber(Math.min(safeFallback, guessedFrameCount), 1, 32);
 }
 
 function clampNumber(value, min, max) {

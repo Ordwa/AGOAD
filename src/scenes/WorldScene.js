@@ -84,6 +84,12 @@ export class WorldScene extends Scene {
       [PLAYER_ANIMATION_WALK_LEFT]: false,
       [PLAYER_ANIMATION_WALK_RIGHT]: false,
     };
+    this.playerAnimationFrameCounts = {
+      [PLAYER_ANIMATION_IDLE_LEFT]: PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_LEFT].frameCount,
+      [PLAYER_ANIMATION_IDLE_RIGHT]: PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].frameCount,
+      [PLAYER_ANIMATION_WALK_LEFT]: PLAYER_ANIMATIONS[PLAYER_ANIMATION_WALK_LEFT].frameCount,
+      [PLAYER_ANIMATION_WALK_RIGHT]: PLAYER_ANIMATIONS[PLAYER_ANIMATION_WALK_RIGHT].frameCount,
+    };
 
     this.npcs = (WORLD_NPCS ?? []).map((npc) => ({
       ...npc,
@@ -716,7 +722,10 @@ export class WorldScene extends Scene {
       return null;
     }
 
-    const frameCount = Math.max(1, Math.floor(Number(config.frameCount) || 1));
+    const frameCount = Math.max(
+      1,
+      Math.floor(Number(this.playerAnimationFrameCounts[selectedKey] ?? config.frameCount) || 1),
+    );
     const sourceWidth = Math.max(1, Math.floor((sourceImage.naturalWidth || sourceImage.width) / frameCount));
     const sourceHeight = Math.max(1, sourceImage.naturalHeight || sourceImage.height);
     const rawFrameIndex =
@@ -770,7 +779,7 @@ export class WorldScene extends Scene {
       }
 
       const config = PLAYER_ANIMATIONS[animationKey];
-      const frameCount = Math.max(1, Math.floor(Number(config.frameCount) || 1));
+      const frameCount = resolveSpriteSheetFrameCount(image, config.frameCount);
       const frameWidth = Math.max(1, Math.floor((image.naturalWidth || image.width) / frameCount));
       const frameHeight = Math.max(1, image.naturalHeight || image.height);
       this.playerAnimationFrames[animationKey] = buildMaskedSpriteFrames(image, {
@@ -778,6 +787,7 @@ export class WorldScene extends Scene {
         frameHeight,
         frameCount,
       });
+      this.playerAnimationFrameCounts[animationKey] = frameCount;
       this.playerAnimationFramesReady[animationKey] = true;
     });
   }
@@ -949,6 +959,17 @@ function buildMaskedSpriteFrames(image, { frameWidth, frameHeight, frameCount } 
   }
 
   return frames;
+}
+
+function resolveSpriteSheetFrameCount(image, fallbackFrameCount = 1) {
+  const safeFallback = clampNumber(Math.floor(Number(fallbackFrameCount) || 1), 1, 32);
+  const width = Number(image?.naturalWidth || image?.width || 0);
+  const height = Number(image?.naturalHeight || image?.height || 0);
+  if (width <= 0 || height <= 0) {
+    return safeFallback;
+  }
+  const guessedFrameCount = clampNumber(Math.ceil(width / Math.max(1, height)), 1, 32);
+  return clampNumber(Math.min(safeFallback, guessedFrameCount), 1, 32);
 }
 
 function drawLoading(ctx, width, height, time) {
