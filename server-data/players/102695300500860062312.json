@@ -5,14 +5,14 @@
     "email": "espositoalessandro1997@gmail.com",
     "name": "Alessandro Esposito"
   },
-  "updatedAt": 1772963502665,
+  "updatedAt": 1772963532695,
   "progress": {
     "version": 1,
-    "savedAt": 1772963502286,
+    "savedAt": 1772963532302,
     "summary": {
       "playerName": "Pippo",
       "playerTitle": "Goblin",
-      "playTimeSeconds": 6995
+      "playTimeSeconds": 7025
     },
     "snapshot": {
       "player": {
@@ -38,7 +38,7 @@
         "battlesTotal": 0,
         "coins": 0,
         "encounteredEnemyIds": [],
-        "playTimeSeconds": 6995.92180000908,
+        "playTimeSeconds": 7025.938400009181,
         "lastRestPoint": null,
         "cutsceneSpeakerLabels": {},
         "totalSteps": 0
