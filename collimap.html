@@ -340,8 +340,20 @@
           <h2>1. Input file</h2>
           <div class="row">
             <label class="file-btn">
-              Carica immagine
-              <input id="imageInput" type="file" accept="image/*" />
+              Carica layer 0
+              <input id="imageLayer0Input" type="file" accept="image/*" />
+            </label>
+            <label class="file-btn">
+              Carica layer 1
+              <input id="imageLayer1Input" type="file" accept="image/*" />
+            </label>
+            <label class="file-btn">
+              Carica layer 2
+              <input id="imageLayer2Input" type="file" accept="image/*" />
+            </label>
+            <label class="file-btn">
+              Carica layer 3
+              <input id="imageLayer3Input" type="file" accept="image/*" />
             </label>
             <label class="file-btn">
               Carica JSON
@@ -353,7 +365,7 @@
             <button id="exportBtn" class="secondary">Scarica JSON</button>
           </div>
           <div class="hint" style="margin-top:10px;">
-            Se carichi solo l'immagine, la UI crea una base JSON usando tileSize, righe e colonne impostate qui sotto.
+            Se carichi solo i layer immagine, la UI crea una base JSON usando tileSize, righe e colonne impostate qui sotto.
           </div>
         </section>
 
@@ -395,13 +407,30 @@
           </div>
           <div class="grid-2" style="margin-top:10px;">
             <label>
-              Asset immagine nel JSON
-              <input id="assetPath" type="text" value="./map.png" />
+              Asset layer 0
+              <input id="assetLayer0" type="text" value="./map.png" />
             </label>
+            <label>
+              Asset layer 1
+              <input id="assetLayer1" type="text" value="" />
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px;">
+            <label>
+              Asset layer 2
+              <input id="assetLayer2" type="text" value="" />
+            </label>
+            <label>
+              Asset layer 3
+              <input id="assetLayer3" type="text" value="" />
+            </label>
+          </div>
+          <div class="grid-2" style="margin-top:10px;">
             <label>
               Tile size (px)
               <input id="tileSize" type="number" min="1" step="1" value="64" />
             </label>
+            <div></div>
           </div>
           <div class="grid-2" style="margin-top:10px;">
             <label>
@@ -451,6 +480,7 @@
             <button id="toolSpawn" class="ghost">Seleziona spawn</button>
           </div>
           <div class="hint" style="margin-top:10px;">
+            La collisionMap descrive il <strong>layer 2</strong> di gameplay: solo qui il PG viene bloccato.
             Trascina sul canvas per dipingere. Tasto destro = applica il pennello opposto. Scorciatoie:
             <span class="kbd">B</span> bloccato,
             <span class="kbd">L</span> libero,
@@ -552,7 +582,7 @@
           Stato corrente: <strong id="summaryText">24×16 tiles, tileSize 64</strong>
         </div>
         <div class="small">
-          JSON esportato con <code>layout</code>, <code>collisionMap</code> e <code>points</code> pronti per l'uso.
+          JSON esportato con <code>assets.layer0..layer3</code>, <code>layout</code>, <code>collisionMap</code> e <code>points</code>.
         </div>
       </div>
     </main>
@@ -560,11 +590,17 @@
 
   <script>
     const el = {
-      imageInput: document.getElementById('imageInput'),
+      imageLayer0Input: document.getElementById('imageLayer0Input'),
+      imageLayer1Input: document.getElementById('imageLayer1Input'),
+      imageLayer2Input: document.getElementById('imageLayer2Input'),
+      imageLayer3Input: document.getElementById('imageLayer3Input'),
       jsonInput: document.getElementById('jsonInput'),
       mapId: document.getElementById('mapId'),
       mapName: document.getElementById('mapName'),
-      assetPath: document.getElementById('assetPath'),
+      assetLayer0: document.getElementById('assetLayer0'),
+      assetLayer1: document.getElementById('assetLayer1'),
+      assetLayer2: document.getElementById('assetLayer2'),
+      assetLayer3: document.getElementById('assetLayer3'),
       tileSize: document.getElementById('tileSize'),
       cols: document.getElementById('cols'),
       rows: document.getElementById('rows'),
@@ -611,11 +647,17 @@
     };
 
     const ctx = el.canvas.getContext('2d');
+    const LAYER_KEYS = ['layer0', 'layer1', 'layer2', 'layer3'];
 
     const state = {
       id: 'map',
       name: 'Nuova mappa',
-      asset: './map.png',
+      assets: {
+        layer0: './map.png',
+        layer1: '',
+        layer2: '',
+        layer3: ''
+      },
       tileSize: 64,
       cols: 24,
       rows: 16,
@@ -639,9 +681,24 @@
         active: false
       },
       grid: [],
-      image: null,
-      imageUrl: '',
-      imageFileName: 'map.png',
+      layerImages: {
+        layer0: null,
+        layer1: null,
+        layer2: null,
+        layer3: null
+      },
+      layerImageUrls: {
+        layer0: '',
+        layer1: '',
+        layer2: '',
+        layer3: ''
+      },
+      layerImageFileNames: {
+        layer0: 'map.png',
+        layer1: 'layer1.png',
+        layer2: 'layer2.png',
+        layer3: 'layer3.png'
+      },
       tool: 'blocked',
       zoom: 1,
       hover: null,
@@ -697,6 +754,7 @@
 
     function snapshot() {
       return deepClone({
+        assets: state.assets,
         cols: state.cols,
         rows: state.rows,
         tileSize: state.tileSize,
@@ -718,6 +776,7 @@
     }
 
     function restoreSnapshot(snap) {
+      state.assets = deepClone(snap.assets || state.assets);
       state.cols = snap.cols;
       state.rows = snap.rows;
       state.tileSize = snap.tileSize;
@@ -765,7 +824,12 @@
     function syncStateFromInputs() {
       state.id = el.mapId.value.trim() || 'map';
       state.name = el.mapName.value.trim() || 'Nuova mappa';
-      state.asset = el.assetPath.value.trim() || './map.png';
+      state.assets = {
+        layer0: el.assetLayer0.value.trim() || './map.png',
+        layer1: el.assetLayer1.value.trim(),
+        layer2: el.assetLayer2.value.trim(),
+        layer3: el.assetLayer3.value.trim()
+      };
       state.tileSize = Math.max(1, parseInt(el.tileSize.value || '64', 10));
       state.cols = Math.max(1, parseInt(el.cols.value || '1', 10));
       state.rows = Math.max(1, parseInt(el.rows.value || '1', 10));
@@ -782,7 +846,10 @@
     function syncStateToInputs() {
       el.mapId.value = state.id;
       el.mapName.value = state.name;
-      el.assetPath.value = state.asset;
+      el.assetLayer0.value = state.assets.layer0 || './map.png';
+      el.assetLayer1.value = state.assets.layer1 || '';
+      el.assetLayer2.value = state.assets.layer2 || '';
+      el.assetLayer3.value = state.assets.layer3 || '';
       el.tileSize.value = state.tileSize;
       el.cols.value = state.cols;
       el.rows.value = state.rows;
@@ -909,32 +976,68 @@
       }
     }
 
-    function releaseCurrentImageUrl() {
-      if (typeof state.imageUrl === 'string' && state.imageUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(state.imageUrl);
+    function releaseLayerImageUrl(layerKey) {
+      const currentUrl = String(state.layerImageUrls[layerKey] || '');
+      if (currentUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(currentUrl);
       }
-      state.imageUrl = '';
+      state.layerImageUrls[layerKey] = '';
     }
 
-    async function loadImageFromProjectPath(assetPath) {
-      const targetPath = String(assetPath || '').trim();
-      if (!targetPath) {
+    function releaseAllLayerImageUrls() {
+      LAYER_KEYS.forEach((layerKey) => {
+        releaseLayerImageUrl(layerKey);
+      });
+    }
+
+    async function loadLayerImageFromPath(layerKey, targetPath) {
+      const safeLayerKey = LAYER_KEYS.includes(layerKey) ? layerKey : 'layer0';
+      const safeTargetPath = String(targetPath || '').trim();
+      if (!safeTargetPath) {
+        releaseLayerImageUrl(safeLayerKey);
+        state.layerImages[safeLayerKey] = null;
         return false;
       }
 
       return new Promise((resolve) => {
         const image = new Image();
         image.onload = () => {
-          releaseCurrentImageUrl();
-          state.image = image;
-          state.imageUrl = targetPath;
-          state.imageFileName = targetPath.split('/').pop() || 'map.png';
+          releaseLayerImageUrl(safeLayerKey);
+          state.layerImages[safeLayerKey] = image;
+          state.layerImageUrls[safeLayerKey] = safeTargetPath;
+          state.layerImageFileNames[safeLayerKey] = safeTargetPath.split('/').pop() || `${safeLayerKey}.png`;
           render();
           resolve(true);
         };
-        image.onerror = () => resolve(false);
-        image.src = targetPath;
+        image.onerror = () => {
+          releaseLayerImageUrl(safeLayerKey);
+          state.layerImages[safeLayerKey] = null;
+          resolve(false);
+        };
+        image.src = safeTargetPath;
       });
+    }
+
+    async function loadProjectLayerImages(definitionPath, mapData) {
+      const rawAssets =
+        mapData && typeof mapData.assets === 'object' && mapData.assets
+          ? mapData.assets
+          : {};
+      const legacyLayer0 = String(mapData?.asset || '').trim();
+
+      for (const layerKey of LAYER_KEYS) {
+        const assetPath =
+          layerKey === 'layer0'
+            ? String(rawAssets[layerKey] || legacyLayer0 || '').trim()
+            : String(rawAssets[layerKey] || '').trim();
+        const resolvedAssetPath = resolveProjectAssetPath(definitionPath, assetPath);
+        if (!resolvedAssetPath) {
+          releaseLayerImageUrl(layerKey);
+          state.layerImages[layerKey] = null;
+          continue;
+        }
+        await loadLayerImageFromPath(layerKey, resolvedAssetPath);
+      }
     }
 
     async function refreshProjectMaps(options = {}) {
@@ -986,18 +1089,7 @@
         populateFromJson(payload.map);
         state.selectedProjectMapId = entry.id;
         renderProjectMapSelect(entry.id);
-
-        const resolvedAssetPath = resolveProjectAssetPath(
-          payload.definition || entry.definition,
-          payload.map.asset || state.asset,
-        );
-        if (resolvedAssetPath) {
-          const imageLoaded = await loadImageFromProjectPath(resolvedAssetPath);
-          if (imageLoaded) {
-            setStatus(`Config mappa "${entry.id}" caricata dal progetto.`, 'success');
-            return;
-          }
-        }
+        await loadProjectLayerImages(payload.definition || entry.definition, payload.map);
 
         setStatus(`Config mappa "${entry.id}" caricata dal progetto.`, 'success');
       } catch (error) {
@@ -1311,7 +1403,13 @@
       const base = deepClone(state.importedRoot || {});
       base.id = state.id;
       base.name = state.name;
-      base.asset = state.asset;
+      base.assets = {
+        layer0: String(state.assets.layer0 || '').trim(),
+        layer1: String(state.assets.layer1 || '').trim(),
+        layer2: String(state.assets.layer2 || '').trim(),
+        layer3: String(state.assets.layer3 || '').trim()
+      };
+      delete base.asset;
       base.layout = {
         ...(base.layout || {}),
         cols: state.cols,
@@ -1339,11 +1437,34 @@
       return base;
     }
 
+    function getReferenceImage() {
+      for (const layerKey of LAYER_KEYS) {
+        const image = state.layerImages[layerKey];
+        if (image && image.naturalWidth > 0 && image.naturalHeight > 0) {
+          return image;
+        }
+      }
+      return null;
+    }
+
     function render() {
       const mapWidth = Math.max(1, state.cols * state.tileSize);
       const mapHeight = Math.max(1, state.rows * state.tileSize);
-      const width = state.image ? Math.max(mapWidth, state.image.naturalWidth) : mapWidth;
-      const height = state.image ? Math.max(mapHeight, state.image.naturalHeight) : mapHeight;
+      const imageBounds = LAYER_KEYS.reduce(
+        (acc, layerKey) => {
+          const image = state.layerImages[layerKey];
+          if (!image) {
+            return acc;
+          }
+          return {
+            width: Math.max(acc.width, image.naturalWidth || 0),
+            height: Math.max(acc.height, image.naturalHeight || 0)
+          };
+        },
+        { width: 0, height: 0 }
+      );
+      const width = Math.max(mapWidth, imageBounds.width || 0);
+      const height = Math.max(mapHeight, imageBounds.height || 0);
 
       el.canvas.width = width;
       el.canvas.height = height;
@@ -1354,9 +1475,11 @@
       ctx.fillStyle = '#0b1220';
       ctx.fillRect(0, 0, width, height);
 
-      if (state.image) {
-        ctx.drawImage(state.image, 0, 0);
-      }
+      LAYER_KEYS.forEach((layerKey) => {
+        const image = state.layerImages[layerKey];
+        if (!image) return;
+        ctx.drawImage(image, 0, 0);
+      });
 
       for (let y = 0; y < state.rows; y++) {
         for (let x = 0; x < state.cols; x++) {
@@ -1528,24 +1651,29 @@
       state.mouseDown = false;
     }
 
-    async function loadImageFile(file) {
+    async function loadImageFile(file, layerKey = 'layer0') {
+      const safeLayerKey = LAYER_KEYS.includes(layerKey) ? layerKey : 'layer0';
       if (!file) return;
-      releaseCurrentImageUrl();
+      releaseLayerImageUrl(safeLayerKey);
       const url = URL.createObjectURL(file);
       const image = new Image();
       image.onload = () => {
-        state.image = image;
-        state.imageUrl = url;
-        state.imageFileName = file.name;
-        if (!el.assetPath.value.trim() || el.assetPath.value.trim() === './map.png') {
-          el.assetPath.value = `./${file.name}`;
-          state.asset = el.assetPath.value;
+        state.layerImages[safeLayerKey] = image;
+        state.layerImageUrls[safeLayerKey] = url;
+        state.layerImageFileNames[safeLayerKey] = file.name;
+        const targetAssetInput = el[safeLayerKey === 'layer0' ? 'assetLayer0' : safeLayerKey === 'layer1' ? 'assetLayer1' : safeLayerKey === 'layer2' ? 'assetLayer2' : 'assetLayer3'];
+        if (targetAssetInput && !targetAssetInput.value.trim()) {
+          targetAssetInput.value = `./${file.name}`;
         }
-        setStatus(`Immagine caricata: ${file.name} (${image.naturalWidth}×${image.naturalHeight}).`, 'success');
+        syncStateFromInputs();
+        setStatus(
+          `Immagine ${safeLayerKey} caricata: ${file.name} (${image.naturalWidth}x${image.naturalHeight}).`,
+          'success',
+        );
         render();
       };
       image.onerror = () => {
-        setStatus('Impossibile leggere l\'immagine.', 'error');
+        setStatus(`Impossibile leggere l'immagine ${safeLayerKey}.`, 'error');
       };
       image.src = url;
     }
@@ -1567,7 +1695,13 @@
       state.hasImportedJson = true;
       state.id = data.id || 'map';
       state.name = data.name || 'Nuova mappa';
-      state.asset = data.asset || './map.png';
+      const rawAssets = data.assets && typeof data.assets === 'object' ? data.assets : {};
+      state.assets = {
+        layer0: String(rawAssets.layer0 || data.asset || './map.png').trim() || './map.png',
+        layer1: String(rawAssets.layer1 || '').trim(),
+        layer2: String(rawAssets.layer2 || '').trim(),
+        layer3: String(rawAssets.layer3 || '').trim()
+      };
       state.tileSize = Math.max(1, Number(data.layout?.tileSize) || 64);
       state.cols = Math.max(1, Number(data.layout?.cols) || 1);
       state.rows = Math.max(1, Number(data.layout?.rows) || 1);
@@ -1617,7 +1751,7 @@
         state.importedRoot = {};
         state.hasImportedJson = false;
 
-        const shouldInfer = state.image && (state.cols <= 1 || state.rows <= 1);
+        const shouldInfer = getReferenceImage() && (state.cols <= 1 || state.rows <= 1);
         if (shouldInfer) inferLayoutFromImage();
 
         state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
@@ -1632,12 +1766,13 @@
     }
 
     function inferLayoutFromImage() {
-      if (!state.image) {
+      const referenceImage = getReferenceImage();
+      if (!referenceImage) {
         throw new Error('Carica prima un\'immagine per ricavare righe e colonne.');
       }
       syncStateFromInputs();
-      const cols = Math.max(1, Math.round(state.image.naturalWidth / state.tileSize));
-      const rows = Math.max(1, Math.round(state.image.naturalHeight / state.tileSize));
+      const cols = Math.max(1, Math.round(referenceImage.naturalWidth / state.tileSize));
+      const rows = Math.max(1, Math.round(referenceImage.naturalHeight / state.tileSize));
       state.cols = cols;
       state.rows = rows;
       el.cols.value = cols;
@@ -1710,7 +1845,10 @@
       render();
     }
 
-    el.imageInput.addEventListener('change', event => loadImageFile(event.target.files[0]));
+    el.imageLayer0Input.addEventListener('change', event => loadImageFile(event.target.files[0], 'layer0'));
+    el.imageLayer1Input.addEventListener('change', event => loadImageFile(event.target.files[0], 'layer1'));
+    el.imageLayer2Input.addEventListener('change', event => loadImageFile(event.target.files[0], 'layer2'));
+    el.imageLayer3Input.addEventListener('change', event => loadImageFile(event.target.files[0], 'layer3'));
     el.jsonInput.addEventListener('change', event => loadJsonFile(event.target.files[0]));
     el.projectMapSelect.addEventListener('change', () => {
       state.selectedProjectMapId = String(el.projectMapSelect.value || '').trim();
@@ -1806,7 +1944,10 @@
     [
       el.mapId,
       el.mapName,
-      el.assetPath,
+      el.assetLayer0,
+      el.assetLayer1,
+      el.assetLayer2,
+      el.assetLayer3,
       el.tileSize,
       el.cols,
       el.rows,

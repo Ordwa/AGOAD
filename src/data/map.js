@@ -12,6 +12,7 @@ const DEFAULT_COLLISION_LEGEND = Object.freeze({
   "~": "WATER",
   g: "TALL_GRASS",
 });
+const MAP_RENDER_LAYER_COUNT = 4;
 
 const EMPTY_POINTS = Object.freeze({
   interactionPoints: Object.freeze([]),
@@ -38,7 +39,10 @@ const normalizedMap = normalizeMapDefinition(activeMapEntry.id, activeMapDefinit
 
 export const ACTIVE_WORLD_MAP_ID = normalizedMap.id;
 export const AVAILABLE_WORLD_MAP_IDS = Object.freeze(availableMapEntries.map((entry) => entry.id));
-export const WORLD_MAP_ASSET_PATH = normalizedMap.assetPath;
+export const WORLD_MAP_LAYER_ASSET_PATHS = Object.freeze(
+  normalizedMap.layerAssetPaths.map((assetPath) => assetPath || ""),
+);
+export const WORLD_MAP_ASSET_PATH = normalizedMap.primaryAssetPath;
 export const MAP_LAYOUT = Object.freeze(normalizedMap.layout);
 export const WORLD_MAP = Object.freeze(normalizedMap.collisionGrid.map((row) => Object.freeze(row)));
 export const WORLD_POINTS = Object.freeze(normalizedMap.points);
@@ -113,7 +117,13 @@ function normalizeMapDefinition(expectedId, definition, definitionUrl) {
   const collisionGrid = parseCollisionRows(rows, layout, legend, definitionUrl);
   const spawn = normalizeCollisionSpawn(definition?.collisionMap?.spawn, layout, collisionGrid);
   const points = normalizeWorldPoints(definition?.points);
-  const assetPath = resolveMapAssetPath(definition?.asset, id, definitionUrl);
+  const layerAssetPaths = resolveMapLayerAssetPaths(
+    definition?.assets,
+    definition?.asset,
+    id,
+    definitionUrl,
+  );
+  const primaryAssetPath = selectPrimaryMapAssetPath(layerAssetPaths);
 
   return {
     id,
@@ -121,7 +131,8 @@ function normalizeMapDefinition(expectedId, definition, definitionUrl) {
     collisionGrid,
     spawn,
     points,
-    assetPath,
+    layerAssetPaths,
+    primaryAssetPath,
   };
 }
 
@@ -205,7 +216,11 @@ function normalizeWorldPoints(rawPoints) {
   }
 
   const interactionPoints = Array.isArray(rawPoints.interactionPoints)
-    ? rawPoints.interactionPoints.map((point) => ({ ...point }))
+    ? rawPoints.interactionPoints.map((point) => ({
+        ...point,
+        layer: normalizeMapLayerIndex(point?.layer, 2),
+        blocksMovement: Boolean(point?.blocksMovement),
+      }))
     : [];
   const battleZones = Array.isArray(rawPoints.battleZones)
     ? rawPoints.battleZones.map((zone) => ({ ...zone }))
@@ -224,13 +239,31 @@ function normalizeWorldPoints(rawPoints) {
   };
 }
 
-function resolveMapAssetPath(rawAssetPath, mapId, definitionUrl) {
-  const fallbackAssetPath = `./${sanitizeMapFileStem(mapId)}.png`;
-  const assetPath = String(rawAssetPath ?? fallbackAssetPath).trim();
-  if (!assetPath) {
+function resolveMapLayerAssetPaths(rawAssets, rawLegacyAssetPath, mapId, definitionUrl) {
+  const fallbackStem = sanitizeMapFileStem(mapId);
+  const fallbackLayer0 = `./${fallbackStem}.png`;
+  const rawLayers =
+    rawAssets && typeof rawAssets === "object" && !Array.isArray(rawAssets) ? rawAssets : {};
+
+  return Array.from({ length: MAP_RENDER_LAYER_COUNT }, (_, layerIndex) => {
+    const layerKey = `layer${layerIndex}`;
+    const fallbackAssetPath =
+      layerIndex === 0
+        ? String(rawLegacyAssetPath ?? rawLayers[layerKey] ?? fallbackLayer0).trim()
+        : String(rawLayers[layerKey] ?? "").trim();
+
+    if (!fallbackAssetPath) {
+      return "";
+    }
     return buildVersionedUrl(new URL(fallbackAssetPath, definitionUrl)).toString();
+  });
+}
+
+function selectPrimaryMapAssetPath(layerAssetPaths) {
+  if (!Array.isArray(layerAssetPaths)) {
+    return "";
   }
-  return buildVersionedUrl(new URL(assetPath, definitionUrl)).toString();
+  return layerAssetPaths.find((assetPath) => String(assetPath ?? "").trim().length > 0) ?? "";
 }
 
 function sanitizeMapFileStem(mapId) {
@@ -239,6 +272,14 @@ function sanitizeMapFileStem(mapId) {
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "");
   return sanitized.length > 0 ? sanitized : "map";
+}
+
+function normalizeMapLayerIndex(value, fallback = 2) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(MAP_RENDER_LAYER_COUNT - 1, Math.floor(parsed)));
 }
 
 function toPositiveInt(value, fallback) {

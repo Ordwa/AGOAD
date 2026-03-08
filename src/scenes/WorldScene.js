@@ -2,6 +2,7 @@ import { Scene } from "../core/Scene.js";
 import { WORLD_NPCS } from "../data/npcs.js";
 import {
   WORLD_MAP_ASSET_PATH,
+  WORLD_MAP_LAYER_ASSET_PATHS,
   MAP_LAYOUT,
   WORLD_MAP,
   WORLD_POINTS,
@@ -65,7 +66,7 @@ export class WorldScene extends Scene {
     super(game);
 
     this.time = 0;
-    this.mapImage = createUiImage(WORLD_MAP_ASSET_PATH);
+    this.mapLayerImages = WORLD_MAP_LAYER_ASSET_PATHS.map((assetPath) => createUiImage(assetPath));
     this.playerAnimationImages = Object.freeze({
       [PLAYER_ANIMATION_IDLE_LEFT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_LEFT].path),
       [PLAYER_ANIMATION_IDLE_RIGHT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].path),
@@ -178,10 +179,6 @@ export class WorldScene extends Scene {
       }
     }
 
-    if (!isUiImageUsable(this.mapImage)) {
-      return;
-    }
-
     const pressedDirection = resolvePressedDirection(input);
     if (pressedDirection) {
       this.turnBufferDirection = pressedDirection;
@@ -224,25 +221,23 @@ export class WorldScene extends Scene {
     const arePlayerAnimationsSettled = Object.values(this.playerAnimationImages).every((image) =>
       isUiImageSettled(image),
     );
-    if (!isUiImageSettled(this.mapImage) || !arePlayerAnimationsSettled) {
+    const areMapLayersSettled = this.mapLayerImages.every((image) => isUiImageSettled(image));
+    if (!areMapLayersSettled || !arePlayerAnimationsSettled) {
       drawLoading(ctx, canvasWidth, canvasHeight, this.time);
       ctx.restore();
       return;
     }
 
-    if (!isUiImageUsable(this.mapImage)) {
-      ctx.fillStyle = "#0f1116";
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-      ctx.restore();
-      return;
-    }
-
     const camera = this.computeCamera(canvasWidth, canvasHeight);
-    drawCameraView(ctx, this.mapImage, camera, canvasWidth, canvasHeight);
+    drawCameraBackdrop(ctx, camera, canvasWidth, canvasHeight);
+    this.drawMapLayer(ctx, 0, camera, canvasWidth, canvasHeight);
+    this.drawMapLayer(ctx, 1, camera, canvasWidth, canvasHeight);
+    this.drawMapLayer(ctx, 2, camera, canvasWidth, canvasHeight);
 
     this.drawBattleZoneMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawNpcMarkers(ctx, camera, canvasWidth, canvasHeight);
     this.drawPlayer(ctx, camera.zoom, canvasWidth, canvasHeight);
+    this.drawMapLayer(ctx, 3, camera, canvasWidth, canvasHeight);
 
     drawWorldMessage(ctx, this.worldMessage.text, this.worldMessage.ttl, canvasWidth, canvasHeight);
 
@@ -250,7 +245,8 @@ export class WorldScene extends Scene {
   }
 
   computeCamera(canvasWidth, canvasHeight) {
-    const mapHeight = this.mapImage.naturalHeight || MAP_LAYOUT.rows * MAP_LAYOUT.tileSize;
+    const primaryMapImage = this.getPrimaryMapImage();
+    const mapHeight = primaryMapImage?.naturalHeight || MAP_LAYOUT.rows * MAP_LAYOUT.tileSize;
     const zoom = computeCameraZoom(canvasWidth, canvasHeight, mapHeight);
     const viewWidth = canvasWidth / zoom;
     const viewHeight = canvasHeight / zoom;
@@ -262,6 +258,18 @@ export class WorldScene extends Scene {
       sourceX: this.player.worldX - viewWidth * 0.5,
       sourceY: this.player.worldY - viewHeight * 0.5,
     };
+  }
+
+  getPrimaryMapImage() {
+    return this.mapLayerImages.find((image) => isUiImageUsable(image)) ?? null;
+  }
+
+  drawMapLayer(ctx, layerIndex, camera, canvasWidth, canvasHeight) {
+    const image = this.mapLayerImages[layerIndex] ?? null;
+    if (!isUiImageUsable(image)) {
+      return;
+    }
+    drawCameraLayer(ctx, image, camera, canvasWidth, canvasHeight);
   }
 
   drawPlayer(ctx, zoom, canvasWidth, canvasHeight) {
@@ -465,7 +473,15 @@ export class WorldScene extends Scene {
     }
 
     const blockingNpc = this.getNpcAtTile(tileX, tileY, { onlyBlocking: true });
-    return !blockingNpc;
+    if (blockingNpc) {
+      return false;
+    }
+
+    const blockingInteraction = this.getInteractionAtTile(tileX, tileY, {
+      onlyLayer2: true,
+      onlyBlocking: true,
+    });
+    return !blockingInteraction;
   }
 
   advancePlayerMove(dt) {
@@ -561,8 +577,21 @@ export class WorldScene extends Scene {
     );
   }
 
-  getInteractionAtTile(tileX, tileY) {
-    return this.interactionPoints.find((point) => point.x === tileX && point.y === tileY) ?? null;
+  getInteractionAtTile(tileX, tileY, { onlyLayer2 = true, onlyBlocking = false } = {}) {
+    return (
+      this.interactionPoints.find((point) => {
+        if (!point || point.x !== tileX || point.y !== tileY) {
+          return false;
+        }
+        if (onlyLayer2 && Number(point.layer ?? 2) !== 2) {
+          return false;
+        }
+        if (onlyBlocking) {
+          return point.blocksMovement === true;
+        }
+        return true;
+      }) ?? null
+    );
   }
 
   getBattleZoneAtTile(tileX, tileY) {
@@ -825,9 +854,22 @@ function computeCameraZoom(canvasWidth, canvasHeight, mapHeight) {
   return clampNumber(rawZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
 }
 
-function drawCameraView(ctx, mapImage, camera, canvasWidth, canvasHeight) {
+function drawCameraBackdrop(ctx, camera, canvasWidth, canvasHeight) {
   ctx.fillStyle = "#05090f";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  ctx.fillStyle = "#0a1220";
+  ctx.fillRect(
+    Math.round(-camera.sourceX * camera.zoom),
+    Math.round(-camera.sourceY * camera.zoom),
+    Math.round(MAP_LAYOUT.cols * MAP_LAYOUT.tileSize * camera.zoom),
+    Math.round(MAP_LAYOUT.rows * MAP_LAYOUT.tileSize * camera.zoom),
+  );
+}
+
+function drawCameraLayer(ctx, mapImage, camera, canvasWidth, canvasHeight) {
+  if (!isUiImageUsable(mapImage)) {
+    return;
+  }
 
   const translateX = Math.round(-camera.sourceX * camera.zoom);
   const translateY = Math.round(-camera.sourceY * camera.zoom);
@@ -1032,11 +1074,12 @@ function easeInOutCubic(value) {
 }
 
 function createUiImage(relativePath) {
-  if (typeof Image === "undefined") {
+  const safePath = String(relativePath ?? "").trim();
+  if (typeof Image === "undefined" || safePath.length <= 0) {
     return null;
   }
 
-  const imageUrl = buildVersionedAssetUrl(relativePath);
+  const imageUrl = buildVersionedAssetUrl(safePath);
   const image = new Image();
   image.decoding = "async";
   image.__agoadLoadState = "loading";

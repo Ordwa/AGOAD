@@ -32,7 +32,12 @@ mkdirSync(mapDir, { recursive: true });
 const template = {
   id: mapId,
   name: toLabel(mapId),
-  asset: `./${mapId}.png`,
+  assets: {
+    layer0: `./${mapId}.png`,
+    layer1: "",
+    layer2: "",
+    layer3: "",
+  },
   layout: {
     cols,
     rows,
@@ -82,9 +87,10 @@ writeFileSync(MAPS_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf
 
 console.log(`Mappa '${mapId}' creata in ${mapDir}`);
 console.log("Prossimi passi:");
-console.log("1. Copia il PNG della mappa in src/maps/<mapId>/<mapId>.png");
-console.log("2. Modifica collisionMap.rows in src/maps/<mapId>/<mapId>.json");
-console.log("3. (Opzionale) passa ?map=<mapId> nell'URL per provarla subito.");
+console.log("1. Copia i PNG layer in src/maps/<mapId>/ (almeno layer0).");
+console.log("2. Aggiorna assets.layer0..layer3 in src/maps/<mapId>/<mapId>.json");
+console.log("3. Modifica collisionMap.rows in src/maps/<mapId>/<mapId>.json");
+console.log("4. (Opzionale) passa ?map=<mapId> nell'URL per provarla subito.");
 
 function buildCollisionRowsTemplate(cols, rows) {
   return Array.from({ length: rows }, (_, rowIndex) => {

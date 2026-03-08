@@ -4,6 +4,7 @@ import { AUTO_SAVE_TRIGGER } from "../data/autoSave.js";
 
 const CUTSCENE_TYPEWRITER_CHARS_PER_SECOND = 42;
 const CUTSCENE_SPEAKER_SHAKE_SECONDS = 0.42;
+const CUTSCENE_SPEAKER_FADE_SECONDS = 0.32;
 
 export class CutsceneScene extends Scene {
   constructor(game) {
@@ -123,6 +124,8 @@ export class CutsceneScene extends Scene {
       revealAccumulator: 0,
       lineCompleted: false,
       speakerShakeTtl: CUTSCENE_SPEAKER_SHAKE_SECONDS,
+      speakerFadeElapsed: 0,
+      speakerFadeCompleted: false,
     };
     return true;
   }
@@ -154,6 +157,15 @@ export class CutsceneScene extends Scene {
     this.advanceRequested = false;
 
     this.cutscene.speakerShakeTtl = Math.max(0, this.cutscene.speakerShakeTtl - dt);
+    if (!this.cutscene.speakerFadeCompleted && isUiImageUsable(this.cutscene.speakerImage)) {
+      this.cutscene.speakerFadeElapsed = Math.min(
+        CUTSCENE_SPEAKER_FADE_SECONDS,
+        this.cutscene.speakerFadeElapsed + dt,
+      );
+      if (this.cutscene.speakerFadeElapsed >= CUTSCENE_SPEAKER_FADE_SECONDS) {
+        this.cutscene.speakerFadeCompleted = true;
+      }
+    }
     const currentLine = this.cutscene.lines[this.cutscene.lineIndex] ?? createEmptyCutsceneLine();
     const currentText = currentLine.text;
 
@@ -244,9 +256,16 @@ export class CutsceneScene extends Scene {
     const shakeY = Math.cos(this.time * 61) * 2.8 * shakePower;
     const drawX = Math.round((canvasWidth - targetWidth) * 0.5 + shakeX);
     const drawY = Math.round(panel.y - targetHeight + shakeY);
+    const fadeRatio =
+      this.cutscene.speakerFadeCompleted
+        ? 1
+        : clampNumber(this.cutscene.speakerFadeElapsed / CUTSCENE_SPEAKER_FADE_SECONDS, 0, 1);
 
+    ctx.save();
+    ctx.globalAlpha = fadeRatio;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(image, frameX, 0, frameW, sourceH, drawX, drawY, targetWidth, targetHeight);
+    ctx.restore();
   }
 
   drawDialoguePanel(ctx, canvasWidth, canvasHeight) {
@@ -406,6 +425,8 @@ function createInitialCutsceneState() {
     revealAccumulator: 0,
     lineCompleted: false,
     speakerShakeTtl: 0,
+    speakerFadeElapsed: 0,
+    speakerFadeCompleted: false,
   };
 }
 
@@ -613,4 +634,11 @@ function buildVersionedAssetUrl(relativePath) {
 
 function isUiImageUsable(image) {
   return Boolean(image && image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
 }

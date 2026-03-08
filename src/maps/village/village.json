@@ -1,7 +1,12 @@
 {
   "id": "village",
   "name": "Villaggio",
-  "asset": "./village.png",
+  "assets": {
+    "layer0": "./village.png",
+    "layer1": "",
+    "layer2": "",
+    "layer3": ""
+  },
   "layout": {
     "cols": 59,
     "rows": 39,
