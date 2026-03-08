@@ -13,7 +13,7 @@
       "speakerId": "shaman",
       "lines": [
         "Ehi inutile sacco di merda!",
-        "Io sono Grik.[update_label] Lo Sciamano.",
+        "Io sono Grik. [label_update=GRIK] Lo Sciamano.",
         "Questo è il villaggio.",
         "Non un dungeon. Non “loot gratis”. Casa nostra.",
         "Gli eroi arrivano sempre uguali:",

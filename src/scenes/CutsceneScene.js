@@ -126,6 +126,7 @@ export class CutsceneScene extends Scene {
       speakerShakeTtl: CUTSCENE_SPEAKER_SHAKE_SECONDS,
       speakerFadeElapsed: 0,
       speakerFadeCompleted: false,
+      speakerVisible: Boolean(speakerAssetPath),
     };
     return true;
   }
@@ -228,6 +229,10 @@ export class CutsceneScene extends Scene {
   }
 
   drawSpeaker(ctx, canvasWidth, canvasHeight) {
+    if (!this.cutscene.speakerVisible) {
+      return;
+    }
+
     const image = this.cutscene.speakerImage;
     if (!isUiImageUsable(image)) {
       return;
@@ -378,6 +383,14 @@ export class CutsceneScene extends Scene {
       return;
     }
 
+    if (line.showSpeaker === true) {
+      this.cutscene.speakerVisible = true;
+      this.cutscene.speakerFadeElapsed = 0;
+      this.cutscene.speakerFadeCompleted = false;
+    } else if (line.hideSpeaker === true) {
+      this.cutscene.speakerVisible = false;
+    }
+
     const nextLabel = toSpeakerLabel(line.updateLabel ?? "");
     if (!nextLabel) {
       return;
@@ -427,6 +440,7 @@ function createInitialCutsceneState() {
     speakerShakeTtl: 0,
     speakerFadeElapsed: 0,
     speakerFadeCompleted: false,
+    speakerVisible: false,
   };
 }
 
@@ -434,6 +448,8 @@ function createEmptyCutsceneLine() {
   return {
     text: "",
     updateLabel: "",
+    showSpeaker: false,
+    hideSpeaker: false,
   };
 }
 
@@ -458,27 +474,36 @@ function normalizeCutsceneLines(rawLines) {
 
 function parseCutsceneLineWithCommands(line) {
   const rawLine = String(line ?? "");
-  const match = rawLine.match(/\[update_label\]/i);
-  const updateLabel = match ? extractLastWordLabel(rawLine.slice(0, match.index)) : "";
-  const text = rawLine.replace(/\[update_label\]/gi, "").replace(/\s+/g, " ").trim();
+  let updateLabel = "";
+  let showSpeaker = false;
+  let hideSpeaker = false;
+
+  const commandPattern = /\[(npc_show|npc_hide|label_update=[^\]]+)\]/gi;
+  Array.from(rawLine.matchAll(commandPattern)).forEach((match) => {
+    const rawCommand = String(match[1] ?? "").trim();
+    const normalizedCommand = rawCommand.toLowerCase();
+    if (normalizedCommand === "npc_show") {
+      showSpeaker = true;
+      hideSpeaker = false;
+      return;
+    }
+    if (normalizedCommand === "npc_hide") {
+      hideSpeaker = true;
+      showSpeaker = false;
+      return;
+    }
+    if (normalizedCommand.startsWith("label_update=")) {
+      updateLabel = toSpeakerLabel(rawCommand.slice("label_update=".length));
+    }
+  });
+
+  const text = rawLine.replace(commandPattern, "").replace(/\s+/g, " ").trim();
   return {
     text,
     updateLabel,
+    showSpeaker,
+    hideSpeaker,
   };
-}
-
-function extractLastWordLabel(text) {
-  const tokens = String(text ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token.length > 0);
-  if (tokens.length <= 0) {
-    return "";
-  }
-
-  const rawToken = tokens[tokens.length - 1];
-  const cleanToken = rawToken.replace(/^[^A-Za-zÀ-ÖØ-öø-ÿ0-9']+|[^A-Za-zÀ-ÖØ-öø-ÿ0-9']+$/g, "");
-  return toSpeakerLabel(cleanToken);
 }
 
 function toSpeakerLabel(value) {

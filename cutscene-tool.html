@@ -286,6 +286,25 @@
       white-space: pre-wrap;
     }
 
+    .tag-guide {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .tag-guide-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px;
+      border: 1px solid #3f4c61;
+      border-radius: 8px;
+      background: rgba(9, 13, 20, 0.65);
+    }
+
+    .tag-guide-item code {
+      width: fit-content;
+    }
+
     .asset-preview {
       width: 84px;
       height: 84px;
@@ -454,6 +473,23 @@
             Testo dialogo (una riga per linea)
             <textarea id="dialogLinesInput" placeholder="Riga 1&#10;Riga 2&#10;Riga 3"></textarea>
           </label>
+          <div class="card tag-guide">
+            <h2>Tag Dialogo</h2>
+            <div class="tag-guide-item">
+              <code>[npc_show]</code>
+              <div class="hint">Mostra il PNG dello speaker dalle righe successive.</div>
+            </div>
+            <div class="tag-guide-item">
+              <code>[npc_hide]</code>
+              <div class="hint">Nasconde il PNG dello speaker dalle righe successive.</div>
+            </div>
+            <div class="tag-guide-item">
+              <code>[label_update=VALORE]</code>
+              <div class="hint">
+                Aggiorna il label persistente dello speaker a <code>VALORE</code> da questa riga in avanti.
+              </div>
+            </div>
+          </div>
 
           <div class="row" style="margin-top: 10px;">
             <button id="btnNewDialog">Nuovo Dialogo</button>
@@ -1141,11 +1177,18 @@
 
       const lines = String(elements.dialogLinesInput.value || "")
         .split(/\r?\n/)
-        .map((line) => line.replace(/\[update_label\]/gi, "").trim())
+        .map((line) => stripDialogPreviewCommands(line))
         .filter((line) => line.length > 0);
 
       elements.previewSpeaker.textContent = speakerLabel;
       elements.previewLines.textContent = lines.length > 0 ? lines.join("\n") : "Nessuna linea dialogo.";
+    }
+
+    function stripDialogPreviewCommands(line) {
+      return String(line || "")
+        .replace(/\[(npc_show|npc_hide|label_update=[^\]]+)\]/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function updateCounters() {
