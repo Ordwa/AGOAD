@@ -128,6 +128,7 @@ export class CutsceneScene extends Scene {
       speakerFadeCompleted: false,
       speakerVisible: Boolean(speakerAssetPath),
     };
+    this.consumeSetupLines();
     return true;
   }
 
@@ -205,10 +206,7 @@ export class CutsceneScene extends Scene {
     }
 
     this.cutscene.lineIndex += 1;
-    this.cutscene.revealedChars = 0;
-    this.cutscene.revealAccumulator = 0;
-    this.cutscene.lineCompleted = false;
-    this.cutscene.speakerShakeTtl = CUTSCENE_SPEAKER_SHAKE_SECONDS;
+    this.consumeSetupLines();
   }
 
   render(ctx) {
@@ -404,6 +402,29 @@ export class CutsceneScene extends Scene {
 
     const store = this.ensureSpeakerLabelStore();
     store[safeSpeakerId] = nextLabel;
+  }
+
+  consumeSetupLines() {
+    while (this.cutscene.lineIndex < this.cutscene.lines.length) {
+      const line = this.cutscene.lines[this.cutscene.lineIndex] ?? createEmptyCutsceneLine();
+      if (line.text.length > 0) {
+        this.resetCurrentLineState();
+        return true;
+      }
+
+      this.applyCurrentLineCommands(line);
+      this.cutscene.lineIndex += 1;
+    }
+
+    this.finish("completed");
+    return false;
+  }
+
+  resetCurrentLineState() {
+    this.cutscene.revealedChars = 0;
+    this.cutscene.revealAccumulator = 0;
+    this.cutscene.lineCompleted = false;
+    this.cutscene.speakerShakeTtl = CUTSCENE_SPEAKER_SHAKE_SECONDS;
   }
 
   ensureSpeakerLabelStore() {
