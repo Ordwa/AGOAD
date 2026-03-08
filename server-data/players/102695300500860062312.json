@@ -5,11 +5,260 @@
     "email": "espositoalessandro1997@gmail.com",
     "name": "Alessandro Esposito"
   },
-  "updatedAt": 1772983201586,
+  "updatedAt": 1772983393882,
   "progress": {
     "version": 1,
-    "clearedAt": 1772983201121,
-    "summary": null,
-    "snapshot": null
+    "savedAt": 1772983393421,
+    "summary": {
+      "playerName": "Rit",
+      "playerTitle": "Goblin",
+      "playTimeSeconds": 8
+    },
+    "snapshot": {
+      "player": {
+        "name": "Rit",
+        "pgTitle": "Goblin",
+        "maxHp": 30,
+        "hp": 30,
+        "attackMin": 3,
+        "attackMax": 5,
+        "speed": 3,
+        "maxMana": 30,
+        "mana": 30
+      },
+      "progress": {
+        "battlesWon": 0,
+        "battlesTotal": 0,
+        "coins": 0,
+        "encounteredEnemyIds": [],
+        "playTimeSeconds": 8.000100000000035,
+        "lastRestPoint": null,
+        "cutsceneSpeakerLabels": {}
+      },
+      "world": {
+        "playerX": 13,
+        "playerY": 14,
+        "facing": "down"
+      },
+      "inventory": {
+        "lifePotion": {
+          "id": "life_potion",
+          "label": "Life Potion",
+          "description": "Recupera 10 HP",
+          "quantity": 2,
+          "usableInBattle": true
+        },
+        "manaPotion": {
+          "id": "mana_potion",
+          "label": "Mana Potion",
+          "description": "Recupera 10 MP",
+          "quantity": 1,
+          "usableInBattle": true
+        },
+        "amulet": {
+          "id": "amulet",
+          "label": "Amulet",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "stone": {
+          "id": "stone",
+          "label": "Sasso",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "rustyKey": {
+          "id": "rusty_key",
+          "label": "Chiave Arrugginita",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "boneCharm": {
+          "id": "bone_charm",
+          "label": "Ciondolo d'Osso",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "tornMap": {
+          "id": "torn_map",
+          "label": "Mappa Strappata",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "crackedOrb": {
+          "id": "cracked_orb",
+          "label": "Sfera Crepata",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "oldCoin": {
+          "id": "old_coin",
+          "label": "Moneta Antica",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "emptyFlask": {
+          "id": "empty_flask",
+          "label": "Fiasca Vuota",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "waxSeal": {
+          "id": "wax_seal",
+          "label": "Sigillo di Cera",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "copperNail": {
+          "id": "copper_nail",
+          "label": "Chiodo di Rame",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "featherToken": {
+          "id": "feather_token",
+          "label": "Gettone Piumato",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        },
+        "shellFragment": {
+          "id": "shell_fragment",
+          "label": "Frammento di Conchiglia",
+          "description": "Non conosci l'utilita' di questo arnese",
+          "quantity": 1,
+          "usableInBattle": false
+        }
+      },
+      "skills": {
+        "shield_bash": {
+          "id": "shield_bash",
+          "label": "Shield Bash",
+          "description": "Stordisce il nemico e infligge danno",
+          "manaCost": 10,
+          "usableInBattle": true,
+          "priority": false,
+          "effect": "stun_attack"
+        },
+        "arcane_heal": {
+          "id": "arcane_heal",
+          "label": "Cura Arcana",
+          "description": "Ripristina HP durante il combattimento",
+          "manaCost": 10,
+          "usableInBattle": true,
+          "priority": false,
+          "effect": "heal"
+        },
+        "shadow_escape": {
+          "id": "shadow_escape",
+          "label": "Fuga Garantita",
+          "description": "Permette una fuga certa dal combattimento",
+          "manaCost": 10,
+          "usableInBattle": true,
+          "priority": true,
+          "effect": "escape"
+        },
+        "rune_focus": {
+          "id": "rune_focus",
+          "label": "Rune Focus",
+          "description": "Schema runico da studiare",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "mind_link": {
+          "id": "mind_link",
+          "label": "Mind Link",
+          "description": "Connessione mentale incompleta",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "stone_ward": {
+          "id": "stone_ward",
+          "label": "Stone Ward",
+          "description": "Tecnica passiva senza effetto pratico",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "ember_mark": {
+          "id": "ember_mark",
+          "label": "Ember Mark",
+          "description": "Marchio sperimentale non attivo",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "lunar_step": {
+          "id": "lunar_step",
+          "label": "Lunar Step",
+          "description": "Movimento rituale ancora instabile",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "tide_echo": {
+          "id": "tide_echo",
+          "label": "Tide Echo",
+          "description": "Eco elementale non canalizzata",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "iron_vow": {
+          "id": "iron_vow",
+          "label": "Iron Vow",
+          "description": "Giuramento antico senza riscontro",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "mist_call": {
+          "id": "mist_call",
+          "label": "Mist Call",
+          "description": "Richiamo incompleto della nebbia",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "thorn_thread": {
+          "id": "thorn_thread",
+          "label": "Thorn Thread",
+          "description": "Traccia druidica ancora da comprendere",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        },
+        "void_whisper": {
+          "id": "void_whisper",
+          "label": "Void Whisper",
+          "description": "Sussurro arcano senza effetto",
+          "manaCost": 0,
+          "usableInBattle": false,
+          "priority": false,
+          "effect": ""
+        }
+      }
+    }
   }
 }
