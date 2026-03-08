@@ -2,6 +2,7 @@ import { GAME_CONFIG, PLAYER_CONFIG } from "../data/constants.js";
 import { PLAYER_CLASSES } from "../data/classes.js";
 import { ENEMIES } from "../data/enemies.js";
 import { AUTO_SAVE_TRIGGER, DEFAULT_AUTO_SAVE_TRIGGER_CONFIG } from "../data/autoSave.js";
+import { DEFAULT_WORLD_MAP_ID } from "../data/map.js";
 import {
   fetchRemoteGameData,
   fetchRemotePlayerProgress,
@@ -301,6 +302,7 @@ function createInitialState(classes = PLAYER_CLASSES) {
       cutsceneSpeakerLabels: {},
     },
     world: {
+      currentMapId: DEFAULT_WORLD_MAP_ID,
       playerX: null,
       playerY: null,
       facing: "down",

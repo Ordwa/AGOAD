@@ -532,7 +532,8 @@
             <textarea id="pointsEditor" spellcheck="false"></textarea>
           </label>
           <div class="hint" style="margin-top:8px;">
-            Questo campo viene preservato nel file finale. Puoi usarlo per interactionPoints, healTile e altri dati del nodo points.
+            Questo campo viene preservato nel file finale. Puoi usarlo per interactionPoints,
+            transitionPoints, healTile e altri dati del nodo points.
           </div>
         </section>
 
@@ -667,6 +668,7 @@
       blockedLabel: 'TREE',
       points: {
         interactionPoints: [],
+        transitionPoints: [],
         healTile: null
       },
       spawn: {
@@ -1330,7 +1332,7 @@
 
     function safeParsePointsEditor() {
       const raw = el.pointsEditor.value.trim();
-      if (!raw) return { interactionPoints: [], healTile: null };
+      if (!raw) return { interactionPoints: [], transitionPoints: [], healTile: null };
       try {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -1386,7 +1388,7 @@
 
     function initBlankState() {
       state.grid = makeBlankGrid(state.cols, state.rows, state.passableChar);
-      state.points = { interactionPoints: [], healTile: null };
+      state.points = { interactionPoints: [], transitionPoints: [], healTile: null };
       state.spawn = { x: null, y: null, facing: 'down' };
       state.player = { x: null, y: null, facing: 'down', active: false };
       state.importedRoot = {};
@@ -1734,7 +1736,7 @@
       };
       state.points = data.points && typeof data.points === 'object'
         ? data.points
-        : { interactionPoints: [], healTile: null };
+        : { interactionPoints: [], transitionPoints: [], healTile: null };
 
       const note = validateActorsAfterGridChange();
       syncStateToInputs();

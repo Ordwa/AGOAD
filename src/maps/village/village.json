@@ -67,6 +67,16 @@
   "points": {
     "interactionPoints": [
       {
+        "id": "shaman_hut_entry",
+        "x": 14,
+        "y": 14,
+        "text": "Entri nella capanna dello sciamano",
+        "targetMapId": "shaman_hut",
+        "targetX": 16,
+        "targetY": 12,
+        "targetFacing": "down"
+      },
+      {
         "id": "fountain",
         "x": 8,
         "y": 6,

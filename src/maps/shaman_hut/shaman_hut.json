@@ -1,0 +1,88 @@
+{
+  "id": "shaman_hut",
+  "name": "Capanna dello Sciamano",
+  "assets": {
+    "layer0": "./shaman_hut.png",
+    "layer1": "./shaman_hut_layer1.png",
+    "layer2": "./shaman_hut_layer2.png",
+    "layer3": "./shaman_hut_layer3.png"
+  },
+  "layout": {
+    "cols": 32,
+    "rows": 24,
+    "tileSize": 16
+  },
+  "collisionMap": {
+    "legend": {
+      ".": "PATH",
+      "#": "TREE"
+    },
+    "spawn": {
+      "x": 16,
+      "y": 12,
+      "facing": "down"
+    },
+    "rows": [
+      "################################",
+      "################################",
+      "##............................##",
+      "##............................##",
+      "##.###.......######...........##",
+      "##.###.......######...........##",
+      "##.###.......######...........##",
+      "##............................##",
+      "##............................##",
+      "##.....................######.##",
+      "##.....................######.##",
+      "##.....................######.##",
+      "##.....................######.##",
+      "##.....................######.##",
+      "##.#######.............######.##",
+      "##.#######....................##",
+      "##.#######....................##",
+      "##.#######....................##",
+      "##.......................###..##",
+      "##.......................###..##",
+      "##............................##",
+      "##............................##",
+      "##............................##",
+      "###############..###############"
+    ]
+  },
+  "points": {
+    "interactionPoints": [
+      {
+        "id": "shaman_bed",
+        "x": 22,
+        "y": 12,
+        "text": "Ti sdrai sul letto dello sciamano e recuperi le forze",
+        "action": "rest",
+        "restSpawnX": 22,
+        "restSpawnY": 12,
+        "restFacing": "right"
+      }
+    ],
+    "transitionPoints": [
+      {
+        "id": "hut_exit_left",
+        "x": 15,
+        "y": 23,
+        "targetMapId": "village",
+        "targetX": 13,
+        "targetY": 14,
+        "targetFacing": "right",
+        "transitionText": "Esci dalla capanna dello sciamano"
+      },
+      {
+        "id": "hut_exit_right",
+        "x": 16,
+        "y": 23,
+        "targetMapId": "village",
+        "targetX": 13,
+        "targetY": 14,
+        "targetFacing": "right",
+        "transitionText": "Esci dalla capanna dello sciamano"
+      }
+    ]
+  }
+}

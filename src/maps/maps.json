@@ -4,6 +4,10 @@
     {
       "id": "village",
       "definition": "./village/village.json"
+    },
+    {
+      "id": "shaman_hut",
+      "definition": "./shaman_hut/shaman_hut.json"
     }
   ]
 }

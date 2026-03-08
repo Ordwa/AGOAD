@@ -18,35 +18,56 @@ const EMPTY_POINTS = Object.freeze({
   interactionPoints: Object.freeze([]),
   battleZones: Object.freeze([]),
   cutsceneTriggers: Object.freeze([]),
+  transitionPoints: Object.freeze([]),
   healTile: null,
 });
 
 const mapsManifestUrl = buildVersionedUrl(new URL("../maps/maps.json", import.meta.url));
 const mapsManifest = await loadJson(mapsManifestUrl);
 const availableMapEntries = normalizeMapEntries(mapsManifest, mapsManifestUrl);
-const activeMapId = selectActiveMapId(mapsManifest, availableMapEntries);
-const activeMapEntry = availableMapEntries.find((entry) => entry.id === activeMapId) ?? availableMapEntries[0];
+const requestedDefaultMapId = selectActiveMapId(mapsManifest, availableMapEntries);
+const normalizedMaps = await Promise.all(
+  availableMapEntries.map(async (entry) => {
+    const definitionUrl = buildVersionedUrl(new URL(entry.definition, mapsManifestUrl));
+    const definition = await loadJson(definitionUrl);
+    return normalizeMapDefinition(entry.id, definition, definitionUrl);
+  }),
+);
+const worldMapsById = new Map(
+  normalizedMaps.map((mapDefinition) => [mapDefinition.id, freezeNormalizedMap(mapDefinition)]),
+);
+const defaultWorldMap =
+  worldMapsById.get(requestedDefaultMapId) ?? worldMapsById.get(availableMapEntries[0]?.id ?? "");
 
-if (!activeMapEntry) {
+if (!defaultWorldMap) {
   throw new Error("Nessuna mappa disponibile in src/maps/maps.json.");
 }
 
-const activeMapDefinitionUrl = buildVersionedUrl(
-  new URL(activeMapEntry.definition, mapsManifestUrl),
-);
-const activeMapDefinition = await loadJson(activeMapDefinitionUrl);
-const normalizedMap = normalizeMapDefinition(activeMapEntry.id, activeMapDefinition, activeMapDefinitionUrl);
+export const DEFAULT_WORLD_MAP_ID = defaultWorldMap.id;
+export const WORLD_MAP_DEFINITIONS = Object.freeze(Array.from(worldMapsById.values()));
 
-export const ACTIVE_WORLD_MAP_ID = normalizedMap.id;
 export const AVAILABLE_WORLD_MAP_IDS = Object.freeze(availableMapEntries.map((entry) => entry.id));
 export const WORLD_MAP_LAYER_ASSET_PATHS = Object.freeze(
-  normalizedMap.layerAssetPaths.map((assetPath) => assetPath || ""),
+  defaultWorldMap.layerAssetPaths.map((assetPath) => assetPath || ""),
 );
-export const WORLD_MAP_ASSET_PATH = normalizedMap.primaryAssetPath;
-export const MAP_LAYOUT = Object.freeze(normalizedMap.layout);
-export const WORLD_MAP = Object.freeze(normalizedMap.collisionGrid.map((row) => Object.freeze(row)));
-export const WORLD_POINTS = Object.freeze(normalizedMap.points);
-export const WORLD_SPAWN_POINT = Object.freeze(normalizedMap.spawn);
+export const WORLD_MAP_ASSET_PATH = defaultWorldMap.primaryAssetPath;
+export const MAP_LAYOUT = Object.freeze(defaultWorldMap.layout);
+export const WORLD_MAP = Object.freeze(defaultWorldMap.collisionGrid.map((row) => Object.freeze(row)));
+export const WORLD_POINTS = Object.freeze(defaultWorldMap.points);
+export const WORLD_SPAWN_POINT = Object.freeze(defaultWorldMap.spawn);
+
+export function getWorldMapDefinition(mapId) {
+  const safeMapId = String(mapId ?? "").trim();
+  if (safeMapId && worldMapsById.has(safeMapId)) {
+    return worldMapsById.get(safeMapId) ?? defaultWorldMap;
+  }
+  return defaultWorldMap;
+}
+
+export function hasWorldMapDefinition(mapId) {
+  const safeMapId = String(mapId ?? "").trim();
+  return safeMapId.length > 0 && worldMapsById.has(safeMapId);
+}
 
 export function isInsideMap(x, y, map = WORLD_MAP) {
   if (!Array.isArray(map) || map.length === 0 || !Array.isArray(map[0])) {
@@ -228,6 +249,9 @@ function normalizeWorldPoints(rawPoints) {
   const cutsceneTriggers = Array.isArray(rawPoints.cutsceneTriggers)
     ? rawPoints.cutsceneTriggers.map((trigger) => ({ ...trigger }))
     : [];
+  const transitionPoints = Array.isArray(rawPoints.transitionPoints)
+    ? rawPoints.transitionPoints.map((point) => ({ ...point }))
+    : [];
   const healTile =
     rawPoints.healTile && typeof rawPoints.healTile === "object" ? { ...rawPoints.healTile } : null;
 
@@ -235,8 +259,41 @@ function normalizeWorldPoints(rawPoints) {
     interactionPoints,
     battleZones,
     cutsceneTriggers,
+    transitionPoints,
     healTile,
   };
+}
+
+function freezeNormalizedMap(mapDefinition) {
+  return Object.freeze({
+    ...mapDefinition,
+    layout: Object.freeze({ ...mapDefinition.layout }),
+    collisionGrid: Object.freeze(
+      mapDefinition.collisionGrid.map((row) => Object.freeze([...row])),
+    ),
+    spawn: Object.freeze({ ...mapDefinition.spawn }),
+    points: Object.freeze({
+      interactionPoints: Object.freeze(
+        (mapDefinition.points?.interactionPoints ?? []).map((point) => Object.freeze({ ...point })),
+      ),
+      battleZones: Object.freeze(
+        (mapDefinition.points?.battleZones ?? []).map((zone) => Object.freeze({ ...zone })),
+      ),
+      cutsceneTriggers: Object.freeze(
+        (mapDefinition.points?.cutsceneTriggers ?? []).map((trigger) =>
+          Object.freeze({ ...trigger }),
+        ),
+      ),
+      transitionPoints: Object.freeze(
+        (mapDefinition.points?.transitionPoints ?? []).map((point) => Object.freeze({ ...point })),
+      ),
+      healTile:
+        mapDefinition.points?.healTile && typeof mapDefinition.points.healTile === "object"
+          ? Object.freeze({ ...mapDefinition.points.healTile })
+          : null,
+    }),
+    layerAssetPaths: Object.freeze([...(mapDefinition.layerAssetPaths ?? [])]),
+  });
 }
 
 function resolveMapLayerAssetPaths(rawAssets, rawLegacyAssetPath, mapId, definitionUrl) {

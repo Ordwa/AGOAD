@@ -1,12 +1,9 @@
 import { Scene } from "../core/Scene.js";
 import { WORLD_NPCS } from "../data/npcs.js";
 import {
-  WORLD_MAP_ASSET_PATH,
-  WORLD_MAP_LAYER_ASSET_PATHS,
-  MAP_LAYOUT,
-  WORLD_MAP,
-  WORLD_POINTS,
-  WORLD_SPAWN_POINT,
+  DEFAULT_WORLD_MAP_ID,
+  getWorldMapDefinition,
+  hasWorldMapDefinition,
   getTileAt,
   isInsideMap,
   isWalkableTile,
@@ -55,18 +52,24 @@ const DIRECTION_STEP = Object.freeze({
   right: { x: 1, y: 0 },
 });
 
-const DEFAULT_SPAWN = Object.freeze({
-  x: WORLD_SPAWN_POINT?.x ?? 8,
-  y: WORLD_SPAWN_POINT?.y ?? 8,
-  facing: WORLD_SPAWN_POINT?.facing ?? "down",
-});
+let ACTIVE_WORLD_MAP_ID = DEFAULT_WORLD_MAP_ID;
+let ACTIVE_WORLD_MAP_DEFINITION = getWorldMapDefinition(DEFAULT_WORLD_MAP_ID);
+let ACTIVE_MAP_LAYOUT = ACTIVE_WORLD_MAP_DEFINITION.layout;
+let ACTIVE_WORLD_MAP_GRID = ACTIVE_WORLD_MAP_DEFINITION.collisionGrid;
+let ACTIVE_WORLD_MAP_ASSET_PATH = ACTIVE_WORLD_MAP_DEFINITION.primaryAssetPath;
 
 export class WorldScene extends Scene {
   constructor(game) {
     super(game);
 
     this.time = 0;
-    this.mapLayerImages = WORLD_MAP_LAYER_ASSET_PATHS.map((assetPath) => createUiImage(assetPath));
+    this.baseNpcs = (WORLD_NPCS ?? []).map((npc) => ({
+      ...npc,
+      dialogIndex: 0,
+    }));
+    this.currentMapId = ACTIVE_WORLD_MAP_ID;
+    this.mapLayerImageCache = new Map();
+    this.mapLayerImages = [];
     this.playerAnimationImages = Object.freeze({
       [PLAYER_ANIMATION_IDLE_LEFT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_LEFT].path),
       [PLAYER_ANIMATION_IDLE_RIGHT]: createUiImage(PLAYER_ANIMATIONS[PLAYER_ANIMATION_IDLE_RIGHT].path),
@@ -92,23 +95,24 @@ export class WorldScene extends Scene {
       [PLAYER_ANIMATION_WALK_RIGHT]: PLAYER_ANIMATIONS[PLAYER_ANIMATION_WALK_RIGHT].frameCount,
     };
 
-    this.npcs = (WORLD_NPCS ?? []).map((npc) => ({
-      ...npc,
-      dialogIndex: 0,
-    }));
-    this.interactionPoints = [...(WORLD_POINTS.interactionPoints ?? [])];
-    this.battleZones = normalizeBattleZones(WORLD_POINTS.battleZones ?? []);
-    this.cutsceneTriggers = normalizeCutsceneTriggers(WORLD_POINTS.cutsceneTriggers ?? []);
+    this.npcs = [];
+    this.interactionPoints = [];
+    this.battleZones = [];
+    this.cutsceneTriggers = [];
+    this.transitionPoints = [];
+    this.healTile = null;
     this.cutsceneTriggerCooldown = new Set();
+    this.applyMapDefinition(DEFAULT_WORLD_MAP_ID);
+    const defaultSpawn = getActiveDefaultSpawn();
 
     this.player = {
-      tileX: DEFAULT_SPAWN.x,
-      tileY: DEFAULT_SPAWN.y,
-      worldX: tileToWorldX(DEFAULT_SPAWN.x),
-      worldY: tileToWorldY(DEFAULT_SPAWN.y),
-      facing: normalizeFacing(DEFAULT_SPAWN.facing),
+      tileX: defaultSpawn.x,
+      tileY: defaultSpawn.y,
+      worldX: tileToWorldX(defaultSpawn.x),
+      worldY: tileToWorldY(defaultSpawn.y),
+      facing: normalizeFacing(defaultSpawn.facing),
       lastHorizontalDirection:
-        normalizeFacing(DEFAULT_SPAWN.facing) === "left" ? "left" : "right",
+        normalizeFacing(defaultSpawn.facing) === "left" ? "left" : "right",
       move: null,
       blockedWalkUntil: 0,
     };
@@ -126,8 +130,15 @@ export class WorldScene extends Scene {
     this.worldMessage.ttl = 0;
     this.turnBufferDirection = "";
     this.cutsceneTriggerCooldown.clear();
-    this.syncPlayerFromPersistentState();
+    const entryState = this.resolveWorldEntryState(payload);
+    this.applyMapDefinition(entryState.mapId);
+    this.syncPlayerFromPersistentState(entryState);
     this.ensurePlayerAnimationFrames();
+
+    const entryMessage = String(payload?.message ?? "").trim();
+    if (entryMessage) {
+      this.showWorldMessage(entryMessage);
+    }
 
     const requestedDialogId =
       String(payload?.dialogId ?? "").trim() || String(payload?.cutsceneId ?? "").trim();
@@ -246,7 +257,7 @@ export class WorldScene extends Scene {
 
   computeCamera(canvasWidth, canvasHeight) {
     const primaryMapImage = this.getPrimaryMapImage();
-    const mapHeight = primaryMapImage?.naturalHeight || MAP_LAYOUT.rows * MAP_LAYOUT.tileSize;
+    const mapHeight = primaryMapImage?.naturalHeight || ACTIVE_MAP_LAYOUT.rows * ACTIVE_MAP_LAYOUT.tileSize;
     const zoom = computeCameraZoom(canvasWidth, canvasHeight, mapHeight);
     const viewWidth = canvasWidth / zoom;
     const viewHeight = canvasHeight / zoom;
@@ -279,9 +290,9 @@ export class WorldScene extends Scene {
       return;
     }
 
-    const drawWidth = MAP_LAYOUT.tileSize * PLAYER_DRAW_SIZE_TILES * zoom;
+    const drawWidth = ACTIVE_MAP_LAYOUT.tileSize * PLAYER_DRAW_SIZE_TILES * zoom;
     const drawHeight = drawWidth * (frame.sourceHeight / Math.max(1, frame.sourceWidth));
-    const feetOffset = MAP_LAYOUT.tileSize * 0.1 * zoom;
+    const feetOffset = ACTIVE_MAP_LAYOUT.tileSize * 0.1 * zoom;
 
     const screenX = canvasWidth * 0.5;
     const screenY = canvasHeight * 0.5 + feetOffset;
@@ -300,7 +311,7 @@ export class WorldScene extends Scene {
       return;
     }
 
-    const drawWidth = Math.round(MAP_LAYOUT.tileSize * NPC_DRAW_SIZE_TILES * camera.zoom);
+    const drawWidth = Math.round(ACTIVE_MAP_LAYOUT.tileSize * NPC_DRAW_SIZE_TILES * camera.zoom);
     const drawHeight = Math.round(drawWidth * (npcFrame.sourceHeight / Math.max(1, npcFrame.sourceWidth)));
     ctx.imageSmoothingEnabled = false;
 
@@ -308,7 +319,7 @@ export class WorldScene extends Scene {
       const worldX = tileToWorldX(npc.x);
       const worldY = tileToWorldY(npc.y);
       const screenX = (worldX - camera.sourceX) * camera.zoom;
-      const screenY = (worldY - camera.sourceY) * camera.zoom + MAP_LAYOUT.tileSize * 0.1 * camera.zoom;
+      const screenY = (worldY - camera.sourceY) * camera.zoom + ACTIVE_MAP_LAYOUT.tileSize * 0.1 * camera.zoom;
 
       if (
         screenX < -drawWidth ||
@@ -334,7 +345,7 @@ export class WorldScene extends Scene {
       return;
     }
 
-    const tileSize = MAP_LAYOUT.tileSize;
+    const tileSize = ACTIVE_MAP_LAYOUT.tileSize;
     this.battleZones.forEach((zone) => {
       const worldX = zone.x * tileSize;
       const worldY = zone.y * tileSize;
@@ -364,17 +375,130 @@ export class WorldScene extends Scene {
     });
   }
 
-  syncPlayerFromPersistentState() {
+  applyMapDefinition(mapId) {
+    const nextMap = getWorldMapDefinition(mapId);
+    ACTIVE_WORLD_MAP_ID = nextMap.id;
+    ACTIVE_WORLD_MAP_DEFINITION = nextMap;
+    ACTIVE_MAP_LAYOUT = nextMap.layout;
+    ACTIVE_WORLD_MAP_GRID = nextMap.collisionGrid;
+    ACTIVE_WORLD_MAP_ASSET_PATH = nextMap.primaryAssetPath;
+
+    this.currentMapId = nextMap.id;
+    this.mapLayerImages = this.getOrCreateMapLayerImages(nextMap);
+    this.interactionPoints = [...(nextMap.points?.interactionPoints ?? [])];
+    this.battleZones = normalizeBattleZones(nextMap.points?.battleZones ?? []);
+    this.cutsceneTriggers = normalizeCutsceneTriggers(nextMap.points?.cutsceneTriggers ?? []);
+    this.transitionPoints = normalizeTransitionPoints(nextMap.points?.transitionPoints ?? []);
+    this.healTile =
+      nextMap.points?.healTile && typeof nextMap.points.healTile === "object"
+        ? { ...nextMap.points.healTile }
+        : null;
+    this.npcs = this.baseNpcs.filter((npc) => {
+      const npcMapId = String(npc?.mapId ?? "").trim();
+      return !npcMapId || npcMapId === this.currentMapId;
+    });
+  }
+
+  getOrCreateMapLayerImages(mapDefinition) {
+    const cached = this.mapLayerImageCache.get(mapDefinition.id);
+    if (cached) {
+      return cached;
+    }
+
+    const images = mapDefinition.layerAssetPaths.map((assetPath) => createUiImage(assetPath));
+    this.mapLayerImageCache.set(mapDefinition.id, images);
+    return images;
+  }
+
+  resolveWorldEntryState(payload = {}) {
     const stateWorld = this.game?.state?.world ?? {};
-    const savedX = Number.isFinite(stateWorld.playerX) ? Math.floor(stateWorld.playerX) : DEFAULT_SPAWN.x;
-    const savedY = Number.isFinite(stateWorld.playerY) ? Math.floor(stateWorld.playerY) : DEFAULT_SPAWN.y;
+    const progress = this.game?.state?.progress ?? {};
+    const savedMapId = hasWorldMapDefinition(stateWorld.currentMapId)
+      ? String(stateWorld.currentMapId).trim()
+      : DEFAULT_WORLD_MAP_ID;
+    const explicitMapId = this.resolveRequestedMapId(payload, savedMapId);
+
+    if (payload?.resetToLastRest) {
+      const lastRestPoint = progress.lastRestPoint ?? null;
+      if (lastRestPoint && typeof lastRestPoint === "object") {
+        return {
+          mapId: this.resolveRequestedMapId(lastRestPoint, explicitMapId),
+          x: toOptionalInt(lastRestPoint.x),
+          y: toOptionalInt(lastRestPoint.y),
+          facing: normalizeFacing(lastRestPoint.facing ?? "down"),
+        };
+      }
+    }
+
+    if (payload?.resetToSpawn) {
+      const spawnMap = getWorldMapDefinition(explicitMapId);
+      return {
+        mapId: spawnMap.id,
+        x: spawnMap.spawn.x,
+        y: spawnMap.spawn.y,
+        facing: normalizeFacing(payload?.facing ?? spawnMap.spawn.facing),
+      };
+    }
+
+    const explicitX =
+      toOptionalInt(payload?.targetX) ??
+      toOptionalInt(payload?.x) ??
+      toOptionalInt(payload?.playerX) ??
+      toOptionalInt(payload?.targetTileX);
+    const explicitY =
+      toOptionalInt(payload?.targetY) ??
+      toOptionalInt(payload?.y) ??
+      toOptionalInt(payload?.playerY) ??
+      toOptionalInt(payload?.targetTileY);
+    if (Number.isInteger(explicitX) && Number.isInteger(explicitY)) {
+      return {
+        mapId: explicitMapId,
+        x: explicitX,
+        y: explicitY,
+        facing: normalizeFacing(payload?.facing ?? stateWorld.facing ?? "down"),
+      };
+    }
+
+    if (savedMapId !== explicitMapId) {
+      const spawnMap = getWorldMapDefinition(explicitMapId);
+      return {
+        mapId: spawnMap.id,
+        x: spawnMap.spawn.x,
+        y: spawnMap.spawn.y,
+        facing: normalizeFacing(spawnMap.spawn.facing),
+      };
+    }
+
+    return {
+      mapId: savedMapId,
+      x: toOptionalInt(stateWorld.playerX),
+      y: toOptionalInt(stateWorld.playerY),
+      facing: normalizeFacing(stateWorld.facing ?? getActiveDefaultSpawn().facing),
+    };
+  }
+
+  resolveRequestedMapId(source, fallbackMapId = DEFAULT_WORLD_MAP_ID) {
+    const requestedMapId = String(
+      source?.mapId ?? source?.targetMapId ?? source?.worldMapId ?? "",
+    ).trim();
+    if (hasWorldMapDefinition(requestedMapId)) {
+      return requestedMapId;
+    }
+    return hasWorldMapDefinition(fallbackMapId) ? String(fallbackMapId).trim() : DEFAULT_WORLD_MAP_ID;
+  }
+
+  syncPlayerFromPersistentState(entryState = {}) {
+    const stateWorld = this.game?.state?.world ?? {};
+    const defaultSpawn = getActiveDefaultSpawn();
+    const savedX = Number.isInteger(entryState?.x) ? entryState.x : defaultSpawn.x;
+    const savedY = Number.isInteger(entryState?.y) ? entryState.y : defaultSpawn.y;
     const safeSpawn = this.resolveNearestWalkableTile(savedX, savedY);
 
     this.player.tileX = safeSpawn.x;
     this.player.tileY = safeSpawn.y;
     this.player.worldX = tileToWorldX(safeSpawn.x);
     this.player.worldY = tileToWorldY(safeSpawn.y);
-    this.player.facing = normalizeFacing(stateWorld.facing ?? DEFAULT_SPAWN.facing);
+    this.player.facing = normalizeFacing(entryState?.facing ?? stateWorld.facing ?? defaultSpawn.facing);
     if (this.player.facing === "left") {
       this.player.lastHorizontalDirection = "left";
     } else if (this.player.facing === "right") {
@@ -388,6 +512,7 @@ export class WorldScene extends Scene {
     this.player.blockedWalkUntil = 0;
 
     if (stateWorld && typeof stateWorld === "object") {
+      stateWorld.currentMapId = this.currentMapId;
       stateWorld.playerX = this.player.tileX;
       stateWorld.playerY = this.player.tileY;
       stateWorld.facing = this.player.facing;
@@ -395,18 +520,18 @@ export class WorldScene extends Scene {
   }
 
   resolveNearestWalkableTile(tileX, tileY) {
-    const startX = clampNumber(tileX, 0, MAP_LAYOUT.cols - 1);
-    const startY = clampNumber(tileY, 0, MAP_LAYOUT.rows - 1);
+    const startX = clampNumber(tileX, 0, ACTIVE_MAP_LAYOUT.cols - 1);
+    const startY = clampNumber(tileY, 0, ACTIVE_MAP_LAYOUT.rows - 1);
 
     if (this.isWalkableAndFree(startX, startY)) {
       return { x: startX, y: startY };
     }
 
-    const maxRadius = Math.max(MAP_LAYOUT.cols, MAP_LAYOUT.rows);
+    const maxRadius = Math.max(ACTIVE_MAP_LAYOUT.cols, ACTIVE_MAP_LAYOUT.rows);
     for (let radius = 1; radius <= maxRadius; radius += 1) {
       for (let y = startY - radius; y <= startY + radius; y += 1) {
         for (let x = startX - radius; x <= startX + radius; x += 1) {
-          if (!isInsideMap(x, y, WORLD_MAP)) {
+          if (!isInsideMap(x, y, ACTIVE_WORLD_MAP_GRID)) {
             continue;
           }
           if (this.isWalkableAndFree(x, y)) {
@@ -416,7 +541,8 @@ export class WorldScene extends Scene {
       }
     }
 
-    return { x: DEFAULT_SPAWN.x, y: DEFAULT_SPAWN.y };
+    const defaultSpawn = getActiveDefaultSpawn();
+    return { x: defaultSpawn.x, y: defaultSpawn.y };
   }
 
   tryStartPlayerMove(direction, continuous = false) {
@@ -430,7 +556,7 @@ export class WorldScene extends Scene {
     this.player.facing = direction;
     this.syncFacingOnly(direction);
 
-    if (!isInsideMap(nextTileX, nextTileY, WORLD_MAP)) {
+    if (!isInsideMap(nextTileX, nextTileY, ACTIVE_WORLD_MAP_GRID)) {
       this.startBlockedWalkAnimation(direction);
       return false;
     }
@@ -467,7 +593,7 @@ export class WorldScene extends Scene {
   }
 
   isWalkableAndFree(tileX, tileY) {
-    const tile = getTileAt(tileX, tileY, WORLD_MAP);
+    const tile = getTileAt(tileX, tileY, ACTIVE_WORLD_MAP_GRID);
     if (!isWalkableTile(tile)) {
       return false;
     }
@@ -516,11 +642,15 @@ export class WorldScene extends Scene {
 
     const stateWorld = this.game?.state?.world;
     if (stateWorld && typeof stateWorld === "object") {
+      stateWorld.currentMapId = this.currentMapId;
       stateWorld.playerX = this.player.tileX;
       stateWorld.playerY = this.player.tileY;
       stateWorld.facing = this.player.facing;
     }
 
+    if (this.tryEnterTransitionPoint(this.player.tileX, this.player.tileY)) {
+      return true;
+    }
     if (this.tryStartCutsceneFromTrigger(this.player.tileX, this.player.tileY)) {
       return false;
     }
@@ -550,6 +680,12 @@ export class WorldScene extends Scene {
       this.getInteractionAtTile(frontTile.x, frontTile.y) ??
       this.getInteractionAtTile(this.player.tileX, this.player.tileY);
     if (interaction) {
+      if (this.tryHandleMapInteraction(interaction)) {
+        return true;
+      }
+      if (this.tryHandleRestInteraction(interaction)) {
+        return true;
+      }
       const interactionDialogId =
         String(interaction.cutsceneId ?? "").trim() || String(interaction.dialogId ?? "").trim();
       if (interactionDialogId && this.openCutsceneOverlay(interactionDialogId)) {
@@ -600,6 +736,12 @@ export class WorldScene extends Scene {
     );
   }
 
+  getTransitionAtTile(tileX, tileY) {
+    return (
+      this.transitionPoints.find((point) => point && point.x === tileX && point.y === tileY) ?? null
+    );
+  }
+
   isTileInsideBattleZone(tileX, tileY, zone) {
     if (!zone || typeof zone !== "object") {
       return false;
@@ -623,7 +765,72 @@ export class WorldScene extends Scene {
       zoneId: zone.id ?? "",
       encounterTileX: this.player.tileX,
       encounterTileY: this.player.tileY,
-      mapAssetPath: WORLD_MAP_ASSET_PATH,
+      mapAssetPath: ACTIVE_WORLD_MAP_ASSET_PATH,
+    });
+    return true;
+  }
+
+  tryEnterTransitionPoint(tileX, tileY) {
+    const transition = this.getTransitionAtTile(tileX, tileY);
+    if (!transition) {
+      return false;
+    }
+    return this.executeMapTransition(transition);
+  }
+
+  tryHandleMapInteraction(interaction) {
+    const targetMapId = String(interaction?.targetMapId ?? interaction?.mapId ?? "").trim();
+    if (!targetMapId) {
+      return false;
+    }
+    return this.executeMapTransition(interaction);
+  }
+
+  tryHandleRestInteraction(interaction) {
+    const action = String(interaction?.action ?? "").trim().toLowerCase();
+    if (action !== "rest" && interaction?.rest !== true) {
+      return false;
+    }
+
+    const player = this.game?.state?.player;
+    if (player && typeof player === "object") {
+      player.hp = player.maxHp;
+      player.mana = player.maxMana;
+    }
+
+    const progress = this.game?.state?.progress;
+    if (progress && typeof progress === "object") {
+      const restSpawnX = toOptionalInt(interaction?.restSpawnX) ?? this.player.tileX;
+      const restSpawnY = toOptionalInt(interaction?.restSpawnY) ?? this.player.tileY;
+      progress.lastRestPoint = {
+        mapId: this.currentMapId,
+        x: restSpawnX,
+        y: restSpawnY,
+        facing: normalizeFacing(interaction?.restFacing ?? this.player.facing),
+      };
+    }
+
+    this.showWorldMessage(
+      String(interaction?.text ?? "").trim() || "Ti riposi e recuperi le forze.",
+      1.6,
+    );
+    return true;
+  }
+
+  executeMapTransition(transition) {
+    const targetMapId = this.resolveRequestedMapId(transition, this.currentMapId);
+    const targetMap = getWorldMapDefinition(targetMapId);
+    const targetX = toOptionalInt(transition?.targetX) ?? targetMap.spawn.x;
+    const targetY = toOptionalInt(transition?.targetY) ?? targetMap.spawn.y;
+    const targetFacing = normalizeFacing(transition?.targetFacing ?? targetMap.spawn.facing);
+    const message = String(transition?.transitionText ?? transition?.text ?? "").trim();
+
+    this.game.changeScene("world", {
+      mapId: targetMap.id,
+      x: targetX,
+      y: targetY,
+      facing: targetFacing,
+      message,
     });
     return true;
   }
@@ -679,7 +886,7 @@ export class WorldScene extends Scene {
       if (trigger.x !== tileX || trigger.y !== tileY) {
         continue;
       }
-      const triggerId = String(trigger.id ?? `trigger_${index}`);
+      const triggerId = `${this.currentMapId}:${String(trigger.id ?? `trigger_${index}`)}`;
       if (trigger.once !== false && this.cutsceneTriggerCooldown.has(triggerId)) {
         continue;
       }
@@ -699,6 +906,7 @@ export class WorldScene extends Scene {
   syncFacingOnly(direction) {
     const stateWorld = this.game?.state?.world;
     if (stateWorld && typeof stateWorld === "object") {
+      stateWorld.currentMapId = this.currentMapId;
       stateWorld.facing = direction;
     }
   }
@@ -848,7 +1056,7 @@ function resolveHeldDirection(input) {
 }
 
 function computeCameraZoom(canvasWidth, canvasHeight, mapHeight) {
-  const safeMapHeight = Math.max(1, mapHeight || MAP_LAYOUT.rows * MAP_LAYOUT.tileSize);
+  const safeMapHeight = Math.max(1, mapHeight || ACTIVE_MAP_LAYOUT.rows * ACTIVE_MAP_LAYOUT.tileSize);
   const targetViewHeight = safeMapHeight * CAMERA_VIEW_HEIGHT_RATIO;
   const rawZoom = canvasHeight / Math.max(1, targetViewHeight);
   return clampNumber(rawZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
@@ -861,8 +1069,8 @@ function drawCameraBackdrop(ctx, camera, canvasWidth, canvasHeight) {
   ctx.fillRect(
     Math.round(-camera.sourceX * camera.zoom),
     Math.round(-camera.sourceY * camera.zoom),
-    Math.round(MAP_LAYOUT.cols * MAP_LAYOUT.tileSize * camera.zoom),
-    Math.round(MAP_LAYOUT.rows * MAP_LAYOUT.tileSize * camera.zoom),
+    Math.round(ACTIVE_MAP_LAYOUT.cols * ACTIVE_MAP_LAYOUT.tileSize * camera.zoom),
+    Math.round(ACTIVE_MAP_LAYOUT.rows * ACTIVE_MAP_LAYOUT.tileSize * camera.zoom),
   );
 }
 
@@ -1049,11 +1257,11 @@ function normalizeFacing(value) {
 }
 
 function tileToWorldX(tileX) {
-  return tileX * MAP_LAYOUT.tileSize + MAP_LAYOUT.tileSize * 0.5;
+  return tileX * ACTIVE_MAP_LAYOUT.tileSize + ACTIVE_MAP_LAYOUT.tileSize * 0.5;
 }
 
 function tileToWorldY(tileY) {
-  return tileY * MAP_LAYOUT.tileSize + MAP_LAYOUT.tileSize * 0.5;
+  return tileY * ACTIVE_MAP_LAYOUT.tileSize + ACTIVE_MAP_LAYOUT.tileSize * 0.5;
 }
 
 function clampNumber(value, min, max) {
@@ -1123,6 +1331,15 @@ function isUiImageSettled(image) {
   return true;
 }
 
+function getActiveDefaultSpawn() {
+  const spawn = ACTIVE_WORLD_MAP_DEFINITION?.spawn ?? {};
+  return {
+    x: Number.isInteger(spawn.x) ? spawn.x : 0,
+    y: Number.isInteger(spawn.y) ? spawn.y : 0,
+    facing: normalizeFacing(spawn.facing ?? "down"),
+  };
+}
+
 function normalizeBattleZones(rawZones) {
   if (!Array.isArray(rawZones)) {
     return [];
@@ -1130,10 +1347,10 @@ function normalizeBattleZones(rawZones) {
 
   return rawZones
     .map((zone, index) => {
-      const x = clampNumber(Math.floor(Number(zone?.x) || 0), 0, MAP_LAYOUT.cols - 1);
-      const y = clampNumber(Math.floor(Number(zone?.y) || 0), 0, MAP_LAYOUT.rows - 1);
-      const maxWidth = MAP_LAYOUT.cols - x;
-      const maxHeight = MAP_LAYOUT.rows - y;
+      const x = clampNumber(Math.floor(Number(zone?.x) || 0), 0, ACTIVE_MAP_LAYOUT.cols - 1);
+      const y = clampNumber(Math.floor(Number(zone?.y) || 0), 0, ACTIVE_MAP_LAYOUT.rows - 1);
+      const maxWidth = ACTIVE_MAP_LAYOUT.cols - x;
+      const maxHeight = ACTIVE_MAP_LAYOUT.rows - y;
       const w = clampNumber(Math.floor(Number(zone?.w) || 1), 1, Math.max(1, maxWidth));
       const h = clampNumber(Math.floor(Number(zone?.h) || 1), 1, Math.max(1, maxHeight));
       return {
@@ -1155,8 +1372,8 @@ function normalizeCutsceneTriggers(rawTriggers) {
 
   return rawTriggers
     .map((trigger, index) => {
-      const x = clampNumber(Math.floor(Number(trigger?.x) || 0), 0, MAP_LAYOUT.cols - 1);
-      const y = clampNumber(Math.floor(Number(trigger?.y) || 0), 0, MAP_LAYOUT.rows - 1);
+      const x = clampNumber(Math.floor(Number(trigger?.x) || 0), 0, ACTIVE_MAP_LAYOUT.cols - 1);
+      const y = clampNumber(Math.floor(Number(trigger?.y) || 0), 0, ACTIVE_MAP_LAYOUT.rows - 1);
       const cutsceneId =
         String(trigger?.cutsceneId ?? "").trim() || String(trigger?.dialogId ?? "").trim();
       if (!cutsceneId) {
@@ -1172,4 +1389,38 @@ function normalizeCutsceneTriggers(rawTriggers) {
       };
     })
     .filter((trigger) => trigger !== null);
+}
+
+function normalizeTransitionPoints(rawPoints) {
+  if (!Array.isArray(rawPoints)) {
+    return [];
+  }
+
+  return rawPoints
+    .map((point, index) => {
+      const targetMapId = String(point?.targetMapId ?? point?.mapId ?? "").trim();
+      if (!hasWorldMapDefinition(targetMapId)) {
+        return null;
+      }
+
+      return {
+        id: String(point?.id ?? `transition_${index + 1}`),
+        x: clampNumber(Math.floor(Number(point?.x) || 0), 0, ACTIVE_MAP_LAYOUT.cols - 1),
+        y: clampNumber(Math.floor(Number(point?.y) || 0), 0, ACTIVE_MAP_LAYOUT.rows - 1),
+        targetMapId,
+        targetX: toOptionalInt(point?.targetX),
+        targetY: toOptionalInt(point?.targetY),
+        targetFacing: normalizeFacing(point?.targetFacing ?? "down"),
+        transitionText: String(point?.transitionText ?? point?.text ?? "").trim(),
+      };
+    })
+    .filter((point) => point !== null);
+}
+
+function toOptionalInt(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.floor(parsed);
 }
