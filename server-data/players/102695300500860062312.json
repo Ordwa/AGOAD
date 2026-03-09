@@ -5,14 +5,14 @@
     "email": "espositoalessandro1997@gmail.com",
     "name": "Alessandro Esposito"
   },
-  "updatedAt": 1773086541505,
+  "updatedAt": 1773086571561,
   "progress": {
     "version": 1,
-    "savedAt": 1773086541091,
+    "savedAt": 1773086571091,
     "summary": {
       "playerName": "Rit",
       "playerTitle": "Goblin",
-      "playTimeSeconds": 25730
+      "playTimeSeconds": 25760
     },
     "snapshot": {
       "player": {
@@ -31,7 +31,7 @@
         "battlesTotal": 0,
         "coins": 0,
         "encounteredEnemyIds": [],
-        "playTimeSeconds": 25730.898800022627,
+        "playTimeSeconds": 25760.899100022903,
         "lastRestPoint": null,
         "cutsceneSpeakerLabels": {
           "shaman": "GRIK"
