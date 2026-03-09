@@ -14,25 +14,40 @@ let width = cols * tileSize
 let height = rows * tileSize
 
 struct Palette {
-  static let wallDark = cgColor(42, 24, 12)
-  static let wallMid = cgColor(84, 51, 25)
-  static let wallLight = cgColor(120, 77, 40)
-  static let floorDust = cgColor(149, 105, 53)
-  static let floorShadow = cgColor(77, 49, 27)
-  static let bone = cgColor(219, 205, 163)
-  static let ember = cgColor(255, 137, 56)
-  static let fire = cgColor(255, 211, 97)
-  static let rune = cgColor(88, 233, 94)
-  static let cloth = cgColor(118, 154, 58)
-  static let clothShadow = cgColor(67, 96, 36)
-  static let stone = cgColor(86, 84, 83)
-  static let stoneLight = cgColor(121, 119, 116)
-  static let bedHide = cgColor(182, 137, 70)
-  static let bedSheet = cgColor(221, 209, 176)
-  static let desk = cgColor(113, 74, 34)
-  static let deskDark = cgColor(72, 43, 21)
-  static let potion = cgColor(82, 180, 189)
-  static let greenGlow = cgColor(88, 255, 139, alpha: 0.35)
+  static let voidBlack = cgColor(4, 3, 4)
+  static let beamShadow = cgColor(19, 10, 6)
+  static let woodDark = cgColor(54, 31, 18)
+  static let woodMid = cgColor(88, 53, 29)
+  static let woodLight = cgColor(123, 80, 45)
+  static let earthDark = cgColor(67, 43, 22)
+  static let earthMid = cgColor(105, 72, 38)
+  static let earthLight = cgColor(148, 109, 62)
+  static let earthDust = cgColor(176, 136, 85)
+  static let straw = cgColor(171, 139, 79)
+  static let strawLight = cgColor(215, 187, 120)
+  static let cloth = cgColor(105, 140, 54)
+  static let clothShadow = cgColor(63, 92, 34)
+  static let hide = cgColor(154, 109, 58)
+  static let hideShadow = cgColor(107, 72, 34)
+  static let hideLight = cgColor(209, 182, 131)
+  static let bone = cgColor(220, 205, 167)
+  static let boneShadow = cgColor(157, 139, 107)
+  static let stoneDark = cgColor(58, 57, 55)
+  static let stoneMid = cgColor(93, 91, 88)
+  static let stoneLight = cgColor(132, 129, 124)
+  static let wax = cgColor(240, 226, 190)
+  static let ember = cgColor(255, 140, 63)
+  static let fire = cgColor(255, 212, 98)
+  static let smoke = cgColor(201, 220, 173, alpha: 0.18)
+  static let shadowSoft = cgColor(13, 8, 4, alpha: 0.18)
+  static let shadowMid = cgColor(10, 6, 3, alpha: 0.34)
+  static let shadowHeavy = cgColor(7, 4, 2, alpha: 0.5)
+  static let glowGreen = cgColor(78, 243, 105)
+  static let glowGreenSoft = cgColor(88, 255, 133, alpha: 0.28)
+  static let glowWarm = cgColor(255, 191, 103, alpha: 0.18)
+  static let potionBlue = cgColor(88, 186, 205)
+  static let potionGreen = cgColor(96, 197, 123)
+  static let ink = cgColor(33, 25, 18)
 }
 
 func cgColor(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, alpha: CGFloat = 1.0) -> CGColor {
@@ -49,6 +64,13 @@ func loadImage(_ url: URL) throws -> CGImage {
     ])
   }
   return image
+}
+
+func cropImage(_ image: CGImage, x: Int, y: Int, width: Int, height: Int) -> CGImage {
+  guard let cropped = image.cropping(to: CGRect(x: x, y: y, width: width, height: height)) else {
+    fatalError("Crop fuori range")
+  }
+  return cropped
 }
 
 func makeContext() -> CGContext {
@@ -109,6 +131,17 @@ func strokeRect(_ context: CGContext, _ x: Int, _ y: Int, _ w: Int, _ h: Int, _ 
   context.stroke(CGRect(x: x, y: y, width: w, height: h))
 }
 
+func fillEllipse(_ context: CGContext, _ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: CGColor) {
+  context.setFillColor(color)
+  context.fillEllipse(in: CGRect(x: x, y: y, width: w, height: h))
+}
+
+func strokeEllipse(_ context: CGContext, _ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: CGColor, lineWidth: Int = 1) {
+  context.setStrokeColor(color)
+  context.setLineWidth(CGFloat(lineWidth))
+  context.strokeEllipse(in: CGRect(x: x, y: y, width: w, height: h))
+}
+
 func drawImage(_ context: CGContext, _ image: CGImage, x: Int, y: Int, width: Int? = nil, height: Int? = nil, alpha: CGFloat = 1.0) {
   let drawWidth = width ?? image.width
   let drawHeight = height ?? image.height
@@ -128,97 +161,160 @@ func drawLine(_ context: CGContext, from start: CGPoint, to end: CGPoint, color:
   context.restoreGState()
 }
 
-func drawSkull(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 2, y + 2, 8, 7, Palette.bone)
-  fillRect(context, x + 3, y + 9, 6, 3, Palette.bone)
-  fillRect(context, x + 4, y + 12, 1, 2, Palette.bone)
-  fillRect(context, x + 7, y + 12, 1, 2, Palette.bone)
-  fillRect(context, x + 4, y + 5, 1, 1, Palette.wallDark)
-  fillRect(context, x + 7, y + 5, 1, 1, Palette.wallDark)
-  fillRect(context, x + 5, y + 7, 2, 2, Palette.wallDark)
+func drawFloorShadow(_ context: CGContext, x: Int, y: Int, width: Int, height: Int) {
+  fillEllipse(context, x - 10, y + 6, width + 20, height, Palette.shadowSoft)
+  fillEllipse(context, x, y + 8, width, height - 2, Palette.shadowMid)
 }
 
-func drawTorch(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 6, y + 6, 4, 10, Palette.deskDark)
-  fillRect(context, x + 5, y + 3, 6, 4, Palette.ember)
-  fillRect(context, x + 6, y + 1, 4, 4, Palette.fire)
+func drawCandle(_ context: CGContext, x: Int, y: Int, height: Int = 14, glow: Bool = false) {
+  if glow {
+    fillEllipse(context, x - 10, y - 12, 28, 26, Palette.glowWarm)
+  }
+  fillRect(context, x + 3, y + 4, 6, height, Palette.wax)
+  fillRect(context, x + 4, y + 2, 4, 3, Palette.ember)
+  fillRect(context, x + 3, y, 6, 4, Palette.fire)
+  fillRect(context, x + 2, y + height + 2, 8, 2, Palette.boneShadow)
 }
 
-func drawBanner(_ context: CGContext, x: Int, y: Int, flip: Bool = false) {
-  for column in 0..<6 {
-    let offset = flip ? (5 - column) : column
-    fillRect(context, x + column * 4, y + offset, 4, 20 - offset, Palette.cloth)
-    fillRect(context, x + column * 4, y + offset + 2, 4, 2, Palette.clothShadow)
+func drawSkull(_ context: CGContext, x: Int, y: Int, scale: Int = 1) {
+  let s = scale
+  fillRect(context, x + 2 * s, y + 1 * s, 8 * s, 7 * s, Palette.bone)
+  fillRect(context, x + 3 * s, y + 7 * s, 6 * s, 4 * s, Palette.bone)
+  fillRect(context, x + 4 * s, y + 11 * s, 1 * s, 2 * s, Palette.bone)
+  fillRect(context, x + 7 * s, y + 11 * s, 1 * s, 2 * s, Palette.bone)
+  fillRect(context, x + 3 * s, y + 3 * s, 2 * s, 2 * s, Palette.ink)
+  fillRect(context, x + 7 * s, y + 3 * s, 2 * s, 2 * s, Palette.ink)
+  fillRect(context, x + 5 * s, y + 6 * s, 2 * s, 2 * s, Palette.ink)
+  fillRect(context, x + 2 * s, y + 1 * s, 8 * s, 1 * s, Palette.hideLight)
+}
+
+func drawBone(_ context: CGContext, x: Int, y: Int, length: Int, angle: Int = 0) {
+  let horizontal = angle == 0
+  let mainLength = horizontal ? length : 4
+  let sideLength = horizontal ? 4 : length
+  fillRect(context, x, y + (horizontal ? 2 : 0), mainLength, sideLength, Palette.bone)
+  if horizontal {
+    fillRect(context, x - 2, y, 4, 4, Palette.bone)
+    fillRect(context, x - 2, y + 4, 4, 4, Palette.bone)
+    fillRect(context, x + length - 2, y, 4, 4, Palette.bone)
+    fillRect(context, x + length - 2, y + 4, 4, 4, Palette.bone)
+  } else {
+    fillRect(context, x, y - 2, 4, 4, Palette.bone)
+    fillRect(context, x + 4, y - 2, 4, 4, Palette.bone)
+    fillRect(context, x, y + length - 2, 4, 4, Palette.bone)
+    fillRect(context, x + 4, y + length - 2, 4, 4, Palette.bone)
   }
 }
 
-func drawCauldron(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 6, y + 23, 28, 5, Palette.ember)
-  fillRect(context, x + 10, y + 20, 5, 5, Palette.fire)
-  fillRect(context, x + 17, y + 18, 5, 7, Palette.fire)
-  fillRect(context, x + 25, y + 20, 5, 5, Palette.fire)
-  fillRect(context, x + 4, y + 8, 32, 18, Palette.stone)
-  fillRect(context, x + 6, y + 4, 28, 6, Palette.stoneLight)
-  fillRect(context, x + 8, y + 1, 24, 5, Palette.wallDark)
-  fillRect(context, x + 10, y + 7, 20, 6, Palette.greenGlow)
-  strokeRect(context, x + 4, y + 4, 32, 22, Palette.wallDark)
+func drawBonePile(_ context: CGContext, x: Int, y: Int, width: Int, height: Int) {
+  fillEllipse(context, x, y + height / 4, width, height / 2, Palette.shadowSoft)
+  drawBone(context, x: x + 8, y: y + 10, length: 18)
+  drawBone(context, x: x + 18, y: y + 6, length: 14, angle: 90)
+  drawBone(context, x: x + 28, y: y + 12, length: 16)
+  drawSkull(context, x: x + width / 2 - 6, y: y)
 }
 
-func drawAltar(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x, y + 10, 56, 18, Palette.stone)
-  fillRect(context, x + 4, y + 4, 48, 10, Palette.stoneLight)
-  fillRect(context, x + 25, y - 6, 6, 18, Palette.rune)
-  fillRect(context, x + 18, y + 1, 20, 8, Palette.greenGlow)
-  drawTorch(context, x: x - 14, y: y)
-  drawTorch(context, x: x + 54, y: y)
-  drawSkull(context, x: x + 4, y: y + 20)
-  drawSkull(context, x: x + 40, y: y + 20)
-  strokeRect(context, x, y + 10, 56, 18, Palette.wallDark)
+func drawBottle(_ context: CGContext, x: Int, y: Int, color: CGColor) {
+  fillRect(context, x + 2, y + 2, 4, 4, Palette.hideLight)
+  fillRect(context, x + 1, y + 6, 6, 10, color)
+  fillRect(context, x + 2, y + 16, 4, 2, Palette.ink)
 }
 
-func drawDesk(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 6, y + 2, 44, 6, Palette.deskDark)
-  fillRect(context, x, y + 8, 56, 14, Palette.desk)
-  fillRect(context, x + 6, y + 22, 6, 18, Palette.deskDark)
-  fillRect(context, x + 44, y + 22, 6, 18, Palette.deskDark)
-  fillRect(context, x + 8, y + 12, 18, 10, Palette.bedSheet)
-  fillRect(context, x + 10, y + 14, 14, 1, Palette.wallDark)
-  fillRect(context, x + 30, y + 12, 6, 6, Palette.potion)
-  fillRect(context, x + 38, y + 10, 6, 8, Palette.bone)
-  fillRect(context, x + 24, y + 26, 8, 10, Palette.stone)
-  strokeRect(context, x, y + 8, 56, 14, Palette.wallDark)
+func drawBook(_ context: CGContext, x: Int, y: Int) {
+  fillRect(context, x, y, 14, 10, Palette.hideLight)
+  fillRect(context, x + 14, y, 14, 10, Palette.wax)
+  fillRect(context, x + 12, y, 2, 10, Palette.hideShadow)
+  fillRect(context, x + 4, y + 3, 8, 1, Palette.ink)
+  fillRect(context, x + 18, y + 3, 8, 1, Palette.ink)
+  fillRect(context, x + 4, y + 6, 8, 1, Palette.ink)
+  fillRect(context, x + 18, y + 6, 8, 1, Palette.ink)
 }
 
-func drawBed(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 2, y + 2, 44, 16, Palette.bedSheet)
-  fillRect(context, x + 4, y + 18, 40, 26, Palette.bedHide)
-  fillRect(context, x, y + 18, 48, 28, Palette.bedHide)
-  fillRect(context, x + 6, y + 22, 32, 18, cgColor(140, 95, 43))
-  fillRect(context, x + 8, y + 24, 28, 12, cgColor(163, 114, 58))
-  fillRect(context, x + 38, y + 30, 10, 8, Palette.bedSheet)
-  strokeRect(context, x, y + 2, 48, 44, Palette.wallDark)
+func drawTopBeam(_ context: CGContext) {
+  fillRect(context, 0, 0, width, height, Palette.voidBlack)
+  fillRect(context, 16, 16, width - 32, 72, Palette.woodDark)
+  fillRect(context, 16, 16, width - 32, 10, Palette.woodLight)
+  fillRect(context, 16, 26, width - 32, 8, Palette.woodMid)
+  fillRect(context, 16, 34, width - 32, 54, Palette.woodDark)
+  fillRect(context, 16, 80, width - 32, 8, Palette.beamShadow)
+
+  for offset in stride(from: 18, to: width - 32, by: 22) {
+    let plankWidth = 10 + ((offset / 11) % 3) * 2
+    fillRect(context, offset, 34, plankWidth, 54, ((offset / 7) % 2 == 0) ? Palette.woodMid : Palette.woodDark)
+    fillRect(context, offset + plankWidth - 2, 34, 2, 54, Palette.beamShadow)
+    fillRect(context, offset + 1, 42, 1, 2, Palette.hideLight)
+  }
+
+  fillRect(context, 16, 16, 16, height - 32, Palette.woodDark)
+  fillRect(context, width - 32, 16, 16, height - 32, Palette.woodDark)
+  fillRect(context, 18, 16, 4, height - 32, Palette.woodLight)
+  fillRect(context, width - 22, 16, 4, height - 32, Palette.woodLight)
+
+  fillRect(context, 16, height - 32, width / 2 - 56, 16, Palette.woodDark)
+  fillRect(context, width / 2 + 40, height - 32, width / 2 - 56, 16, Palette.woodDark)
+  fillRect(context, width / 2 - 56, height - 32, 16, 16, Palette.woodDark)
+  fillRect(context, width / 2 + 40, height - 32, 16, 16, Palette.woodDark)
+  fillRect(context, width / 2 - 56, height - 16, 112, 16, Palette.beamShadow)
 }
 
-func drawChest(_ context: CGContext, x: Int, y: Int) {
-  fillRect(context, x + 2, y + 6, 28, 20, Palette.deskDark)
-  fillRect(context, x + 4, y + 8, 24, 16, Palette.desk)
-  fillRect(context, x + 12, y + 13, 8, 4, Palette.fire)
-  strokeRect(context, x + 2, y + 6, 28, 20, Palette.wallDark)
+func drawEarthFloor(_ context: CGContext) {
+  fillRect(context, 32, 88, width - 64, height - 136, Palette.earthMid)
+  for row in 6..<(rows - 2) {
+    for col in 2..<(cols - 2) {
+      let x = col * tileSize
+      let y = row * tileSize
+      let variant = (row * 17 + col * 11) % 5
+      let baseColor: CGColor
+      switch variant {
+      case 0: baseColor = Palette.earthDark
+      case 1: baseColor = Palette.earthMid
+      case 2: baseColor = Palette.earthLight
+      case 3: baseColor = Palette.earthMid
+      default: baseColor = Palette.earthDust
+      }
+      fillRect(context, x, y, tileSize, tileSize, baseColor)
+      if (row + col) % 2 == 0 {
+        fillRect(context, x + 2, y + 10, 5, 2, Palette.straw)
+      }
+      if (row * 5 + col * 7) % 6 == 0 {
+        fillRect(context, x + 10, y + 5, 3, 3, Palette.beamShadow)
+      }
+      if (row * 3 + col * 2) % 8 == 0 {
+        fillRect(context, x + 5, y + 3, 2, 2, Palette.earthLight)
+      }
+    }
+  }
+
+  for inset in 0..<6 {
+    let alpha = 0.06 + CGFloat(inset) * 0.03
+    fillRect(context, 32 + inset * 6, 88 + inset * 5, width - 64 - inset * 12, 10, cgColor(0, 0, 0, alpha: alpha))
+    fillRect(context, 32 + inset * 6, height - 58 - inset * 5, width - 64 - inset * 12, 8, cgColor(0, 0, 0, alpha: alpha))
+    fillRect(context, 32 + inset * 5, 88, 10, height - 136, cgColor(0, 0, 0, alpha: alpha))
+    fillRect(context, width - 42 - inset * 5, 88, 10, height - 136, cgColor(0, 0, 0, alpha: alpha))
+  }
 }
 
-func drawRitualCircle(_ context: CGContext, x: Int, y: Int, diameter: Int) {
-  let rect = CGRect(x: x, y: y, width: diameter, height: diameter)
-  context.saveGState()
-  context.setStrokeColor(Palette.rune)
-  context.setLineWidth(4)
-  context.strokeEllipse(in: rect)
-  context.setStrokeColor(Palette.greenGlow)
-  context.setLineWidth(10)
-  context.strokeEllipse(in: rect.insetBy(dx: 8, dy: 8))
-  context.restoreGState()
+func drawStrawPatch(_ context: CGContext, x: Int, y: Int, width: Int, height: Int) {
+  fillEllipse(context, x, y, width, height, Palette.straw)
+  fillEllipse(context, x + 8, y + 6, width - 16, height - 12, Palette.strawLight)
+  for index in 0..<8 {
+    let px = x + 10 + index * (width - 24) / 7
+    fillRect(context, px, y + 8 + (index % 3) * 4, 8, 1, Palette.hideLight)
+    fillRect(context, px + 2, y + 11 + (index % 2) * 3, 6, 1, Palette.straw)
+  }
+}
 
-  let center = CGPoint(x: x + diameter / 2, y: y + diameter / 2)
-  let radius = CGFloat(diameter / 2 - 10)
+func drawRitualFloor(_ context: CGContext) {
+  fillEllipse(context, 156, 98, 200, 188, Palette.shadowSoft)
+  fillEllipse(context, 164, 108, 184, 168, cgColor(61, 51, 32))
+  fillEllipse(context, 176, 120, 160, 144, cgColor(75, 70, 46))
+  strokeEllipse(context, 188, 126, 136, 126, Palette.stoneLight, lineWidth: 4)
+  strokeEllipse(context, 196, 134, 120, 110, Palette.stoneDark, lineWidth: 3)
+  fillEllipse(context, 204, 142, 104, 94, Palette.glowGreenSoft)
+  strokeEllipse(context, 204, 142, 104, 94, Palette.glowGreen, lineWidth: 3)
+
+  let center = CGPoint(x: 256, y: 189)
+  let radius = CGFloat(48)
   var points: [CGPoint] = []
   for index in 0..<5 {
     let angle = (-90.0 + Double(index) * 72.0) * Double.pi / 180.0
@@ -236,108 +332,245 @@ func drawRitualCircle(_ context: CGContext, x: Int, y: Int, diameter: Int) {
       context,
       from: points[starOrder[index]],
       to: points[starOrder[index + 1]],
-      color: Palette.rune,
+      color: Palette.glowGreen,
       width: 4
     )
   }
+  strokeEllipse(context, 214, 151, 84, 76, Palette.glowGreen, lineWidth: 2)
 
   for index in 0..<12 {
     let angle = Double(index) * (Double.pi * 2.0 / 12.0)
-    let px = Int(center.x + CGFloat(cos(angle)) * CGFloat(diameter / 2 + 6)) - 4
-    let py = Int(center.y + CGFloat(sin(angle)) * CGFloat(diameter / 2 + 6)) - 4
-    drawSkull(context, x: px, y: py)
+    let px = Int(center.x + CGFloat(cos(angle)) * 74) - 4
+    let py = Int(center.y + CGFloat(sin(angle)) * 68) - 4
+    fillRect(context, px, py, 8, 8, ((index % 2) == 0) ? Palette.stoneMid : Palette.stoneLight)
   }
 }
 
-func drawFloorLayer(_ context: CGContext, floorTile: CGImage) {
-  fillRect(context, 0, 0, width, height, Palette.wallDark)
-
-  for row in 1..<(rows - 1) {
-    for col in 1..<(cols - 1) {
-      let x = col * tileSize
-      let y = row * tileSize
-      drawImage(context, floorTile, x: x, y: y)
-      if (row + col) % 3 == 0 {
-        fillRect(context, x + 2, y + 10, 4, 1, Palette.floorDust)
-      }
-      if (row * 7 + col * 3) % 11 == 0 {
-        fillRect(context, x + 9, y + 4, 2, 2, Palette.floorShadow)
-      }
-    }
+func drawBackdropProps(_ context: CGContext) {
+  fillEllipse(context, 54, 46, 24, 24, cgColor(215, 176, 107, alpha: 0.12))
+  strokeEllipse(context, 58, 50, 16, 16, Palette.hideLight, lineWidth: 1)
+  drawLine(context, from: CGPoint(x: 66, y: 66), to: CGPoint(x: 66, y: 84), color: Palette.hideShadow, width: 1)
+  for index in 0..<3 {
+    drawLine(
+      context,
+      from: CGPoint(x: 66, y: 64),
+      to: CGPoint(x: 58 + index * 4, y: 75),
+      color: Palette.potionBlue,
+      width: 1
+    )
   }
 
-  fillRect(context, 0, 0, width, tileSize, Palette.wallDark)
-  fillRect(context, 0, height - tileSize, width, tileSize, Palette.wallDark)
-  fillRect(context, 0, 0, tileSize, height, Palette.wallDark)
-  fillRect(context, width - tileSize, 0, tileSize, height, Palette.wallDark)
-  fillRect(context, width / 2 - 24, height - tileSize, 48, tileSize, Palette.floorDust)
+  fillRect(context, 108, 60, 118, 8, Palette.woodMid)
+  fillRect(context, 114, 68, 4, 18, Palette.woodLight)
+  fillRect(context, 214, 68, 4, 18, Palette.woodLight)
+  drawSkull(context, x: 146, y: 45)
+  drawBottle(context, x: 120, y: 48, color: Palette.potionBlue)
+  drawBottle(context, x: 188, y: 46, color: Palette.potionGreen)
+  fillRect(context, 130, 71, 12, 13, Palette.hide)
+  fillRect(context, 168, 71, 14, 13, Palette.hideShadow)
+  fillRect(context, 196, 70, 12, 14, Palette.hideLight)
 
-  drawRitualCircle(context, x: 176, y: 120, diameter: 96)
+  fillRect(context, 300, 34, 88, 68, Palette.stoneDark)
+  fillRect(context, 308, 42, 72, 52, Palette.stoneMid)
+  fillRect(context, 316, 50, 56, 36, Palette.stoneLight)
+  drawSkull(context, x: 336, y: 54, scale: 2)
+  strokeRect(context, 300, 34, 88, 68, Palette.beamShadow, lineWidth: 2)
+  fillRect(context, 392, 38, 20, 44, Palette.cloth)
+  fillRect(context, 398, 82, 8, 10, Palette.clothShadow)
+  fillRect(context, 426, 54, 8, 8, Palette.bone)
+  fillRect(context, 436, 48, 7, 20, Palette.bone)
+  fillRect(context, 446, 52, 8, 8, Palette.bone)
+  drawLine(context, from: CGPoint(x: 430, y: 50), to: CGPoint(x: 454, y: 72), color: Palette.bone, width: 1)
+  drawLine(context, from: CGPoint(x: 454, y: 50), to: CGPoint(x: 430, y: 72), color: Palette.bone, width: 1)
 }
 
-func drawBackLayer(_ context: CGContext, chestStrip: CGImage) {
-  for row in 0..<3 {
-    for col in 0..<cols {
-      let shade: CGColor = row == 0 ? Palette.wallLight : (row == 1 ? Palette.wallMid : Palette.wallDark)
-      fillRect(context, col * tileSize, row * tileSize, tileSize, tileSize, shade)
-      fillRect(context, col * tileSize, row * tileSize + 13, tileSize, 2, Palette.wallDark)
-    }
+func drawHangingHerbs(_ context: CGContext, x: Int, y: Int, count: Int, spacing: Int) {
+  for index in 0..<count {
+    let px = x + index * spacing
+    fillRect(context, px + 3, y, 2, 10, Palette.hideLight)
+    fillRect(context, px, y + 10, 8, 12, (index % 2 == 0) ? Palette.cloth : Palette.straw)
+    fillRect(context, px + 2, y + 14, 4, 10, (index % 2 == 0) ? Palette.clothShadow : Palette.hide)
   }
-
-  drawImage(context, chestStrip, x: 64, y: 36)
-  drawImage(context, chestStrip, x: 320, y: 36)
-  drawTorch(context, x: 60, y: 44)
-  drawTorch(context, x: 420, y: 42)
-  drawSkull(context, x: 186, y: 26)
-  drawSkull(context, x: 280, y: 26)
 }
 
-func drawGameplayLayer(_ context: CGContext, door: CGImage) {
-  fillRect(context, width / 2 - 28, height - tileSize * 2, 56, 16, Palette.floorShadow)
-  drawImage(context, door, x: width / 2 - 16, y: height - tileSize)
-
-  drawCauldron(context, x: 44, y: 54)
-  drawAltar(context, x: 206, y: 46)
-  drawDesk(context, x: 34, y: 222)
-  drawBed(context, x: 366, y: 146)
-  drawChest(context, x: 404, y: 292)
-
-  fillRect(context, 98, 72, 34, 8, Palette.bone)
-  fillRect(context, 102, 80, 26, 8, Palette.stone)
-  fillRect(context, 134, 74, 18, 10, Palette.desk)
-  fillRect(context, 102, 86, 5, 8, Palette.potion)
-  fillRect(context, 118, 86, 5, 8, Palette.potion)
-  drawSkull(context, x: 134, y: 84)
-}
-
-func drawOverlayLayer(_ context: CGContext) {
-  drawBanner(context, x: 18, y: 10)
-  drawBanner(context, x: width - 42, y: 10, flip: true)
-
-  for candleX in stride(from: 172, through: 340, by: 42) {
-    fillRect(context, candleX, 104, 4, 12, Palette.bedSheet)
-    fillRect(context, candleX - 1, 98, 6, 8, Palette.fire)
+func drawBanner(_ context: CGContext, x: Int, y: Int, flip: Bool = false) {
+  for column in 0..<6 {
+    let offset = flip ? (5 - column) : column
+    fillRect(context, x + column * 6, y + offset, 6, 22 - offset, Palette.cloth)
+    fillRect(context, x + column * 6, y + offset + 3, 6, 2, Palette.clothShadow)
   }
+}
 
-  drawTorch(context, x: 462, y: 92)
-  drawTorch(context, x: 40, y: 210)
+func drawTorchSconce(_ context: CGContext, x: Int, y: Int, withGlow: Bool = false) {
+  if withGlow {
+    fillEllipse(context, x - 14, y - 10, 42, 38, Palette.glowWarm)
+  }
+  fillRect(context, x + 8, y + 8, 4, 18, Palette.woodDark)
+  fillRect(context, x + 4, y + 6, 12, 4, Palette.stoneLight)
+  fillRect(context, x + 6, y + 2, 8, 8, Palette.ember)
+  fillRect(context, x + 7, y, 6, 6, Palette.fire)
+}
+
+func drawCauldron(_ context: CGContext, x: Int, y: Int) {
+  drawFloorShadow(context, x: x + 2, y: y + 44, width: 72, height: 22)
+  fillEllipse(context, x + 12, y + 50, 48, 18, Palette.glowWarm)
+  fillRect(context, x + 14, y + 46, 12, 8, Palette.ember)
+  fillRect(context, x + 32, y + 42, 12, 12, Palette.fire)
+  fillRect(context, x + 50, y + 46, 12, 8, Palette.ember)
+  fillRect(context, x + 10, y + 32, 52, 18, Palette.stoneDark)
+  fillEllipse(context, x + 6, y + 10, 60, 34, Palette.stoneMid)
+  fillEllipse(context, x + 12, y + 4, 48, 14, Palette.stoneDark)
+  fillEllipse(context, x + 12, y + 8, 48, 10, Palette.glowGreenSoft)
+  fillEllipse(context, x + 18, y + 10, 36, 8, Palette.glowGreen)
+  fillRect(context, x + 12, y + 38, 6, 14, Palette.woodDark)
+  fillRect(context, x + 54, y + 38, 6, 14, Palette.woodDark)
+  strokeEllipse(context, x + 6, y + 10, 60, 34, Palette.ink, lineWidth: 2)
+  fillRect(context, x + 26, y + 6, 6, 2, Palette.fire)
+  fillRect(context, x + 38, y + 9, 5, 2, Palette.fire)
+}
+
+func drawAltar(_ context: CGContext, x: Int, y: Int) {
+  drawFloorShadow(context, x: x + 2, y: y + 52, width: 110, height: 24)
+  fillRect(context, x, y + 24, 112, 40, Palette.stoneDark)
+  fillRect(context, x + 8, y + 16, 96, 16, Palette.stoneMid)
+  fillRect(context, x + 16, y + 8, 80, 12, Palette.stoneLight)
+  fillRect(context, x + 50, y + 6, 12, 20, Palette.glowGreen)
+  fillRect(context, x + 44, y + 14, 24, 12, Palette.glowGreenSoft)
+  drawCandle(context, x: x + 10, y: y + 6)
+  drawCandle(context, x: x + 88, y: y + 6)
+  drawSkull(context, x: x + 6, y: y + 48)
+  drawSkull(context, x: x + 88, y: y + 48)
+  fillRect(context, x + 28, y + 38, 12, 8, Palette.hide)
+  fillRect(context, x + 72, y + 38, 12, 8, Palette.hide)
+  strokeRect(context, x, y + 24, 112, 40, Palette.ink, lineWidth: 2)
+}
+
+func drawDesk(_ context: CGContext, x: Int, y: Int) {
+  drawFloorShadow(context, x: x + 4, y: y + 54, width: 120, height: 24)
+  fillRect(context, x + 8, y + 8, 116, 10, Palette.woodLight)
+  fillRect(context, x, y + 18, 132, 20, Palette.woodMid)
+  fillRect(context, x + 10, y + 38, 8, 34, Palette.woodDark)
+  fillRect(context, x + 112, y + 38, 8, 34, Palette.woodDark)
+  fillRect(context, x + 16, y + 44, 32, 20, Palette.woodDark)
+  fillRect(context, x + 82, y + 44, 24, 18, Palette.stoneDark)
+  drawBook(context, x: x + 18, y: y + 20)
+  drawBottle(context, x: x + 66, y: y + 16, color: Palette.potionBlue)
+  drawBottle(context, x: x + 78, y: y + 18, color: Palette.potionGreen)
+  fillRect(context, x + 96, y + 16, 12, 10, Palette.hide)
+  fillRect(context, x + 20, y + 50, 18, 12, Palette.stoneMid)
+  fillRect(context, x + 84, y + 52, 10, 8, Palette.hide)
+  fillRect(context, x + 102, y + 52, 8, 10, Palette.hideLight)
+  strokeRect(context, x, y + 18, 132, 20, Palette.ink, lineWidth: 2)
+}
+
+func drawBed(_ context: CGContext, x: Int, y: Int) {
+  drawFloorShadow(context, x: x + 10, y: y + 82, width: 94, height: 24)
+  fillRect(context, x + 8, y + 12, 92, 12, Palette.hideLight)
+  fillRect(context, x, y + 24, 112, 68, Palette.hide)
+  fillRect(context, x + 8, y + 30, 96, 54, Palette.hideShadow)
+  fillRect(context, x + 14, y + 34, 84, 44, Palette.hide)
+  fillRect(context, x + 8, y + 14, 34, 18, Palette.wax)
+  fillRect(context, x + 44, y + 34, 50, 40, Palette.hideLight)
+  fillRect(context, x + 28, y + 42, 70, 34, Palette.hide)
+  fillRect(context, x + 16, y + 58, 24, 18, Palette.hideLight)
+  fillRect(context, x + 102, y + 20, 8, 78, Palette.woodDark)
+  fillRect(context, x + 6, y + 22, 6, 74, Palette.woodDark)
+  strokeRect(context, x, y + 24, 112, 68, Palette.ink, lineWidth: 2)
+}
+
+func drawChest(_ context: CGContext, x: Int, y: Int) {
+  drawFloorShadow(context, x: x + 2, y: y + 22, width: 44, height: 16)
+  fillRect(context, x + 4, y + 8, 36, 24, Palette.woodDark)
+  fillRect(context, x + 6, y + 10, 32, 20, Palette.woodMid)
+  fillRect(context, x + 10, y + 4, 24, 10, Palette.woodLight)
+  fillRect(context, x + 18, y + 16, 8, 6, Palette.fire)
+  strokeRect(context, x + 4, y + 8, 36, 24, Palette.ink, lineWidth: 2)
+}
+
+func drawDoorway(_ context: CGContext, door: CGImage) {
+  fillRect(context, width / 2 - 50, height - 30, 100, 14, Palette.woodMid)
+  fillRect(context, width / 2 - 42, height - 42, 12, 28, Palette.woodDark)
+  fillRect(context, width / 2 + 30, height - 42, 12, 28, Palette.woodDark)
+  fillRect(context, width / 2 - 36, height - 58, 72, 18, Palette.beamShadow)
+  drawImage(context, door, x: width / 2 - 32, y: height - 50, width: 64, height: 32)
+}
+
+func drawCircleCandles(_ context: CGContext) {
+  let candlePositions = [
+    (234, 106), (274, 106),
+    (182, 134), (322, 136),
+    (170, 188), (330, 188),
+    (190, 240), (308, 240),
+    (238, 258), (274, 258),
+  ]
+  for position in candlePositions {
+    drawCandle(context, x: position.0, y: position.1)
+  }
+  drawSkull(context, x: 184, y: 154)
+  drawSkull(context, x: 308, y: 154)
+}
+
+func drawForegroundDetails(_ context: CGContext) {
+  drawBanner(context, x: 34, y: 18)
+  drawBanner(context, x: width - 70, y: 18, flip: true)
+  drawHangingHerbs(context, x: 136, y: 20, count: 6, spacing: 34)
+  drawTorchSconce(context, x: 404, y: 60, withGlow: true)
+  drawTorchSconce(context, x: 450, y: 80, withGlow: true)
+  drawTorchSconce(context, x: 46, y: 234, withGlow: false)
+  fillEllipse(context, 54, 66, 36, 26, Palette.smoke)
+  fillEllipse(context, 62, 56, 28, 24, Palette.smoke)
+  fillEllipse(context, 70, 42, 24, 20, Palette.smoke)
+}
+
+func drawLayer0(_ context: CGContext) {
+  drawTopBeam(context)
+  drawEarthFloor(context)
+  drawStrawPatch(context, x: 188, y: 282, width: 132, height: 54)
+  drawStrawPatch(context, x: 398, y: 132, width: 76, height: 36)
+  drawRitualFloor(context)
+  drawFloorShadow(context, x: 54, y: 116, width: 72, height: 20)
+  drawFloorShadow(context, x: 204, y: 108, width: 106, height: 18)
+  drawFloorShadow(context, x: 40, y: 292, width: 120, height: 22)
+  drawFloorShadow(context, x: 370, y: 250, width: 92, height: 20)
+  drawFloorShadow(context, x: 406, y: 324, width: 36, height: 14)
+  fillRect(context, width / 2 - 16, height - 22, 32, 6, Palette.earthDark)
+}
+
+func drawLayer1(_ context: CGContext) {
+  drawBackdropProps(context)
+}
+
+func drawLayer2(_ context: CGContext, door: CGImage) {
+  drawCauldron(context, x: 44, y: 58)
+  drawAltar(context, x: 198, y: 54)
+  drawDesk(context, x: 34, y: 214)
+  drawBed(context, x: 360, y: 132)
+  drawChest(context, x: 402, y: 286)
+  drawCircleCandles(context)
+  drawBonePile(context, x: 414, y: 292, width: 48, height: 24)
+  drawBone(context, x: 228, y: 302, length: 22)
+  drawBone(context, x: 272, y: 304, length: 22)
+  drawDoorway(context, door: door)
+}
+
+func drawLayer3(_ context: CGContext) {
+  drawForegroundDetails(context)
 }
 
 try FileManager.default.createDirectory(at: outputRoot, withIntermediateDirectories: true)
 
-let woodenFloor = try loadImage(assetsRoot.appendingPathComponent("tilesets/floors/wooden.png"))
 let woodenDoor = try loadImage(assetsRoot.appendingPathComponent("tilesets/walls/wooden_door.png"))
-let chestStrip = try loadImage(assetsRoot.appendingPathComponent("objects/chest_02.png"))
+let doorTile = cropImage(woodenDoor, x: 0, y: 0, width: 32, height: 16)
 
 let layer0 = makeContext()
 let layer1 = makeContext()
 let layer2 = makeContext()
 let layer3 = makeContext()
 
-drawFloorLayer(layer0, floorTile: woodenFloor)
-drawBackLayer(layer1, chestStrip: chestStrip)
-drawGameplayLayer(layer2, door: woodenDoor)
-drawOverlayLayer(layer3)
+drawLayer0(layer0)
+drawLayer1(layer1)
+drawLayer2(layer2, door: doorTile)
+drawLayer3(layer3)
 
 try saveContext(layer0, to: outputRoot.appendingPathComponent("shaman_hut.png"))
 try saveContext(layer1, to: outputRoot.appendingPathComponent("shaman_hut_layer1.png"))
